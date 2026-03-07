@@ -1,0 +1,90 @@
+Prompt: Build "Eltizam" - Professional Arabic Financial Management System
+Role: Act as a Senior Full-Stack Developer and Software Architect.
+Objective: Build a complete, production-ready, Mobile-first, Arabic RTL personal finance management system named "التزام" (Eltizam).
+
+1. Project Core & Constraints
+Language: Fully Arabic UI with RTL (Right-to-Left) support.
+
+Target: Single-user system (Simplified Auth).
+
+Design Philosophy: Mobile-first, looks like a native mobile app.
+
+Strict Rules: No SMS integration, No bank SMS scraping, No external API dependencies except the database.
+
+2. Technical Stack (Latest Versions)
+Frontend: Next.js 14+ (App Router), TypeScript, TailwindCSS, Lucide-React icons, TanStack Query (for state & fetching).
+
+Backend: FastAPI (Python 3.11+), Pydantic v2, SQLAlchemy 2.0.
+
+Database: PostgreSQL.
+
+Authentication: JWT (JSON Web Tokens) stored in httpOnly Cookies, bcrypt for password hashing.
+
+DevOps: Monorepo structure, Docker Compose, ready for Coolify deployment.
+
+3. System Architecture & Database Schema
+Create a robust schema with the following relations:
+
+User: id, username, password_hash.
+
+Wallet: id, name, opening_balance, hidden (boolean), color_code.
+
+Category: id, name, type (income/expense/debt), parent_id (for sub-categories), icon, sort_order.
+
+Transaction: id, wallet_id, category_id, txn_type (income/expense/debt_in/debt_out/transfer), amount (Decimal), note, txn_datetime, transfer_to_wallet_id.
+
+Budget: id, category_id, month (YYYY-MM), limit_amount.
+
+Goal: id, name, target_amount, current_amount, due_date.
+
+Settings: currency (default 'OMR'), dark_mode, pin_enabled, pin_hash.
+
+4. Core Business Logic (Must Implement)
+Total Balance Formula: (Sum of Opening Balances) + (Sum Income) + (Sum Debt_In) - (Sum Expense) - (Sum Debt_Out).
+
+Transfers: Transfers between wallets must NOT affect the total balance.
+
+Budget Alerts: Visual warnings when spending reaches 80% and 100% of the category budget.
+
+Validation: Use Zod for frontend validation and Pydantic for backend.
+
+5. UI/UX Requirements (Mobile-First)
+Dashboard: Large "Total Balance" card, summary of (Income, Expense, Debts), Quick action buttons for (+), and "Recent Transactions" list.
+
+Transactions Page: Advanced filtering by date range, type, category, and wallet. Search bar included.
+
+Wallets Page: Card-based UI with "Show/Hide Balance" toggle.
+
+Categories: Tabbed interface (Income/Expense/Debt) with drag-and-drop sorting support.
+
+RTL Support: Use dir="rtl" and Arabic fonts (like Tajawal or IBM Plex Sans Arabic).
+
+6. Development & Deployment Requirements
+Monorepo Structure:
+
+/apps/api: Backend code.
+
+/apps/web: Frontend code.
+
+/infra: Dockerfile and docker-compose.yml.
+
+Migrations: Include Alembic setup for database migrations.
+
+Seed Data: Provide a script to populate initial categories (e.g., Food, Rent, Salary, Health).
+
+Error Handling: Centralized error handling on both frontend and backend.
+
+Data Portability: Feature to export/import all user data as a JSON file in Settings.
+
+7. Execution Steps for AI
+Start by setting up the Backend Models and Database Schema.
+
+Implement the Auth Logic (Sign-in / Protected Routes).
+
+Build the Balance Calculation Engine.
+
+Create the Frontend UI Shell with RTL and Tailwind.
+
+Connect API Endpoints to Frontend using TanStack Query.
+
+Provide the Docker Compose file for one-click deployment.
