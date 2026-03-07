@@ -79,6 +79,27 @@ export default function Login() {
           </CardHeader>
           <form onSubmit={handleSubmit}>
             <CardContent className="space-y-5 pt-6 pb-6 px-6">
+              {/* Mode Selection Icons */}
+              <div className="flex items-center justify-center gap-6 pb-4 border-b border-border/30">
+                <button
+                  type="button"
+                  onClick={() => setMode("login")}
+                  className={`flex flex-col items-center gap-2 transition-all min-w-[90px] py-3 px-4 rounded-2xl ${mode === "login" ? "bg-primary/10 text-primary shadow-sm" : "text-muted-foreground hover:bg-muted/50"}`}
+                >
+                  <UserCircle className="h-8 w-8" />
+                  <span className="text-sm font-semibold">تسجيل الدخول</span>
+                </button>
+                <div className="w-px h-12 bg-border/70"></div>
+                <button
+                  type="button"
+                  onClick={() => setMode("register")}
+                  className={`flex flex-col items-center gap-2 transition-all min-w-[90px] py-3 px-4 rounded-2xl ${mode === "register" ? "bg-primary/10 text-primary shadow-sm" : "text-muted-foreground hover:bg-muted/50"}`}
+                >
+                  <UserPlus className="h-8 w-8" />
+                  <span className="text-sm font-semibold">إنشاء حساب</span>
+                </button>
+              </div>
+
               {!isLoginMode && (
                 <>
                   <div className="space-y-2.5">
@@ -158,30 +179,6 @@ export default function Login() {
             </CardFooter>
           </form>
         </Card>
-
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-8 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-border/50 rounded-full px-8 py-4 shadow-xl">
-          <button
-            type="button"
-            onClick={() => setMode("login")}
-            className={`flex flex-col items-center gap-2 transition-all min-w-[80px] ${mode === "login" ? "text-primary scale-105" : "text-muted-foreground hover:text-foreground"}`}
-          >
-            <div className={`p-2 rounded-full transition-all ${mode === "login" ? "bg-primary/10" : ""}`}>
-              <UserCircle className="h-7 w-7" />
-            </div>
-            <span className="text-xs font-semibold">تسجيل الدخول</span>
-          </button>
-          <div className="w-px h-10 bg-border/70"></div>
-          <button
-            type="button"
-            onClick={() => setMode("register")}
-            className={`flex flex-col items-center gap-2 transition-all min-w-[80px] ${mode === "register" ? "text-primary scale-105" : "text-muted-foreground hover:text-foreground"}`}
-          >
-            <div className={`p-2 rounded-full transition-all ${mode === "register" ? "bg-primary/10" : ""}`}>
-              <UserPlus className="h-7 w-7" />
-            </div>
-            <span className="text-xs font-semibold">إنشاء حساب</span>
-          </button>
-        </div>
       </div>
     </div>
   );
