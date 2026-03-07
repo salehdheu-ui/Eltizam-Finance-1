@@ -1,4 +1,4 @@
-import { LogIn, ArrowRight, ShieldCheck, UserPlus } from "lucide-react";
+import { LogIn, ArrowRight, ShieldCheck, UserPlus, UserCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 
 export default function Login() {
   const [, setLocation] = useLocation();
-  const [isRegisterMode, setIsRegisterMode] = useState(true);
+  const [mode, setMode] = useState<"login" | "register">("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -20,17 +20,18 @@ export default function Login() {
   const loginMutation = useLogin();
   const registerMutation = useRegister();
   const isLoading = loginMutation.isPending || registerMutation.isPending;
+  const isLoginMode = mode === "login";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     try {
-      if (isRegisterMode) {
-        await registerMutation.mutateAsync({ username, password, name, email });
-        toast({ title: "تم إنشاء الحساب بنجاح", description: "مرحباً بك في التزام!" });
-      } else {
+      if (isLoginMode) {
         await loginMutation.mutateAsync({ username, password });
         toast({ title: "مرحباً بعودتك!", description: "تم تسجيل الدخول بنجاح" });
+      } else {
+        await registerMutation.mutateAsync({ username, password, name, email });
+        toast({ title: "تم إنشاء الحساب بنجاح", description: "مرحباً بك في التزام!" });
       }
       setLocation("/");
     } catch (error: any) {
@@ -44,7 +45,7 @@ export default function Login() {
         }
       } catch {
         if (error.message?.includes("اسم المستخدم")) {
-          msg = isRegisterMode ? "اسم المستخدم مستخدم بالفعل" : "اسم المستخدم أو كلمة المرور غير صحيحة";
+          msg = !isLoginMode ? "اسم المستخدم مستخدم بالفعل" : "اسم المستخدم أو كلمة المرور غير صحيحة";
         }
       }
       toast({ title: "خطأ", description: msg, variant: "destructive" });
@@ -70,15 +71,15 @@ export default function Login() {
         <Card className="border-white/20 dark:border-white/10 shadow-2xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-3xl overflow-hidden">
           <CardHeader className="space-y-1 pb-6 pt-8 text-center border-b border-border/50 bg-muted/20">
             <CardTitle className="text-2xl font-bold">
-              {isRegisterMode ? "إنشاء حساب جديد" : "مرحباً بعودتك"}
+              {isLoginMode ? "مرحباً بعودتك" : "إنشاء حساب جديد"}
             </CardTitle>
             <CardDescription className="text-base">
-              {isRegisterMode ? "أدخل بياناتك لإنشاء حسابك" : "قم بتسجيل الدخول للمتابعة"}
+              {isLoginMode ? "قم بتسجيل الدخول للمتابعة" : "أدخل بياناتك لإنشاء حسابك"}
             </CardDescription>
           </CardHeader>
           <form onSubmit={handleSubmit}>
             <CardContent className="space-y-5 pt-6 pb-6 px-6">
-              {isRegisterMode && (
+              {!isLoginMode && (
                 <>
                   <div className="space-y-2.5">
                     <Label htmlFor="name" className="text-sm font-semibold">الاسم الكامل</Label>
@@ -144,7 +145,7 @@ export default function Login() {
                   </div>
                 ) : (
                   <div className="flex items-center justify-center gap-2">
-                    <span>{isRegisterMode ? "إنشاء الحساب" : "تسجيل الدخول"}</span>
+                    <span>{isLoginMode ? "تسجيل الدخول" : "إنشاء الحساب"}</span>
                     <ArrowRight className="h-5 w-5 rotate-180" />
                   </div>
                 )}
@@ -158,15 +159,25 @@ export default function Login() {
           </form>
         </Card>
 
-        <p className="text-center text-sm text-muted-foreground font-medium">
-          {isRegisterMode ? "لديك حساب بالفعل؟ " : "ليس لديك حساب؟ "}
-          <button 
-            onClick={() => setIsRegisterMode(!isRegisterMode)} 
-            className="text-primary font-bold hover:underline underline-offset-4 transition-all cursor-pointer"
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-border/50 rounded-full px-6 py-3 shadow-lg">
+          <button
+            type="button"
+            onClick={() => setMode("login")}
+            className={`flex flex-col items-center gap-1 transition-all ${mode === "login" ? "text-primary" : "text-muted-foreground"}`}
           >
-            {isRegisterMode ? "سجل الدخول" : "سجل الآن"}
+            <UserCircle className="h-6 w-6" />
+            <span className="text-xs font-medium">تسجيل الدخول</span>
           </button>
-        </p>
+          <div className="w-px h-8 bg-border/50"></div>
+          <button
+            type="button"
+            onClick={() => setMode("register")}
+            className={`flex flex-col items-center gap-1 transition-all ${mode === "register" ? "text-primary" : "text-muted-foreground"}`}
+          >
+            <UserPlus className="h-6 w-6" />
+            <span className="text-xs font-medium">إنشاء حساب</span>
+          </button>
+        </div>
       </div>
     </div>
   );
