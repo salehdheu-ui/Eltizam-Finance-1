@@ -69,6 +69,9 @@ export const insertTransactionSchema = createInsertSchema(transactions).pick({
   type: true,
   amount: true,
   note: true,
+}).extend({
+  walletId: z.number().nullable(),
+  categoryId: z.number().nullable(),
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;

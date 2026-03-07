@@ -87,7 +87,22 @@ export async function registerRoutes(
 
   app.post("/api/transactions", requireAuth, async (req, res, next) => {
     try {
-      const data = insertTransactionSchema.parse(req.body);
+      // Convert string numbers to actual numbers for validation
+      const body = {
+        ...req.body,
+        amount: typeof req.body.amount === 'string' ? parseFloat(req.body.amount) : req.body.amount,
+        categoryId: req.body.categoryId === null || req.body.categoryId === undefined 
+          ? null 
+          : typeof req.body.categoryId === 'string' 
+            ? parseInt(req.body.categoryId) 
+            : req.body.categoryId,
+        walletId: req.body.walletId === null || req.body.walletId === undefined 
+          ? null 
+          : typeof req.body.walletId === 'string' 
+            ? parseInt(req.body.walletId) 
+            : req.body.walletId,
+      };
+      const data = insertTransactionSchema.parse(body);
       const tx = await storage.createTransaction(req.user!.id, data);
       res.status(201).json(tx);
     } catch (e) { next(e); }
