@@ -56,7 +56,14 @@ export default function Layout({ children }: LayoutProps) {
 
   const handleAddTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!txAmount) return;
+    if (!txAmount) {
+      toast({ title: "خطأ", description: "يجب إدخال المبلغ", variant: "destructive" });
+      return;
+    }
+    if (!txWalletId) {
+      toast({ title: "خطأ", description: "يجب اختيار محفظة أو بنك", variant: "destructive" });
+      return;
+    }
     
     try {
       await createTransaction.mutateAsync({
@@ -64,7 +71,7 @@ export default function Layout({ children }: LayoutProps) {
         amount: parseFloat(txAmount),
         note: txNote || "",
         categoryId: txCategoryId ? parseInt(txCategoryId) : null,
-        walletId: txWalletId ? parseInt(txWalletId) : null,
+        walletId: parseInt(txWalletId),
       });
       
       toast({
@@ -78,8 +85,9 @@ export default function Layout({ children }: LayoutProps) {
       setTxCategoryId("");
       setTxWalletId("");
       setTxType("expense");
-    } catch {
-      toast({ title: "خطأ", description: "فشل إضافة المعاملة", variant: "destructive" });
+    } catch (error: any) {
+      const message = error?.response?.data?.message || error?.message || "فشل إضافة المعاملة";
+      toast({ title: "خطأ", description: message, variant: "destructive" });
     }
   };
 
@@ -170,9 +178,16 @@ export default function Layout({ children }: LayoutProps) {
                 </div>
               )}
 
-              {wallets.length > 0 && (
-                <div className="flex flex-col gap-2">
-                  <Label>المحفظة</Label>
+              <div className="flex flex-col gap-2">
+                <Label className="flex items-center gap-1">
+                  المحفظة
+                  <span className="text-destructive">*</span>
+                </Label>
+                {wallets.length === 0 ? (
+                  <div className="p-3 rounded-xl bg-destructive/10 text-destructive text-sm text-center">
+                    لا توجد محافظ. يجب إنشاء محفظة أولاً من صفحة المحافظ
+                  </div>
+                ) : (
                   <div className="flex flex-wrap gap-2">
                     {wallets.map((w) => (
                       <button key={w.id} type="button" onClick={() => setTxWalletId(w.id.toString())}
@@ -183,8 +198,11 @@ export default function Layout({ children }: LayoutProps) {
                       </button>
                     ))}
                   </div>
-                </div>
-              )}
+                )}
+                {txWalletId && (
+                  <p className="text-xs text-emerald-600">✓ تم اختيار المحفظة</p>
+                )}
+              </div>
             </form>
 
             <DrawerFooter className="pt-6">

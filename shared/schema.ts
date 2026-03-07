@@ -70,7 +70,7 @@ export const insertTransactionSchema = createInsertSchema(transactions).pick({
   amount: true,
   note: true,
 }).extend({
-  walletId: z.number().nullable(),
+  walletId: z.number({ required_error: "يجب اختيار محفظة أو بنك" }),
   categoryId: z.number().nullable(),
 });
 
