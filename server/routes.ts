@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth } from "./auth";
-import { insertWalletSchema, insertCategorySchema, insertTransactionSchema } from "@shared/schema";
+import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertObligationSchema } from "@shared/schema";
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.isAuthenticated()) {
@@ -129,6 +129,115 @@ export async function registerRoutes(
       const recentTransactions = txsData.slice(0, 5);
 
       res.json({ totalBalance, totalIncome, totalExpenses, recentTransactions });
+    } catch (e) { next(e); }
+  });
+
+  // Obligations
+  app.get("/api/obligations", requireAuth, async (req, res, next) => {
+    try {
+      const obligations = await storage.getObligations(req.user!.id);
+      res.json(obligations);
+    } catch (e) { next(e); }
+  });
+
+  app.get("/api/obligations/:id", requireAuth, async (req, res, next) => {
+    try {
+      const obligation = await storage.getObligationById(parseInt(req.params.id), req.user!.id);
+      if (!obligation) {
+        return res.status(404).json({ message: "الالتزام غير موجود" });
+      }
+      res.json(obligation);
+    } catch (e) { next(e); }
+  });
+
+  app.post("/api/obligations", requireAuth, async (req, res, next) => {
+    try {
+      // Convert string numbers to actual numbers for validation
+      const body = {
+        ...req.body,
+        amount: typeof req.body.amount === 'string' ? parseFloat(req.body.amount) : req.body.amount,
+        dueDay: req.body.dueDay === null || req.body.dueDay === undefined 
+          ? null 
+          : typeof req.body.dueDay === 'string' 
+            ? parseInt(req.body.dueDay) 
+            : req.body.dueDay,
+        dueMonth: req.body.dueMonth === null || req.body.dueMonth === undefined 
+          ? null 
+          : typeof req.body.dueMonth === 'string' 
+            ? parseInt(req.body.dueMonth) 
+            : req.body.dueMonth,
+        dueDate: req.body.dueDate === null || req.body.dueDate === undefined 
+          ? null 
+          : typeof req.body.dueDate === 'string' 
+            ? parseInt(req.body.dueDate) 
+            : req.body.dueDate,
+        walletId: req.body.walletId === null || req.body.walletId === undefined 
+          ? null 
+          : typeof req.body.walletId === 'string' 
+            ? parseInt(req.body.walletId) 
+            : req.body.walletId,
+        categoryId: req.body.categoryId === null || req.body.categoryId === undefined 
+          ? null 
+          : typeof req.body.categoryId === 'string' 
+            ? parseInt(req.body.categoryId) 
+            : req.body.categoryId,
+      };
+      const data = insertObligationSchema.parse(body);
+      const obligation = await storage.createObligation(req.user!.id, data);
+      res.status(201).json(obligation);
+    } catch (e) { next(e); }
+  });
+
+  app.patch("/api/obligations/:id", requireAuth, async (req, res, next) => {
+    try {
+      // Convert string numbers to actual numbers for validation
+      const body = {
+        ...req.body,
+        amount: req.body.amount === undefined || req.body.amount === null
+          ? undefined
+          : typeof req.body.amount === 'string' ? parseFloat(req.body.amount) : req.body.amount,
+        dueDay: req.body.dueDay === undefined
+          ? undefined
+          : req.body.dueDay === null
+            ? null
+            : typeof req.body.dueDay === 'string' ? parseInt(req.body.dueDay) : req.body.dueDay,
+        dueMonth: req.body.dueMonth === undefined
+          ? undefined
+          : req.body.dueMonth === null
+            ? null
+            : typeof req.body.dueMonth === 'string' ? parseInt(req.body.dueMonth) : req.body.dueMonth,
+        dueDate: req.body.dueDate === undefined
+          ? undefined
+          : req.body.dueDate === null
+            ? null
+            : typeof req.body.dueDate === 'string' ? parseInt(req.body.dueDate) : req.body.dueDate,
+        walletId: req.body.walletId === undefined
+          ? undefined
+          : req.body.walletId === null
+            ? null
+            : typeof req.body.walletId === 'string' ? parseInt(req.body.walletId) : req.body.walletId,
+        categoryId: req.body.categoryId === undefined
+          ? undefined
+          : req.body.categoryId === null
+            ? null
+            : typeof req.body.categoryId === 'string' ? parseInt(req.body.categoryId) : req.body.categoryId,
+      };
+      const obligation = await storage.updateObligation(parseInt(req.params.id), req.user!.id, body);
+      res.json(obligation);
+    } catch (e) { next(e); }
+  });
+
+  app.delete("/api/obligations/:id", requireAuth, async (req, res, next) => {
+    try {
+      await storage.deleteObligation(parseInt(req.params.id), req.user!.id);
+      res.json({ message: "تم حذف الالتزام بنجاح" });
+    } catch (e) { next(e); }
+  });
+
+  app.patch("/api/obligations/:id/toggle", requireAuth, async (req, res, next) => {
+    try {
+      const obligation = await storage.toggleObligation(parseInt(req.params.id), req.user!.id);
+      res.json(obligation);
     } catch (e) { next(e); }
   });
 

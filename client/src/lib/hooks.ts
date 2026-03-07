@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "./queryClient";
 import { queryClient } from "./queryClient";
-import type { User, Wallet, Category, Transaction } from "@shared/schema";
+import type { User, Wallet, Category, Transaction, Obligation } from "@shared/schema";
 
 export function useUser() {
   return useQuery<User | null>({
@@ -153,6 +153,56 @@ export function useDeleteTransaction() {
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/wallets"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+    },
+  });
+}
+
+// Obligations Hooks
+export function useObligations() {
+  return useQuery<Obligation[]>({
+    queryKey: ["/api/obligations"],
+  });
+}
+
+export function useObligation(id: number | undefined) {
+  return useQuery<Obligation>({
+    queryKey: ["/api/obligations", id],
+    enabled: !!id,
+  });
+}
+
+export function useCreateObligation() {
+  return useMutation({
+    mutationFn: (data: any) => apiRequest("POST", "/api/obligations", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/obligations"] });
+    },
+  });
+}
+
+export function useUpdateObligation() {
+  return useMutation({
+    mutationFn: ({ id, ...data }: any) => apiRequest("PATCH", `/api/obligations/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/obligations"] });
+    },
+  });
+}
+
+export function useDeleteObligation() {
+  return useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/obligations/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/obligations"] });
+    },
+  });
+}
+
+export function useToggleObligation() {
+  return useMutation({
+    mutationFn: (id: number) => apiRequest("PATCH", `/api/obligations/${id}/toggle`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/obligations"] });
     },
   });
 }

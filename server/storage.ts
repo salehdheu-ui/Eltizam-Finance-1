@@ -1,11 +1,12 @@
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, wallets, categories, transactions,
+  users, wallets, categories, transactions, obligations,
   type User, type InsertUser,
   type Wallet, type InsertWallet,
   type Category, type InsertCategory,
   type Transaction, type InsertTransaction,
+  type Obligation, type InsertObligation,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -30,6 +31,13 @@ export interface IStorage {
   getTransactionsByType(userId: number, type: string): Promise<Transaction[]>;
   createTransaction(userId: number, transaction: InsertTransaction): Promise<Transaction>;
   deleteTransaction(id: number, userId: number): Promise<void>;
+
+  getObligations(userId: number): Promise<Obligation[]>;
+  getObligationById(id: number, userId: number): Promise<Obligation | undefined>;
+  createObligation(userId: number, obligation: InsertObligation): Promise<Obligation>;
+  updateObligation(id: number, userId: number, data: Partial<InsertObligation>): Promise<Obligation>;
+  deleteObligation(id: number, userId: number): Promise<void>;
+  toggleObligation(id: number, userId: number): Promise<Obligation>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -149,6 +157,53 @@ export class DatabaseStorage implements IStorage {
       }
     }
     await db.delete(transactions).where(and(eq(transactions.id, id), eq(transactions.userId, userId)));
+  }
+
+  async getObligations(userId: number): Promise<Obligation[]> {
+    return db
+      .select()
+      .from(obligations)
+      .where(eq(obligations.userId, userId))
+      .orderBy(desc(obligations.createdAt));
+  }
+
+  async getObligationById(id: number, userId: number): Promise<Obligation | undefined> {
+    const [obligation] = await db
+      .select()
+      .from(obligations)
+      .where(and(eq(obligations.id, id), eq(obligations.userId, userId)));
+    return obligation;
+  }
+
+  async createObligation(userId: number, obligation: InsertObligation): Promise<Obligation> {
+    const [created] = await db
+      .insert(obligations)
+      .values({ ...obligation, userId })
+      .returning();
+    return created;
+  }
+
+  async updateObligation(id: number, userId: number, data: Partial<InsertObligation>): Promise<Obligation> {
+    const [updated] = await db
+      .update(obligations)
+      .set({ ...data, updatedAt: Math.floor(Date.now() / 1000) })
+      .where(and(eq(obligations.id, id), eq(obligations.userId, userId)))
+      .returning();
+    return updated;
+  }
+
+  async deleteObligation(id: number, userId: number): Promise<void> {
+    await db
+      .delete(obligations)
+      .where(and(eq(obligations.id, id), eq(obligations.userId, userId)));
+  }
+
+  async toggleObligation(id: number, userId: number): Promise<Obligation> {
+    const obligation = await this.getObligationById(id, userId);
+    if (!obligation) {
+      throw new Error("الالتزام غير موجود");
+    }
+    return this.updateObligation(id, userId, { isActive: !obligation.isActive });
   }
 }
 

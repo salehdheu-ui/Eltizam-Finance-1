@@ -9,8 +9,10 @@ import Dashboard from "@/pages/dashboard";
 import Transactions from "@/pages/transactions";
 import Wallets from "@/pages/wallets";
 import Categories from "@/pages/categories";
-import Settings from "@/pages/settings";
+import Reports from "@/pages/reports";
+import Obligations from "@/pages/obligations";
 import Login from "@/pages/login";
+import Settings from "@/pages/settings";
 import { useUser } from "@/lib/hooks";
 import { Loader2 } from "lucide-react";
 
@@ -62,6 +64,8 @@ function Router() {
         <Route path="/transactions" component={Transactions} />
         <Route path="/wallets" component={Wallets} />
         <Route path="/categories" component={Categories} />
+        <Route path="/reports" component={Reports} />
+        <Route path="/obligations" component={Obligations} />
         <Route path="/settings" component={Settings} />
         <Route component={NotFound} />
       </Switch>

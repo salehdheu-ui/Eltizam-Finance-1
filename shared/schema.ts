@@ -41,6 +41,27 @@ export const transactions = sqliteTable("transactions", {
   date: integer("date").notNull().default(sql`(unixepoch())`),
 });
 
+export const obligations = sqliteTable("obligations", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().references(() => users.id),
+  title: text("title").notNull(),
+  amount: real("amount").notNull(),
+  obligationType: text("obligation_type").notNull().default("custom"),
+  frequency: text("frequency").notNull().default("monthly"),
+  dueDay: integer("due_day"), // للالتزامات الشهرية (1-31)
+  dueMonth: integer("due_month"), // للالتزامات السنوية (1-12)
+  dueDate: integer("due_date"), // للالتزامات لمرة واحدة (unixepoch)
+  startDate: integer("start_date").notNull().default(sql`(unixepoch())`),
+  endDate: integer("end_date"), // اختياري - تاريخ انتهاء الالتزام
+  walletId: integer("wallet_id").references(() => wallets.id),
+  categoryId: integer("category_id").references(() => categories.id),
+  notes: text("notes").default(""),
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  autoCreateTransaction: integer("auto_create_transaction", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at").notNull().default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at").notNull().default(sql`(unixepoch())`),
+});
+
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
@@ -74,6 +95,33 @@ export const insertTransactionSchema = createInsertSchema(transactions).pick({
   categoryId: z.number().nullable(),
 });
 
+export const insertObligationSchema = createInsertSchema(obligations).pick({
+  title: true,
+  amount: true,
+  obligationType: true,
+  frequency: true,
+  dueDay: true,
+  dueMonth: true,
+  dueDate: true,
+  startDate: true,
+  endDate: true,
+  walletId: true,
+  categoryId: true,
+  notes: true,
+  isActive: true,
+  autoCreateTransaction: true,
+}).extend({
+  title: z.string().min(1, "يجب إدخال عنوان الالتزام"),
+  amount: z.number().positive("المبلغ يجب أن يكون أكبر من صفر"),
+  obligationType: z.enum(["bill", "installment", "subscription", "association", "custom"]),
+  frequency: z.enum(["monthly", "yearly", "one_time"]),
+  dueDay: z.number().min(1).max(31).nullable().optional(),
+  dueMonth: z.number().min(1).max(12).nullable().optional(),
+  dueDate: z.number().nullable().optional(),
+  walletId: z.number().nullable().optional(),
+  categoryId: z.number().nullable().optional(),
+});
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type InsertWallet = z.infer<typeof insertWalletSchema>;
@@ -82,3 +130,5 @@ export type InsertCategory = z.infer<typeof insertCategorySchema>;
 export type Category = typeof categories.$inferSelect;
 export type InsertTransaction = z.infer<typeof insertTransactionSchema>;
 export type Transaction = typeof transactions.$inferSelect;
+export type InsertObligation = z.infer<typeof insertObligationSchema>;
+export type Obligation = typeof obligations.$inferSelect;

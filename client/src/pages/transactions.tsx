@@ -133,7 +133,8 @@ export default function Transactions() {
                           <span className={cn(
                             "font-bold",
                             tx.type === 'income' ? "text-emerald-500" : 
-                            tx.type === 'debt' ? "text-rose-500" : ""
+                            tx.type === 'expense' ? "text-red-500" :
+                            "text-gray-900 dark:text-gray-100"
                           )}>
                             {tx.type === 'income' ? '+' : '-'}{tx.amount.toFixed(2)}
                           </span>
