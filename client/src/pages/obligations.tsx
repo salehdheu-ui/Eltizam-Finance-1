@@ -290,13 +290,19 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
             {formData.frequency === "one_time" && (
               <div className="flex flex-col gap-2">
                 <Label htmlFor="dueDate" className="text-right">تاريخ الاستحقاق <span className="text-destructive">*</span></Label>
-                <Input
-                  id="dueDate"
-                  type="date"
-                  value={formData.dueDate}
-                  onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
-                  className={cn("text-right", errors.dueDate && "border-destructive")}
-                />
+                <div className="relative">
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                    <Calendar className="h-5 w-5 text-primary" />
+                  </div>
+                  <Input
+                    id="dueDate"
+                    type="date"
+                    lang="ar"
+                    value={formData.dueDate}
+                    onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
+                    className={cn("text-right pr-11", errors.dueDate && "border-destructive")}
+                  />
+                </div>
                 {errors.dueDate && <p className="text-xs text-destructive">{errors.dueDate}</p>}
               </div>
             )}
