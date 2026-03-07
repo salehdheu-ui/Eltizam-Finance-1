@@ -159,23 +159,27 @@ export default function Login() {
           </form>
         </Card>
 
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-border/50 rounded-full px-6 py-3 shadow-lg">
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-8 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-border/50 rounded-full px-8 py-4 shadow-xl">
           <button
             type="button"
             onClick={() => setMode("login")}
-            className={`flex flex-col items-center gap-1 transition-all ${mode === "login" ? "text-primary" : "text-muted-foreground"}`}
+            className={`flex flex-col items-center gap-2 transition-all min-w-[80px] ${mode === "login" ? "text-primary scale-105" : "text-muted-foreground hover:text-foreground"}`}
           >
-            <UserCircle className="h-6 w-6" />
-            <span className="text-xs font-medium">تسجيل الدخول</span>
+            <div className={`p-2 rounded-full transition-all ${mode === "login" ? "bg-primary/10" : ""}`}>
+              <UserCircle className="h-7 w-7" />
+            </div>
+            <span className="text-xs font-semibold">تسجيل الدخول</span>
           </button>
-          <div className="w-px h-8 bg-border/50"></div>
+          <div className="w-px h-10 bg-border/70"></div>
           <button
             type="button"
             onClick={() => setMode("register")}
-            className={`flex flex-col items-center gap-1 transition-all ${mode === "register" ? "text-primary" : "text-muted-foreground"}`}
+            className={`flex flex-col items-center gap-2 transition-all min-w-[80px] ${mode === "register" ? "text-primary scale-105" : "text-muted-foreground hover:text-foreground"}`}
           >
-            <UserPlus className="h-6 w-6" />
-            <span className="text-xs font-medium">إنشاء حساب</span>
+            <div className={`p-2 rounded-full transition-all ${mode === "register" ? "bg-primary/10" : ""}`}>
+              <UserPlus className="h-7 w-7" />
+            </div>
+            <span className="text-xs font-semibold">إنشاء حساب</span>
           </button>
         </div>
       </div>
