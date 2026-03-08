@@ -20,8 +20,20 @@ const categoryColors: Record<string, { icon: string; bg: string }> = {
   "فواتير": { icon: "📄", bg: "bg-yellow-100 dark:bg-yellow-950" },
 };
 
-function formatDate(date: string | Date) {
-  const d = new Date(date);
+function formatDate(date: string | Date | number) {
+  let d: Date;
+  if (typeof date === "number") {
+    d = new Date(date * 1000);
+  } else if (typeof date === "string") {
+    const num = parseInt(date);
+    if (!isNaN(num) && num > 1000000000) {
+      d = new Date(num * 1000);
+    } else {
+      d = new Date(date);
+    }
+  } else {
+    d = new Date(date);
+  }
   const now = new Date();
   const diff = now.getTime() - d.getTime();
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));

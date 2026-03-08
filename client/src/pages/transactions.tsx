@@ -7,8 +7,21 @@ import { useState } from "react";
 import { useTransactions, useDeleteTransaction } from "@/lib/hooks";
 import { useToast } from "@/hooks/use-toast";
 
-function formatDate(date: string | Date) {
-  const d = new Date(date);
+function toDate(dateInput: string | Date | number): Date {
+  if (typeof dateInput === "number") {
+    return new Date(dateInput * 1000);
+  }
+  if (typeof dateInput === "string") {
+    const num = parseInt(dateInput);
+    if (!isNaN(num) && num > 1000000000) {
+      return new Date(num * 1000);
+    }
+  }
+  return new Date(dateInput);
+}
+
+function formatDate(date: string | Date | number) {
+  const d = toDate(date);
   const now = new Date();
   const diff = now.getTime() - d.getTime();
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
@@ -17,8 +30,8 @@ function formatDate(date: string | Date) {
   return d.toLocaleDateString("ar-OM", { day: "numeric", month: "long" });
 }
 
-function formatTime(date: string | Date) {
-  return new Date(date).toLocaleTimeString("ar-OM", { hour: "2-digit", minute: "2-digit" });
+function formatTime(date: string | Date | number) {
+  return toDate(date).toLocaleTimeString("ar-OM", { hour: "2-digit", minute: "2-digit" });
 }
 
 const defaultIcons: Record<string, string> = {
