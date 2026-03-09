@@ -21,6 +21,14 @@ interface LayoutProps {
   children: React.ReactNode;
 }
 
+type AddTransactionDetail = {
+  type?: string;
+  amount?: string;
+  note?: string;
+  categoryId?: string;
+  walletId?: string;
+};
+
 export default function Layout({ children }: LayoutProps) {
   const [location] = useLocation();
   const { toast } = useToast();
@@ -42,8 +50,22 @@ export default function Layout({ children }: LayoutProps) {
   const filteredCategories = categories.filter(c => c.type === txType);
 
   useEffect(() => {
-    const handleOpenAddTransaction = () => setIsAddTxOpen(true);
-    window.addEventListener('open-add-transaction', handleOpenAddTransaction);
+    const handleOpenAddTransaction = (event: Event) => {
+      const customEvent = event as CustomEvent<AddTransactionDetail | undefined>;
+      const detail = customEvent.detail;
+
+      if (detail) {
+        if (detail.type) setTxType(detail.type);
+        if (detail.amount !== undefined) setTxAmount(detail.amount);
+        if (detail.note !== undefined) setTxNote(detail.note);
+        if (detail.categoryId !== undefined) setTxCategoryId(detail.categoryId);
+        if (detail.walletId !== undefined) setTxWalletId(detail.walletId);
+      }
+
+      setIsAddTxOpen(true);
+    };
+
+    window.addEventListener('open-add-transaction', handleOpenAddTransaction as EventListener);
     return () => window.removeEventListener('open-add-transaction', handleOpenAddTransaction);
   }, []);
 

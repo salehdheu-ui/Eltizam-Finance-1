@@ -1,9 +1,9 @@
-import { Plus, Loader2, Trash2, Edit2, Power, PowerOff, Calendar, Wallet, AlertCircle, Receipt, Repeat, X } from "lucide-react";
+import { Plus, Loader2, Trash2, Edit2, Power, PowerOff, Calendar, Wallet, AlertCircle, Receipt, Repeat, X, Filter, ArrowLeftRight, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
+import { cn, formatObligationDueDate, getUpcomingObligations } from "@/lib/utils";
 import { useState, useEffect } from "react";
 import { useObligations, useDeleteObligation, useToggleObligation, useCreateObligation, useUpdateObligation, useWallets, useCategories } from "@/lib/hooks";
 import { useToast } from "@/hooks/use-toast";
@@ -380,61 +380,6 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
   );
 }
 
-// Helper: حساب الالتزامات القادمة
-function getUpcomingObligations(obligations: Obligation[] | undefined, limit: number = 3): Array<Obligation & { daysLeft: number }> {
-  if (!obligations) return [];
-  
-  const now = new Date();
-  const currentDay = now.getDate();
-  const currentMonth = now.getMonth() + 1;
-  
-  const obligationsWithDaysLeft = obligations
-    .filter(o => o.isActive)
-    .map(o => {
-      let daysLeft = 0;
-      
-      if (o.frequency === "monthly" && o.dueDay) {
-        daysLeft = o.dueDay - currentDay;
-        if (daysLeft < 0) daysLeft += 30;
-      } else if (o.frequency === "yearly" && o.dueMonth && o.dueDay) {
-        const monthsLeft = o.dueMonth - currentMonth;
-        if (monthsLeft < 0) {
-          daysLeft = (12 + monthsLeft) * 30 + (o.dueDay - currentDay);
-        } else if (monthsLeft === 0) {
-          daysLeft = o.dueDay - currentDay;
-          if (daysLeft < 0) daysLeft += 365;
-        } else {
-          daysLeft = monthsLeft * 30 + (o.dueDay - currentDay);
-        }
-      } else if (o.frequency === "one_time" && o.dueDate) {
-        const dueDate = new Date(o.dueDate * 1000);
-        const diffTime = dueDate.getTime() - now.getTime();
-        daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      }
-      
-      return { ...o, daysLeft };
-    })
-    .filter((o): o is Obligation & { daysLeft: number } => o.daysLeft >= 0 && o.daysLeft <= 30)
-    .sort((a, b) => a.daysLeft - b.daysLeft)
-    .slice(0, limit);
-  
-  return obligationsWithDaysLeft;
-}
-
-// Helper: تنسيق موعد الاستحقاق
-function formatObligationDueDate(obligation: Obligation): string {
-  if (obligation.frequency === "monthly" && obligation.dueDay) {
-    return `يوم ${obligation.dueDay} من الشهر`;
-  }
-  if (obligation.frequency === "yearly" && obligation.dueMonth && obligation.dueDay) {
-    const months = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
-    return `${obligation.dueDay} ${months[obligation.dueMonth - 1]}`;
-  }
-  if (obligation.frequency === "one_time" && obligation.dueDate) {
-    return new Date(obligation.dueDate * 1000).toLocaleDateString("ar-OM", { day: "numeric", month: "long" });
-  }
-  return "غير محدد";
-}
 const obligationTypeIcons: Record<string, string> = {
   bill: "📄",
   installment: "🏦",
@@ -498,11 +443,19 @@ function formatDueDate(obligation: Obligation) {
 
 export default function Obligations() {
   const { data: obligations, isLoading } = useObligations();
+  const { data: wallets = [] } = useWallets();
+  const { data: categories = [] } = useCategories();
   const deleteObligation = useDeleteObligation();
   const toggleObligation = useToggleObligation();
   const { toast } = useToast();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingObligation, setEditingObligation] = useState<Obligation | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [frequencyFilter, setFrequencyFilter] = useState<"all" | "monthly" | "yearly" | "one_time">("all");
+  const [timingFilter, setTimingFilter] = useState<"all" | "upcoming" | "auto">("all");
+
+  const upcomingObligations = getUpcomingObligations(obligations, 99);
+  const upcomingIds = new Set(upcomingObligations.filter((obligation) => obligation.daysLeft <= 30).map((obligation) => obligation.id));
 
   const handleDelete = async (id: number) => {
     try {
@@ -540,12 +493,48 @@ export default function Obligations() {
     setEditingObligation(null);
   };
 
+  const handleQuickPay = (obligation: Obligation) => {
+    if (!obligation.walletId) {
+      toast({
+        title: "المحفظة مطلوبة",
+        description: "اربط الالتزام بمحفظة أولًا حتى نجهز لك عملية الدفع السريعة.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    window.dispatchEvent(new CustomEvent("open-add-transaction", {
+      detail: {
+        type: "expense",
+        amount: obligation.amount.toString(),
+        note: obligation.title,
+        categoryId: obligation.categoryId?.toString() || "",
+        walletId: obligation.walletId.toString(),
+      },
+    }));
+
+    toast({
+      title: "تم تجهيز الدفع",
+      description: "فتحنا نموذج المعاملة مع تعبئة بيانات الالتزام لسرعة التسجيل.",
+    });
+  };
+
   // حساب الإحصائيات
   const activeObligations = (obligations || []).filter((o) => o.isActive);
   const totalMonthlyAmount = activeObligations
     .filter((o) => o.frequency === "monthly")
     .reduce((sum, o) => sum + o.amount, 0);
-  const upcomingObligations = getUpcomingObligations(obligations, 3);
+  const inactiveObligations = (obligations || []).filter((o) => !o.isActive);
+  const autoCreateCount = activeObligations.filter((o) => o.autoCreateTransaction).length;
+  const dueSoonCount = upcomingObligations.filter((o) => o.daysLeft <= 7).length;
+  const filteredObligations = (obligations || []).filter((obligation) => {
+    if (statusFilter === "active" && !obligation.isActive) return false;
+    if (statusFilter === "inactive" && obligation.isActive) return false;
+    if (frequencyFilter !== "all" && obligation.frequency !== frequencyFilter) return false;
+    if (timingFilter === "upcoming" && !upcomingIds.has(obligation.id)) return false;
+    if (timingFilter === "auto" && !obligation.autoCreateTransaction) return false;
+    return true;
+  });
 
   if (isLoading) {
     return (
@@ -574,6 +563,7 @@ export default function Obligations() {
             <Plus className="h-5 w-5" />
           </Button>
         </div>
+        <p className="text-sm text-muted-foreground">تابع ما يجب دفعه، وما هو قريب الاستحقاق، وسجّل الدفعات بسرعة من نفس الصفحة.</p>
       </header>
 
       {/* محتوى الصفحة */}
@@ -588,6 +578,11 @@ export default function Obligations() {
             <p className="text-muted-foreground mb-6 max-w-xs mx-auto">
               أضف التزاماتك المالية لتتبع مواعيد الاستحقاق والمبالغ
             </p>
+            <div className="text-xs text-muted-foreground/80 mb-6 space-y-1">
+              <p>1. أضف عنوان الالتزام والمبلغ</p>
+              <p>2. حدد التكرار وموعد الاستحقاق</p>
+              <p>3. اربطه بمحفظة لتسجيل الدفع بسرعة لاحقًا</p>
+            </div>
             <Button 
               className="rounded-full px-6"
               onClick={() => handleAdd()}
@@ -626,17 +621,117 @@ export default function Obligations() {
                   </div>
                 </CardContent>
               </Card>
+              <Card className="border-0 shadow-sm bg-amber-50/70 dark:bg-amber-950/20">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900 flex items-center justify-center">
+                      <AlertCircle className="h-4 w-4 text-amber-600" />
+                    </div>
+                    <span className="text-sm text-muted-foreground">خلال 7 أيام</span>
+                  </div>
+                  <div className="text-2xl font-bold text-amber-700 dark:text-amber-400">{dueSoonCount}</div>
+                </CardContent>
+              </Card>
+              <Card className="border-0 shadow-sm bg-primary/5">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Sparkles className="h-4 w-4 text-primary" />
+                    </div>
+                    <span className="text-sm text-muted-foreground">تلقائي</span>
+                  </div>
+                  <div className="text-2xl font-bold text-primary">{autoCreateCount}</div>
+                </CardContent>
+              </Card>
             </div>
 
+            <Card className="border border-border/50 shadow-sm">
+              <CardContent className="p-4 space-y-4">
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <Filter className="h-4 w-4 text-primary" />
+                  تصفية الالتزامات
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-2">الحالة</p>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { value: "all", label: "الكل" },
+                        { value: "active", label: `النشطة (${activeObligations.length})` },
+                        { value: "inactive", label: `المتوقفة (${inactiveObligations.length})` },
+                      ].map((item) => (
+                        <button
+                          key={item.value}
+                          type="button"
+                          onClick={() => setStatusFilter(item.value as typeof statusFilter)}
+                          className={cn(
+                            "px-3 py-1.5 rounded-full text-sm border transition-all",
+                            statusFilter === item.value ? "border-primary bg-primary/10 text-primary font-medium" : "border-border/50 hover:bg-muted/50"
+                          )}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-2">التكرار</p>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { value: "all", label: "الكل" },
+                        { value: "monthly", label: "شهري" },
+                        { value: "yearly", label: "سنوي" },
+                        { value: "one_time", label: "مرة واحدة" },
+                      ].map((item) => (
+                        <button
+                          key={item.value}
+                          type="button"
+                          onClick={() => setFrequencyFilter(item.value as typeof frequencyFilter)}
+                          className={cn(
+                            "px-3 py-1.5 rounded-full text-sm border transition-all",
+                            frequencyFilter === item.value ? "border-primary bg-primary/10 text-primary font-medium" : "border-border/50 hover:bg-muted/50"
+                          )}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-2">التركيز</p>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { value: "all", label: "كل الالتزامات" },
+                        { value: "upcoming", label: "القريبة" },
+                        { value: "auto", label: "التلقائية" },
+                      ].map((item) => (
+                        <button
+                          key={item.value}
+                          type="button"
+                          onClick={() => setTimingFilter(item.value as typeof timingFilter)}
+                          className={cn(
+                            "px-3 py-1.5 rounded-full text-sm border transition-all",
+                            timingFilter === item.value ? "border-primary bg-primary/10 text-primary font-medium" : "border-border/50 hover:bg-muted/50"
+                          )}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
             {/* الالتزامات القادمة */}
-            {upcomingObligations.length > 0 && (
+            {upcomingObligations.filter((obligation) => obligation.daysLeft <= 30).length > 0 && (
               <div>
                 <h2 className="font-bold text-lg mb-3 flex items-center gap-2">
                   <AlertCircle className="h-5 w-5 text-amber-500" />
                   الالتزامات القادمة
                 </h2>
                 <div className="flex flex-col gap-2">
-                  {upcomingObligations.map((obligation) => (
+                  {upcomingObligations.filter((obligation) => obligation.daysLeft <= 30).slice(0, 3).map((obligation) => (
                     <Card 
                       key={obligation.id} 
                       className="border-amber-200/50 dark:border-amber-800/50 bg-amber-50/30 dark:bg-amber-950/10"
@@ -670,9 +765,16 @@ export default function Obligations() {
 
             {/* قائمة جميع الالتزامات */}
             <div>
-              <h2 className="font-bold text-lg mb-3">جميع الالتزامات</h2>
+              <div className="flex items-center justify-between mb-3 gap-3">
+                <h2 className="font-bold text-lg">جميع الالتزامات</h2>
+                <span className="text-xs text-muted-foreground">{filteredObligations.length} نتيجة</span>
+              </div>
               <div className="flex flex-col gap-3">
-                {obligations?.map((obligation) => (
+                {filteredObligations.length > 0 ? filteredObligations.map((obligation) => {
+                  const walletName = wallets.find((wallet) => wallet.id === obligation.walletId)?.name;
+                  const categoryName = categories.find((category) => category.id === obligation.categoryId)?.name;
+                  const upcoming = upcomingObligations.find((item) => item.id === obligation.id);
+                  return (
                   <div 
                     key={obligation.id} 
                     className={cn(
@@ -691,9 +793,15 @@ export default function Obligations() {
                         </div>
                         <div className="min-w-0 flex-1">
                           <h4 className="font-bold text-base truncate">{obligation.title}</h4>
-                          <span className="text-xs text-muted-foreground">
+                          <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-muted-foreground">
                             {obligationTypeLabels[obligation.obligationType]}
-                          </span>
+                            {obligation.autoCreateTransaction ? (
+                              <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">تلقائي</span>
+                            ) : null}
+                            {upcoming && upcoming.daysLeft <= 7 ? (
+                              <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium dark:bg-amber-950 dark:text-amber-400">قريب</span>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
                       <div className="text-left shrink-0">
@@ -704,22 +812,37 @@ export default function Obligations() {
                     </div>
 
                     {/* الصف الثاني: التفاصيل والأزرار */}
-                    <div className="flex items-center justify-between pt-3 border-t border-border/50">
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <div className="space-y-3 pt-3 border-t border-border/50">
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <Calendar className="h-3.5 w-3.5" />
                           {formatDueDate(obligation)}
                         </span>
-                        <span className="text-border">|</span>
                         <span>{frequencyLabels[obligation.frequency]}</span>
+                        {walletName ? <span>المحفظة: {walletName}</span> : <span>بدون محفظة</span>}
+                        {categoryName ? <span>القسم: {categoryName}</span> : null}
                         {obligation.isActive ? (
                           <span className="text-emerald-600 font-medium">• نشط</span>
                         ) : (
                           <span className="text-slate-400">• متوقف</span>
                         )}
+                        {upcoming ? (
+                          <span className="text-amber-600 font-medium">
+                            {upcoming.daysLeft === 0 ? "مستحق اليوم" : upcoming.daysLeft === 1 ? "مستحق غداً" : `بعد ${upcoming.daysLeft} يوم`}
+                          </span>
+                        ) : null}
                       </div>
 
-                      <div className="flex items-center gap-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="rounded-full"
+                          onClick={() => handleQuickPay(obligation)}
+                        >
+                          <ArrowLeftRight className="h-4 w-4 ml-1" />
+                          تسجيل دفعة
+                        </Button>
                         <Button 
                           variant="ghost" 
                           size="icon"
@@ -752,7 +875,13 @@ export default function Obligations() {
                       </div>
                     </div>
                   </div>
-                ))}
+                )}) : (
+                  <div className="text-center py-10 bg-muted/20 rounded-2xl border border-dashed border-border/50">
+                    <Filter className="h-8 w-8 mx-auto text-muted-foreground/50 mb-3" />
+                    <p className="text-muted-foreground font-medium">لا توجد نتائج مطابقة</p>
+                    <p className="text-xs text-muted-foreground/70 mt-1">جرّب تغيير الفلاتر أو أضف التزامًا جديدًا.</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>

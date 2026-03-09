@@ -27,7 +27,7 @@ export interface IStorage {
   updateCategory(id: number, userId: number, data: Partial<InsertCategory>): Promise<Category>;
   deleteCategory(id: number, userId: number): Promise<void>;
 
-  getTransactions(userId: number): Promise<(Transaction & { categoryName?: string; categoryIcon?: string; walletName?: string })[]>;
+  getTransactions(userId: number): Promise<(Transaction & { categoryName?: string | null; categoryIcon?: string | null; walletName?: string | null })[]>;
   getTransactionsByType(userId: number, type: string): Promise<Transaction[]>;
   createTransaction(userId: number, transaction: InsertTransaction): Promise<Transaction>;
   deleteTransaction(id: number, userId: number): Promise<void>;
@@ -106,7 +106,7 @@ export class DatabaseStorage implements IStorage {
     await db.delete(categories).where(and(eq(categories.id, id), eq(categories.userId, userId)));
   }
 
-  async getTransactions(userId: number): Promise<(Transaction & { categoryName?: string; categoryIcon?: string; walletName?: string })[]> {
+  async getTransactions(userId: number): Promise<(Transaction & { categoryName?: string | null; categoryIcon?: string | null; walletName?: string | null })[]> {
     const result = await db
       .select({
         id: transactions.id,

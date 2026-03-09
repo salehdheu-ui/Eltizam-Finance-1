@@ -1,30 +1,14 @@
 import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useTransactions, useCategories, useWallets } from "@/lib/hooks";
-import { cn } from "@/lib/utils";
+import { useTransactions, useCategories, useWallets, useObligations } from "@/lib/hooks";
+import { cn, formatObligationDueDate, getUpcomingObligations, toDate } from "@/lib/utils";
 import { 
   ArrowDownLeft, ArrowUpRight, Wallet, TrendingUp, TrendingDown, 
-  BarChart3, PieChart, Calendar, AlertTriangle, ChevronUp, ChevronDown 
+  BarChart3, PieChart, Calendar, AlertTriangle, ChevronUp, ChevronDown, Receipt, Target, ArrowLeftRight 
 } from "lucide-react";
 
-// Fix date format for SQLite timestamp (unixepoch)
 function formatDate(dateInput: string | Date | number) {
-  let d: Date;
-  
-  if (typeof dateInput === "number") {
-    // SQLite unixepoch (seconds since 1970)
-    d = new Date(dateInput * 1000);
-  } else if (typeof dateInput === "string") {
-    // Try parsing as number first (SQLite format)
-    const num = parseInt(dateInput);
-    if (!isNaN(num) && num > 1000000000) {
-      d = new Date(num * 1000);
-    } else {
-      d = new Date(dateInput);
-    }
-  } else {
-    d = dateInput;
-  }
+  const d = toDate(dateInput);
   
   if (isNaN(d.getTime())) {
     return "تاريخ غير معروف";
@@ -40,20 +24,7 @@ function formatDate(dateInput: string | Date | number) {
 }
 
 function isWithinPeriod(dateInput: string | Date | number, period: string) {
-  let d: Date;
-  
-  if (typeof dateInput === "number") {
-    d = new Date(dateInput * 1000);
-  } else if (typeof dateInput === "string") {
-    const num = parseInt(dateInput);
-    if (!isNaN(num) && num > 1000000000) {
-      d = new Date(num * 1000);
-    } else {
-      d = new Date(dateInput);
-    }
-  } else {
-    d = dateInput;
-  }
+  const d = toDate(dateInput);
   
   if (isNaN(d.getTime())) return false;
   
@@ -84,6 +55,7 @@ export default function Reports() {
   const { data: transactions = [] } = useTransactions();
   const { data: categories = [] } = useCategories();
   const { data: wallets = [] } = useWallets();
+  const { data: obligations = [] } = useObligations();
   const [period, setPeriod] = useState<"all" | "1month" | "3months" | "6months" | "1year">("1month");
 
   const filteredTransactions = useMemo(() => {
@@ -102,8 +74,9 @@ export default function Reports() {
     .filter(t => t.type === "debt")
     .reduce((sum, t) => sum + t.amount, 0);
   
-  const balance = currentIncome - currentExpenses;
-  const savingsRate = currentIncome > 0 ? ((currentIncome - currentExpenses) / currentIncome) * 100 : 0;
+  const totalOutflow = currentExpenses + currentDebt;
+  const balance = currentIncome - totalOutflow;
+  const savingsRate = currentIncome > 0 ? ((currentIncome - totalOutflow) / currentIncome) * 100 : 0;
 
   const getPreviousPeriodTransactions = () => {
     const now = new Date();
@@ -131,15 +104,7 @@ export default function Reports() {
     }
     
     return transactions.filter(t => {
-      let d: Date;
-      if (typeof t.date === "number") {
-        d = new Date(t.date * 1000);
-      } else if (typeof t.date === "string") {
-        const num = parseInt(t.date);
-        d = !isNaN(num) && num > 1000000000 ? new Date(num * 1000) : new Date(t.date);
-      } else {
-        d = new Date(t.date);
-      }
+      const d = toDate(t.date);
       
       if (isNaN(d.getTime())) return false;
       
@@ -151,25 +116,46 @@ export default function Reports() {
 
   const prevTransactions = getPreviousPeriodTransactions();
   const prevIncome = prevTransactions.filter(t => t.type === "income").reduce((sum, t) => sum + t.amount, 0);
-  const prevExpenses = prevTransactions.filter(t => t.type === "expense").reduce((sum, t) => sum + t.amount, 0);
+  const prevExpenses = prevTransactions.filter(t => t.type === "expense" || t.type === "debt").reduce((sum, t) => sum + t.amount, 0);
 
   const incomeChange = prevIncome > 0 ? ((currentIncome - prevIncome) / prevIncome) * 100 : 0;
-  const expenseChange = prevExpenses > 0 ? ((currentExpenses - prevExpenses) / prevExpenses) * 100 : 0;
+  const expenseChange = prevExpenses > 0 ? ((totalOutflow - prevExpenses) / prevExpenses) * 100 : 0;
 
   const expensesByCategory = categories.map(cat => {
     const catExpenses = filteredTransactions
       .filter(t => t.type === "expense" && t.categoryId === cat.id)
       .reduce((sum, t) => sum + t.amount, 0);
-    return { ...cat, total: catExpenses };
+    const budget = cat.budget || 0;
+    const budgetUsage = budget > 0 ? (catExpenses / budget) * 100 : 0;
+    return { ...cat, total: catExpenses, budget, budgetUsage };
   }).filter(c => c.total > 0).sort((a, b) => b.total - a.total);
+
+  const categoriesOverBudget = expensesByCategory.filter((category) => category.budget > 0 && category.total > category.budget);
+  const topBudgetRisk = categoriesOverBudget[0];
+  const upcomingObligations = getUpcomingObligations(obligations, 5).filter((obligation) => obligation.daysLeft <= 30);
+  const upcomingObligationsTotal = upcomingObligations.reduce((sum, obligation) => sum + obligation.amount, 0);
+  const mostUsedWallet = wallets
+    .map((wallet) => {
+      const walletTransactions = filteredTransactions.filter((transaction) => transaction.walletId === wallet.id);
+      return {
+        ...wallet,
+        transactionCount: walletTransactions.length,
+        income: walletTransactions.filter((transaction) => transaction.type === "income").reduce((sum, transaction) => sum + transaction.amount, 0),
+        expenses: walletTransactions.filter((transaction) => transaction.type === "expense" || transaction.type === "debt").reduce((sum, transaction) => sum + transaction.amount, 0),
+      };
+    })
+    .sort((a, b) => b.transactionCount - a.transactionCount)[0];
+  const recentTransactions = [...filteredTransactions]
+    .sort((a, b) => toDate(b.date).getTime() - toDate(a.date).getTime())
+    .slice(0, 10);
 
   const getDailyTotals = () => {
     const days: { [key: string]: { income: number; expense: number } } = {};
     filteredTransactions.forEach(t => {
-      const date = new Date(t.date).toISOString().split('T')[0];
+      const date = toDate(t.date).toISOString().split('T')[0];
       if (!days[date]) days[date] = { income: 0, expense: 0 };
       if (t.type === "income") days[date].income += t.amount;
-      if (t.type === "expense") days[date].expense += t.amount;
+      if (t.type === "expense" || t.type === "debt") days[date].expense += t.amount;
     });
     return Object.entries(days).slice(-7).map(([date, totals]) => ({
       date: new Date(date).toLocaleDateString("ar-OM", { weekday: "short" }),
@@ -178,14 +164,14 @@ export default function Reports() {
   };
 
   const dailyTotals = getDailyTotals();
-  const biggestGap = currentIncome - currentExpenses;
+  const biggestGap = currentIncome - totalOutflow;
   const gapStatus = biggestGap >= 0 ? "positive" : "negative";
 
   return (
     <div className="p-4 pb-24 space-y-4" dir="rtl">
       <div className="text-center py-4">
         <h1 className="text-2xl font-bold">التقارير المالية</h1>
-        <p className="text-muted-foreground mt-1">مقارنات وتحليل تفصيلي لحركاتك</p>
+        <p className="text-muted-foreground mt-1">مقارنات وتحليل تفصيلي لحركاتك وميزانياتك والتزاماتك القادمة</p>
       </div>
 
       <div className="flex gap-2 overflow-x-auto pb-2">
@@ -257,7 +243,7 @@ export default function Reports() {
             </div>
             <div className="mt-3">
               <p className="text-xs text-red-600 font-medium">إجمالي المصروفات</p>
-              <p className="text-xl font-bold text-red-700">-{currentExpenses.toFixed(2)}</p>
+              <p className="text-xl font-bold text-red-700">-{totalOutflow.toFixed(2)}</p>
               {period !== "all" && (
                 <p className="text-xs text-muted-foreground mt-1">مقارنة بالفترة السابقة</p>
               )}
@@ -303,6 +289,28 @@ export default function Reports() {
               <p className="text-xs text-muted-foreground mt-1">
                 {savingsRate >= 20 ? "أداء ممتاز! واصل" : savingsRate >= 0 ? "حاول زيادة الادخار" : "تحذير: أنفق أكثر مما تدخل"}
               </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3">
+        <Card className="border-primary/20 bg-primary/5">
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm text-primary font-semibold mb-1">نظرة تنفيذية سريعة</p>
+                <h3 className="font-bold text-lg">ما الذي يحتاج انتباهك الآن؟</h3>
+                <div className="space-y-2 mt-3 text-sm text-muted-foreground">
+                  <p>صافي الفترة: <span className={cn("font-bold", balance >= 0 ? "text-emerald-600" : "text-red-600")}>{balance >= 0 ? "+" : ""}{balance.toFixed(2)} ر.ع</span></p>
+                  <p>الالتزامات القادمة خلال 30 يومًا: <span className="font-bold text-amber-600">{upcomingObligationsTotal.toFixed(2)} ر.ع</span></p>
+                  <p>أكثر محفظة استخدامًا: <span className="font-bold text-foreground">{mostUsedWallet?.name || "لا توجد بيانات"}</span></p>
+                  <p>أعلى خطر ميزانية: <span className="font-bold text-foreground">{topBudgetRisk ? `${topBudgetRisk.name} (${topBudgetRisk.budgetUsage.toFixed(0)}%)` : "لا يوجد تجاوز"}</span></p>
+                </div>
+              </div>
+              <div className="h-11 w-11 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <Target className="h-5 w-5" />
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -362,7 +370,7 @@ export default function Reports() {
             </div>
             <div className="p-3 bg-white rounded-xl border">
               <p className="text-sm text-muted-foreground">إجمالي المصروفات</p>
-              <p className="text-lg font-bold text-red-600">-{currentExpenses.toFixed(2)}</p>
+              <p className="text-lg font-bold text-red-600">-{totalOutflow.toFixed(2)}</p>
             </div>
           </div>
           
@@ -422,6 +430,11 @@ export default function Reports() {
                       <span className={cn("text-xs mr-1 font-medium", isHigh ? "text-red-500" : "text-muted-foreground")}>
                         ({percentage.toFixed(1)}%)
                       </span>
+                      {cat.budget > 0 ? (
+                        <div className={cn("text-[11px] mt-1 font-medium", cat.total > cat.budget ? "text-red-500" : "text-emerald-600")}>
+                          الميزانية: {cat.budget.toFixed(2)} • {cat.budgetUsage.toFixed(0)}%
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                   <div className="h-2 bg-muted rounded-full overflow-hidden">
@@ -437,6 +450,31 @@ export default function Reports() {
         </Card>
       )}
 
+      {upcomingObligations.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Receipt className="h-5 w-5 text-primary" />
+              الالتزامات القادمة في الفترة القريبة
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {upcomingObligations.map((obligation) => (
+              <div key={obligation.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-xl border border-border/50">
+                <div>
+                  <p className="font-medium text-sm">{obligation.title}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{formatObligationDueDate(obligation)}</p>
+                </div>
+                <div className="text-left">
+                  <p className="font-bold text-destructive">{obligation.amount.toFixed(2)} ر.ع</p>
+                  <p className="text-xs text-amber-600">{obligation.daysLeft === 0 ? "اليوم" : obligation.daysLeft === 1 ? "غداً" : `بعد ${obligation.daysLeft} يوم`}</p>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
@@ -448,7 +486,7 @@ export default function Reports() {
           {wallets.map((wallet) => {
             const walletTransactions = filteredTransactions.filter(t => t.walletId === wallet.id);
             const walletIncome = walletTransactions.filter(t => t.type === "income").reduce((sum, t) => sum + t.amount, 0);
-            const walletExpense = walletTransactions.filter(t => t.type === "expense").reduce((sum, t) => sum + t.amount, 0);
+            const walletExpense = walletTransactions.filter(t => t.type === "expense" || t.type === "debt").reduce((sum, t) => sum + t.amount, 0);
             return (
               <div key={wallet.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-xl">
                 <div className="flex items-center gap-3">
@@ -458,7 +496,7 @@ export default function Reports() {
                   <div>
                     <span className="font-medium block">{wallet.name}</span>
                     <span className="text-xs text-muted-foreground">
-                      +{walletIncome.toFixed(0)} / -{walletExpense.toFixed(0)}
+                      +{walletIncome.toFixed(0)} / -{walletExpense.toFixed(0)} • {walletTransactions.length} حركة
                     </span>
                   </div>
                 </div>
@@ -471,11 +509,14 @@ export default function Reports() {
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg">آخر المعاملات في الفترة</CardTitle>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <ArrowLeftRight className="h-5 w-5 text-primary" />
+            آخر المعاملات في الفترة
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {filteredTransactions.length > 0 ? (
-            filteredTransactions.slice(0, 10).map((tx) => (
+          {recentTransactions.length > 0 ? (
+            recentTransactions.map((tx) => (
               <div key={tx.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-xl">
                 <div className="flex items-center gap-3">
                   <div className={cn(

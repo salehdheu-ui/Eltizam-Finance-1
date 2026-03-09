@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Drawer,
   DrawerClose,
@@ -26,6 +26,13 @@ const currencies = [
   { id: "USD", name: "الدولار الأمريكي", symbol: "$" },
   { id: "EUR", name: "اليورو", symbol: "€" },
 ];
+
+const SETTINGS_STORAGE_KEYS = {
+  darkMode: "eltizam:dark-mode",
+  notifications: "eltizam:notifications",
+  biometrics: "eltizam:biometrics",
+  currency: "eltizam:currency",
+} as const;
 
 export default function Settings() {
   const [, setLocation] = useLocation();
@@ -51,6 +58,32 @@ export default function Settings() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
+  useEffect(() => {
+    const storedDarkMode = localStorage.getItem(SETTINGS_STORAGE_KEYS.darkMode);
+    const storedNotifications = localStorage.getItem(SETTINGS_STORAGE_KEYS.notifications);
+    const storedBiometrics = localStorage.getItem(SETTINGS_STORAGE_KEYS.biometrics);
+    const storedCurrencyId = localStorage.getItem(SETTINGS_STORAGE_KEYS.currency);
+
+    const isDarkMode = storedDarkMode === "true";
+    setDarkMode(isDarkMode);
+    document.documentElement.classList.toggle("dark", isDarkMode);
+
+    if (storedNotifications !== null) {
+      setNotifications(storedNotifications === "true");
+    }
+
+    if (storedBiometrics !== null) {
+      setBiometrics(storedBiometrics === "true");
+    }
+
+    if (storedCurrencyId) {
+      const storedCurrency = currencies.find((currency) => currency.id === storedCurrencyId);
+      if (storedCurrency) {
+        setSelectedCurrency(storedCurrency);
+      }
+    }
+  }, []);
+
   const handleLogout = async () => {
     try {
       await logoutMutation.mutateAsync();
@@ -62,6 +95,7 @@ export default function Settings() {
 
   const toggleDarkMode = (checked: boolean) => {
     setDarkMode(checked);
+    localStorage.setItem(SETTINGS_STORAGE_KEYS.darkMode, String(checked));
     if (checked) {
       document.documentElement.classList.add('dark');
     } else {
@@ -82,8 +116,19 @@ export default function Settings() {
 
   const handleSelectCurrency = (currency: typeof currencies[0]) => {
     setSelectedCurrency(currency);
+    localStorage.setItem(SETTINGS_STORAGE_KEYS.currency, currency.id);
     setIsCurrencyOpen(false);
     toast({ title: "تم تغيير العملة", description: `تم تعيين ${currency.name} كعملة أساسية` });
+  };
+
+  const handleNotificationsChange = (checked: boolean) => {
+    setNotifications(checked);
+    localStorage.setItem(SETTINGS_STORAGE_KEYS.notifications, String(checked));
+  };
+
+  const handleBiometricsChange = (checked: boolean) => {
+    setBiometrics(checked);
+    localStorage.setItem(SETTINGS_STORAGE_KEYS.biometrics, String(checked));
   };
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -121,6 +166,9 @@ export default function Settings() {
       </header>
 
       <div className="p-4 flex-1 overflow-auto pb-24 space-y-6">
+        <Card className="p-3 border border-primary/10 bg-primary/5 text-sm text-muted-foreground">
+          يتم حفظ تفضيلات الواجهة مثل العملة والوضع الليلي والإشعارات على هذا الجهاز لتبقى التجربة سلسة.
+        </Card>
         
         <Card className="p-4 border-none shadow-md bg-card/50">
           <div className="flex items-center gap-4">
@@ -157,12 +205,12 @@ export default function Settings() {
               </div>
               <Switch checked={darkMode} onCheckedChange={toggleDarkMode} />
             </div>
-            <div className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setNotifications(!notifications)}>
+            <div className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => handleNotificationsChange(!notifications)}>
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-400 rounded-lg"><Bell className="h-5 w-5" /></div>
                 <span className="font-medium">الإشعارات</span>
               </div>
-              <Switch checked={notifications} onCheckedChange={setNotifications} />
+              <Switch checked={notifications} onCheckedChange={handleNotificationsChange} />
             </div>
           </div>
         </div>
@@ -177,12 +225,12 @@ export default function Settings() {
               </div>
               <ChevronLeft className="h-4 w-4 text-muted-foreground" />
             </div>
-            <div className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setBiometrics(!biometrics)}>
+            <div className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => handleBiometricsChange(!biometrics)}>
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-lg"><Shield className="h-5 w-5" /></div>
                 <span className="font-medium">تفعيل البصمة / الوجه</span>
               </div>
-              <Switch checked={biometrics} onCheckedChange={setBiometrics} />
+              <Switch checked={biometrics} onCheckedChange={handleBiometricsChange} />
             </div>
           </div>
         </div>

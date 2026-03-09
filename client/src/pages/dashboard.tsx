@@ -1,14 +1,10 @@
-import { ArrowDownLeft, ArrowUpRight, Eye, EyeOff, Settings, Loader2, Receipt, Calendar } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Eye, EyeOff, Settings, Loader2, Receipt, Calendar, Wallet, PieChart, ChevronLeft, Sparkles } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
-import { cn } from "@/lib/utils";
+import { cn, formatObligationDueDate, formatRelativeArabicDate, getUpcomingObligations } from "@/lib/utils";
 import { Link } from "wouter";
-import { useDashboard, useUser, useObligations } from "@/lib/hooks";
-import type { Obligation } from "@shared/schema";
-
-// نوع ممتد للالتزامات القادمة مع حقل الأيام المتبقية
-type UpcomingObligation = Obligation & { daysLeft: number };
+import { useCategories, useDashboard, useUser, useObligations, useWallets } from "@/lib/hooks";
 
 const categoryColors: Record<string, { icon: string; bg: string }> = {
   "طعام": { icon: "🍔", bg: "bg-orange-100 dark:bg-orange-950" },
@@ -20,100 +16,45 @@ const categoryColors: Record<string, { icon: string; bg: string }> = {
   "فواتير": { icon: "📄", bg: "bg-yellow-100 dark:bg-yellow-950" },
 };
 
-function formatDate(date: string | Date | number) {
-  let d: Date;
-  if (typeof date === "number") {
-    d = new Date(date * 1000);
-  } else if (typeof date === "string") {
-    const num = parseInt(date);
-    if (!isNaN(num) && num > 1000000000) {
-      d = new Date(num * 1000);
-    } else {
-      d = new Date(date);
-    }
-  } else {
-    d = new Date(date);
-  }
-  const now = new Date();
-  const diff = now.getTime() - d.getTime();
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  if (days === 0) return "اليوم";
-  if (days === 1) return "أمس";
-  return d.toLocaleDateString("ar-OM", { day: "numeric", month: "long" });
-}
-
-// Helper: حساب الالتزامات القادمة
-function getUpcomingObligations(obligations: Obligation[] | undefined, limit: number = 5): UpcomingObligation[] {
-  if (!obligations) return [];
-  
-  const now = new Date();
-  const currentDay = now.getDate();
-  const currentMonth = now.getMonth() + 1;
-  
-  // حساب أيام متبقية لكل التزام نشط
-  const obligationsWithDaysLeft = obligations
-    .filter(o => o.isActive)
-    .map(o => {
-      let daysLeft = 0;
-      
-      if (o.frequency === "monthly" && o.dueDay) {
-        // حساب الأيام المتبقية حتى يوم الاستحقاق الشهري
-        daysLeft = o.dueDay - currentDay;
-        if (daysLeft < 0) {
-          daysLeft += 30; // تقريباً لشهر قادم
-        }
-      } else if (o.frequency === "yearly" && o.dueMonth && o.dueDay) {
-        // حساب الأيام المتبقية للالتزام السنوي
-        const monthsLeft = o.dueMonth - currentMonth;
-        if (monthsLeft < 0) {
-          daysLeft = (12 + monthsLeft) * 30 + (o.dueDay - currentDay);
-        } else if (monthsLeft === 0) {
-          daysLeft = o.dueDay - currentDay;
-          if (daysLeft < 0) daysLeft += 365; // العام القادم
-        } else {
-          daysLeft = monthsLeft * 30 + (o.dueDay - currentDay);
-        }
-      } else if (o.frequency === "one_time" && o.dueDate) {
-        // حساب الأيام المتبقية للالتزام لمرة واحدة
-        const dueDate = new Date(o.dueDate * 1000);
-        const diffTime = dueDate.getTime() - now.getTime();
-        daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      }
-      
-      return { ...o, daysLeft };
-    })
-    .filter((o): o is UpcomingObligation => o.daysLeft >= 0) // فقط الالتزامات المستقبلية
-    .sort((a, b) => a.daysLeft - b.daysLeft)
-    .slice(0, limit);
-  
-  return obligationsWithDaysLeft;
-}
-
-// Helper: تنسيق موعد الاستحقاق للعرض
-function formatObligationDueDate(obligation: Obligation): string {
-  if (obligation.frequency === "monthly" && obligation.dueDay) {
-    return `${obligation.dueDay} من الشهر`;
-  }
-  if (obligation.frequency === "yearly" && obligation.dueMonth && obligation.dueDay) {
-    const months = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
-    return `${obligation.dueDay} ${months[obligation.dueMonth - 1]}`;
-  }
-  if (obligation.frequency === "one_time" && obligation.dueDate) {
-    return new Date(obligation.dueDate * 1000).toLocaleDateString("ar-OM", {
-      day: "numeric",
-      month: "short",
-    });
-  }
-  return "غير محدد";
-}
-
 export default function Dashboard() {
   const [showBalance, setShowBalance] = useState(true);
   const { data: user } = useUser();
   const { data: dashboard, isLoading } = useDashboard();
   const { data: obligations, isLoading: isLoadingObligations } = useObligations();
+  const { data: wallets = [] } = useWallets();
+  const { data: categories = [] } = useCategories();
   
   const upcomingObligations = getUpcomingObligations(obligations, 5);
+  const hasWallets = wallets.length > 0;
+  const hasCategories = categories.length > 0;
+  const hasTransactions = (dashboard?.recentTransactions?.length ?? 0) > 0;
+  const setupSteps = [
+    {
+      key: "wallets",
+      title: "أضف أول محفظة",
+      description: "ابدأ بحساب أو محفظة واحدة ليصبح الرصيد والتسجيل المالي واضحًا.",
+      href: "/wallets",
+      done: hasWallets,
+      icon: Wallet,
+    },
+    {
+      key: "categories",
+      title: "أنشئ أقسامك الأساسية",
+      description: "قسّم مصروفاتك ودخلك لتقرأ التقارير بسهولة لاحقًا.",
+      href: "/categories",
+      done: hasCategories,
+      icon: PieChart,
+    },
+    {
+      key: "transactions",
+      title: "سجّل أول معاملة",
+      description: "بعدها سيبدأ النظام بإظهار المؤشرات والحركة المالية بشكل مفيد.",
+      href: "/transactions",
+      done: hasTransactions,
+      icon: Sparkles,
+    },
+  ];
+  const nextStep = setupSteps.find((step) => !step.done);
 
   return (
     <div className="flex flex-col gap-6 p-4 pt-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -128,6 +69,39 @@ export default function Dashboard() {
           </div>
         </Link>
       </header>
+
+      {nextStep ? (
+        <Card className="border-primary/20 bg-primary/5 shadow-sm overflow-hidden">
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm text-primary font-semibold mb-1">خطوتك التالية</p>
+                <h3 className="font-bold text-base">{nextStep.title}</h3>
+                <p className="text-sm text-muted-foreground mt-1">{nextStep.description}</p>
+              </div>
+              <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <nextStep.icon className="h-5 w-5" />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2 mt-4">
+              {setupSteps.map((step) => (
+                <Link key={step.key} href={step.href}>
+                  <div className={cn(
+                    "rounded-xl border p-3 h-full transition-colors cursor-pointer",
+                    step.done ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-border/60 bg-background hover:bg-muted/50"
+                  )}>
+                    <div className="flex items-center justify-between mb-2">
+                      <step.icon className="h-4 w-4" />
+                      <span className="text-[11px] font-medium">{step.done ? "مكتملة" : "مطلوبة"}</span>
+                    </div>
+                    <p className="text-xs font-medium leading-5">{step.title}</p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card className="border-none shadow-xl bg-gradient-to-br from-primary to-primary/80 text-primary-foreground overflow-hidden relative">
         <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
@@ -187,6 +161,29 @@ export default function Dashboard() {
         </CardContent>
       </Card>
 
+      <div className="grid grid-cols-2 gap-3">
+        <Link href="/wallets">
+          <div className="bg-card border border-border/50 rounded-2xl p-4 shadow-sm hover:bg-muted/30 transition-colors cursor-pointer">
+            <div className="flex items-center justify-between mb-2">
+              <Wallet className="h-5 w-5 text-primary" />
+              <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <h3 className="font-bold text-sm">المحافظ</h3>
+            <p className="text-xs text-muted-foreground mt-1">{hasWallets ? `${wallets.length} محفوظة` : "أضف محفظتك الأولى"}</p>
+          </div>
+        </Link>
+        <Link href="/categories">
+          <div className="bg-card border border-border/50 rounded-2xl p-4 shadow-sm hover:bg-muted/30 transition-colors cursor-pointer">
+            <div className="flex items-center justify-between mb-2">
+              <PieChart className="h-5 w-5 text-primary" />
+              <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <h3 className="font-bold text-sm">الأقسام</h3>
+            <p className="text-xs text-muted-foreground mt-1">{hasCategories ? `${categories.length} قسمًا` : "أنشئ أقسامك الأساسية"}</p>
+          </div>
+        </Link>
+      </div>
+
       <div className="mt-4">
         <div className="flex justify-between items-center mb-4">
           <h3 className="font-bold text-lg">الالتزامات القادمة</h3>
@@ -235,6 +232,9 @@ export default function Dashboard() {
             <Receipt className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
             <p className="text-muted-foreground text-sm">لا توجد التزامات قادمة</p>
             <p className="text-xs text-muted-foreground/70 mt-1">أضف التزاماتك المالية لتتبع مواعيد الاستحقاق</p>
+            <Link href="/obligations">
+              <Button variant="outline" size="sm" className="mt-4">إضافة التزام</Button>
+            </Link>
           </div>
         )}
       </div>
@@ -264,7 +264,7 @@ export default function Dashboard() {
                     </div>
                     <div>
                       <h4 className="font-bold">{catName}</h4>
-                      <p className="text-xs text-muted-foreground mt-0.5">{tx.note} {tx.date && `• ${formatDate(tx.date)}`}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{tx.note} {tx.date && `• ${formatRelativeArabicDate(tx.date)}`}</p>
                     </div>
                   </div>
                   <div className={cn(
@@ -280,7 +280,19 @@ export default function Dashboard() {
         ) : (
           <div className="text-center py-10 bg-muted/20 rounded-2xl border border-dashed border-border/50">
             <p className="text-muted-foreground font-medium">لا توجد معاملات بعد</p>
-            <p className="text-xs text-muted-foreground/70 mt-1">أضف معاملتك الأولى بالضغط على زر + أسفل الشاشة</p>
+            <p className="text-xs text-muted-foreground/70 mt-1">ابدأ بمحفظة، ثم قسم، ثم أضف معاملتك الأولى من زر + أسفل الشاشة</p>
+            <div className="flex items-center justify-center gap-2 mt-4">
+              {!hasWallets ? (
+                <Link href="/wallets">
+                  <Button variant="outline" size="sm">إضافة محفظة</Button>
+                </Link>
+              ) : null}
+              {!hasCategories ? (
+                <Link href="/categories">
+                  <Button variant="outline" size="sm">إضافة قسم</Button>
+                </Link>
+              ) : null}
+            </div>
           </div>
         )}
       </div>

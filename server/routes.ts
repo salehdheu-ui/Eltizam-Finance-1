@@ -11,6 +11,10 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+function parseRouteId(param: string | string[]) {
+  return parseInt(Array.isArray(param) ? param[0] : param, 10);
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -35,14 +39,14 @@ export async function registerRoutes(
 
   app.patch("/api/wallets/:id", requireAuth, async (req, res, next) => {
     try {
-      const wallet = await storage.updateWallet(parseInt(req.params.id), req.user!.id, req.body);
+      const wallet = await storage.updateWallet(parseRouteId(req.params.id), req.user!.id, req.body);
       res.json(wallet);
     } catch (e) { next(e); }
   });
 
   app.delete("/api/wallets/:id", requireAuth, async (req, res, next) => {
     try {
-      await storage.deleteWallet(parseInt(req.params.id), req.user!.id);
+      await storage.deleteWallet(parseRouteId(req.params.id), req.user!.id);
       res.json({ message: "تم الحذف بنجاح" });
     } catch (e) { next(e); }
   });
@@ -65,14 +69,14 @@ export async function registerRoutes(
 
   app.patch("/api/categories/:id", requireAuth, async (req, res, next) => {
     try {
-      const cat = await storage.updateCategory(parseInt(req.params.id), req.user!.id, req.body);
+      const cat = await storage.updateCategory(parseRouteId(req.params.id), req.user!.id, req.body);
       res.json(cat);
     } catch (e) { next(e); }
   });
 
   app.delete("/api/categories/:id", requireAuth, async (req, res, next) => {
     try {
-      await storage.deleteCategory(parseInt(req.params.id), req.user!.id);
+      await storage.deleteCategory(parseRouteId(req.params.id), req.user!.id);
       res.json({ message: "تم الحذف بنجاح" });
     } catch (e) { next(e); }
   });
@@ -110,7 +114,7 @@ export async function registerRoutes(
 
   app.delete("/api/transactions/:id", requireAuth, async (req, res, next) => {
     try {
-      await storage.deleteTransaction(parseInt(req.params.id), req.user!.id);
+      await storage.deleteTransaction(parseRouteId(req.params.id), req.user!.id);
       res.json({ message: "تم الحذف بنجاح" });
     } catch (e) { next(e); }
   });
@@ -125,7 +129,7 @@ export async function registerRoutes(
 
       const totalBalance = walletsData.reduce((acc, w) => acc + w.balance, 0);
       const totalIncome = txsData.filter(t => t.type === "income").reduce((acc, t) => acc + t.amount, 0);
-      const totalExpenses = txsData.filter(t => t.type === "expense").reduce((acc, t) => acc + t.amount, 0);
+      const totalExpenses = txsData.filter(t => t.type === "expense" || t.type === "debt").reduce((acc, t) => acc + t.amount, 0);
       const recentTransactions = txsData.slice(0, 5);
 
       res.json({ totalBalance, totalIncome, totalExpenses, recentTransactions });
@@ -142,7 +146,7 @@ export async function registerRoutes(
 
   app.get("/api/obligations/:id", requireAuth, async (req, res, next) => {
     try {
-      const obligation = await storage.getObligationById(parseInt(req.params.id), req.user!.id);
+      const obligation = await storage.getObligationById(parseRouteId(req.params.id), req.user!.id);
       if (!obligation) {
         return res.status(404).json({ message: "الالتزام غير موجود" });
       }
@@ -222,21 +226,21 @@ export async function registerRoutes(
             ? null
             : typeof req.body.categoryId === 'string' ? parseInt(req.body.categoryId) : req.body.categoryId,
       };
-      const obligation = await storage.updateObligation(parseInt(req.params.id), req.user!.id, body);
+      const obligation = await storage.updateObligation(parseRouteId(req.params.id), req.user!.id, body);
       res.json(obligation);
     } catch (e) { next(e); }
   });
 
   app.delete("/api/obligations/:id", requireAuth, async (req, res, next) => {
     try {
-      await storage.deleteObligation(parseInt(req.params.id), req.user!.id);
+      await storage.deleteObligation(parseRouteId(req.params.id), req.user!.id);
       res.json({ message: "تم حذف الالتزام بنجاح" });
     } catch (e) { next(e); }
   });
 
   app.patch("/api/obligations/:id/toggle", requireAuth, async (req, res, next) => {
     try {
-      const obligation = await storage.toggleObligation(parseInt(req.params.id), req.user!.id);
+      const obligation = await storage.toggleObligation(parseRouteId(req.params.id), req.user!.id);
       res.json(obligation);
     } catch (e) { next(e); }
   });

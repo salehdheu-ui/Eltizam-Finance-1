@@ -1,37 +1,25 @@
-import { Filter, Search, Calendar, Loader2, Trash2 } from "lucide-react";
+import { Filter, Search, Calendar, Loader2, Trash2, Wallet, PieChart, ArrowLeftRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { cn, formatRelativeArabicDate, toDate } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useState } from "react";
-import { useTransactions, useDeleteTransaction } from "@/lib/hooks";
+import { useMemo, useState } from "react";
+import { useTransactions, useDeleteTransaction, useWallets, useCategories } from "@/lib/hooks";
 import { useToast } from "@/hooks/use-toast";
-
-function toDate(dateInput: string | Date | number): Date {
-  if (typeof dateInput === "number") {
-    return new Date(dateInput * 1000);
-  }
-  if (typeof dateInput === "string") {
-    const num = parseInt(dateInput);
-    if (!isNaN(num) && num > 1000000000) {
-      return new Date(num * 1000);
-    }
-  }
-  return new Date(dateInput);
-}
-
-function formatDate(date: string | Date | number) {
-  const d = toDate(date);
-  const now = new Date();
-  const diff = now.getTime() - d.getTime();
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  if (days === 0) return "اليوم";
-  if (days === 1) return "أمس";
-  return d.toLocaleDateString("ar-OM", { day: "numeric", month: "long" });
-}
 
 function formatTime(date: string | Date | number) {
   return toDate(date).toLocaleTimeString("ar-OM", { hour: "2-digit", minute: "2-digit" });
+}
+
+function isWithinRange(dateInput: string | Date | number, range: "all" | "7days" | "30days" | "90days") {
+  if (range === "all") return true;
+
+  const date = toDate(dateInput);
+  const diffDays = (Date.now() - date.getTime()) / (1000 * 60 * 60 * 24);
+
+  if (range === "7days") return diffDays <= 7;
+  if (range === "30days") return diffDays <= 30;
+  return diffDays <= 90;
 }
 
 const defaultIcons: Record<string, string> = {
@@ -51,22 +39,38 @@ const defaultBgs: Record<string, string> = {
 export default function Transactions() {
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const { data: transactions, isLoading } = useTransactions();
+  const [walletFilter, setWalletFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [rangeFilter, setRangeFilter] = useState<"all" | "7days" | "30days" | "90days">("all");
+  const { data: transactions = [], isLoading } = useTransactions();
+  const { data: wallets = [] } = useWallets();
+  const { data: categories = [] } = useCategories();
   const deleteTransaction = useDeleteTransaction();
   const { toast } = useToast();
 
-  const filteredTransactions = (transactions || []).filter((tx) => {
-    if (activeTab !== "all" && tx.type !== activeTab) return false;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      return (
-        (tx.categoryName || "").toLowerCase().includes(q) ||
-        (tx.note || "").toLowerCase().includes(q) ||
-        tx.amount.toString().includes(q)
-      );
-    }
-    return true;
-  });
+  const filteredTransactions = useMemo(() => {
+    return transactions
+      .filter((tx) => {
+        if (activeTab !== "all" && tx.type !== activeTab) return false;
+        if (walletFilter !== "all" && tx.walletId?.toString() !== walletFilter) return false;
+        if (categoryFilter !== "all" && tx.categoryId?.toString() !== categoryFilter) return false;
+        if (!isWithinRange(tx.date, rangeFilter)) return false;
+        if (searchQuery) {
+          const q = searchQuery.toLowerCase();
+          return (
+            (tx.categoryName || "").toLowerCase().includes(q) ||
+            (tx.walletName || "").toLowerCase().includes(q) ||
+            (tx.note || "").toLowerCase().includes(q) ||
+            tx.amount.toString().includes(q)
+          );
+        }
+        return true;
+      })
+      .sort((a, b) => toDate(b.date).getTime() - toDate(a.date).getTime());
+  }, [transactions, activeTab, walletFilter, categoryFilter, rangeFilter, searchQuery]);
+
+  const totalIncome = filteredTransactions.filter((tx) => tx.type === "income").reduce((sum, tx) => sum + tx.amount, 0);
+  const totalOutflow = filteredTransactions.filter((tx) => tx.type === "expense" || tx.type === "debt").reduce((sum, tx) => sum + tx.amount, 0);
 
   const handleDelete = async (id: number) => {
     try {
@@ -103,16 +107,54 @@ export default function Transactions() {
             <TabsTrigger value="debt" className="rounded-lg py-2 text-xs" data-testid="tab-debt">ديون</TabsTrigger>
           </TabsList>
         </Tabs>
+
+        <div className="grid grid-cols-3 gap-2 mt-4">
+          <select value={walletFilter} onChange={(e) => setWalletFilter(e.target.value)} className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none">
+            <option value="all">كل المحافظ</option>
+            {wallets.map((wallet) => (
+              <option key={wallet.id} value={wallet.id.toString()}>{wallet.name}</option>
+            ))}
+          </select>
+          <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none">
+            <option value="all">كل الأقسام</option>
+            {categories.map((category) => (
+              <option key={category.id} value={category.id.toString()}>{category.name}</option>
+            ))}
+          </select>
+          <select value={rangeFilter} onChange={(e) => setRangeFilter(e.target.value as typeof rangeFilter)} className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none">
+            <option value="all">كل الفترات</option>
+            <option value="7days">آخر 7 أيام</option>
+            <option value="30days">آخر 30 يومًا</option>
+            <option value="90days">آخر 90 يومًا</option>
+          </select>
+        </div>
       </header>
 
       <div className="p-4 flex-1 overflow-auto pb-24">
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          <div className="bg-emerald-50 dark:bg-emerald-950/20 rounded-2xl p-4 border border-emerald-100 dark:border-emerald-900/50">
+            <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 text-sm font-medium mb-1">
+              <ArrowLeftRight className="h-4 w-4" />
+              إجمالي الدخل
+            </div>
+            <p className="text-xl font-bold text-emerald-700 dark:text-emerald-300">+{totalIncome.toFixed(2)}</p>
+          </div>
+          <div className="bg-red-50 dark:bg-red-950/20 rounded-2xl p-4 border border-red-100 dark:border-red-900/50">
+            <div className="flex items-center gap-2 text-red-700 dark:text-red-400 text-sm font-medium mb-1">
+              <Filter className="h-4 w-4" />
+              إجمالي الخروج
+            </div>
+            <p className="text-xl font-bold text-red-700 dark:text-red-300">-{totalOutflow.toFixed(2)}</p>
+          </div>
+        </div>
+
         <div className="mb-6">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <Calendar className="h-4 w-4" />
-              <span>جميع المعاملات</span>
+              <span>أحدث المعاملات</span>
             </div>
-            {searchQuery && (
+            {(searchQuery || walletFilter !== "all" || categoryFilter !== "all" || rangeFilter !== "all") && (
               <span className="text-xs text-muted-foreground">
                 {filteredTransactions.length} نتيجة
               </span>
@@ -139,6 +181,10 @@ export default function Transactions() {
                         <div>
                           <h4 className="font-bold text-sm">{catName}</h4>
                           <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{tx.note}</p>
+                          <div className="flex flex-wrap items-center gap-2 mt-1 text-[10px] text-muted-foreground">
+                            {tx.walletName ? <span className="inline-flex items-center gap-1"><Wallet className="h-3 w-3" />{tx.walletName}</span> : null}
+                            {tx.categoryName ? <span className="inline-flex items-center gap-1"><PieChart className="h-3 w-3" />{tx.categoryName}</span> : null}
+                          </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -152,7 +198,7 @@ export default function Transactions() {
                             {tx.type === 'income' ? '+' : '-'}{tx.amount.toFixed(2)}
                           </span>
                           <span className="text-[10px] text-muted-foreground mt-1">
-                            {tx.date && formatDate(tx.date)} {tx.date && `• ${formatTime(tx.date)}`}
+                            {tx.date && formatRelativeArabicDate(tx.date)} {tx.date && `• ${formatTime(tx.date)}`}
                           </span>
                         </div>
                         <Button 
@@ -173,7 +219,7 @@ export default function Transactions() {
                   <Search className="h-8 w-8 mx-auto text-muted-foreground/50 mb-3" />
                   <p className="text-muted-foreground font-medium">لا توجد معاملات</p>
                   <p className="text-xs text-muted-foreground/70 mt-1">
-                    {searchQuery ? "جرب تغيير كلمات البحث أو الفلتر" : "أضف معاملتك الأولى بالضغط على زر +"}
+                    {searchQuery || walletFilter !== "all" || categoryFilter !== "all" || rangeFilter !== "all" ? "جرّب تغيير الفلاتر أو كلمات البحث" : "أضف معاملتك الأولى بالضغط على زر +"}
                   </p>
                 </div>
               )}
