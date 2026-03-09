@@ -1,19 +1,45 @@
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, wallets, categories, transactions, obligations,
+  users, wallets, categories, transactions, obligations, variableObligationMonthStatuses,
   type User, type InsertUser,
   type Wallet, type InsertWallet,
   type Category, type InsertCategory,
   type Transaction, type InsertTransaction,
   type Obligation, type InsertObligation,
+  type VariableObligationMonthStatus, type InsertVariableObligationMonthStatus,
 } from "@shared/schema";
+
+function isObligationEnded(obligation: Pick<Obligation, "endDate">) {
+  return !!obligation.endDate && obligation.endDate <= Math.floor(Date.now() / 1000);
+}
+
+function startOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function addMonths(date: Date, months: number) {
+  return new Date(date.getFullYear(), date.getMonth() + months, 1);
+}
+
+function formatMonthKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: number, data: Partial<User>): Promise<User>;
+  getAllUsers(): Promise<User[]>;
+  getUserStats(): Promise<{
+    totalUsers: number;
+    activeUsers: number;
+    inactiveUsers: number;
+    newUsersThisMonth: number;
+    usersLoggedInToday: number;
+  }>;
+  deleteUser(id: number): Promise<void>;
 
   getWallets(userId: number): Promise<Wallet[]>;
   getWallet(id: number, userId: number): Promise<Wallet | undefined>;
@@ -38,9 +64,24 @@ export interface IStorage {
   updateObligation(id: number, userId: number, data: Partial<InsertObligation>): Promise<Obligation>;
   deleteObligation(id: number, userId: number): Promise<void>;
   toggleObligation(id: number, userId: number): Promise<Obligation>;
+  getVariableObligationMonthStatuses(obligationId: number, userId: number): Promise<VariableObligationMonthStatus[]>;
+  upsertVariableObligationMonthStatus(obligationId: number, userId: number, data: InsertVariableObligationMonthStatus): Promise<VariableObligationMonthStatus>;
+  applyVariableObligationPayment(obligationId: number, userId: number, amount: number): Promise<{ allocatedMonths: number; monthKeys: string[] }>;
 }
 
 export class DatabaseStorage implements IStorage {
+  private async normalizeObligationStatus(obligation: Obligation | undefined, userId: number): Promise<Obligation | undefined> {
+    if (!obligation) {
+      return obligation;
+    }
+
+    if (obligation.isActive && isObligationEnded(obligation)) {
+      return this.updateObligation(obligation.id, userId, { isActive: false });
+    }
+
+    return obligation;
+  }
+
   async getUser(id: number): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
@@ -59,6 +100,40 @@ export class DatabaseStorage implements IStorage {
   async updateUser(id: number, data: Partial<User>): Promise<User> {
     const [updated] = await db.update(users).set(data).where(eq(users.id, id)).returning();
     return updated;
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return db.select().from(users).orderBy(desc(users.createdAt));
+  }
+
+  async getUserStats(): Promise<{
+    totalUsers: number;
+    activeUsers: number;
+    inactiveUsers: number;
+    newUsersThisMonth: number;
+    usersLoggedInToday: number;
+  }> {
+    const allUsers = await this.getAllUsers();
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime() / 1000;
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000;
+
+    return {
+      totalUsers: allUsers.length,
+      activeUsers: allUsers.filter((user) => user.isActive).length,
+      inactiveUsers: allUsers.filter((user) => !user.isActive).length,
+      newUsersThisMonth: allUsers.filter((user) => user.createdAt >= startOfMonth).length,
+      usersLoggedInToday: allUsers.filter((user) => user.lastLoginAt && user.lastLoginAt >= startOfDay).length,
+    };
+  }
+
+  async deleteUser(id: number): Promise<void> {
+    await db.delete(transactions).where(eq(transactions.userId, id));
+    await db.delete(variableObligationMonthStatuses).where(eq(variableObligationMonthStatuses.userId, id));
+    await db.delete(obligations).where(eq(obligations.userId, id));
+    await db.delete(categories).where(eq(categories.userId, id));
+    await db.delete(wallets).where(eq(wallets.userId, id));
+    await db.delete(users).where(eq(users.id, id));
   }
 
   async getWallets(userId: number): Promise<Wallet[]> {
@@ -160,11 +235,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getObligations(userId: number): Promise<Obligation[]> {
-    return db
+    const result = await db
       .select()
       .from(obligations)
       .where(eq(obligations.userId, userId))
       .orderBy(desc(obligations.createdAt));
+
+    return Promise.all(result.map((obligation) => this.normalizeObligationStatus(obligation, userId))) as Promise<Obligation[]>;
   }
 
   async getObligationById(id: number, userId: number): Promise<Obligation | undefined> {
@@ -172,7 +249,7 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(obligations)
       .where(and(eq(obligations.id, id), eq(obligations.userId, userId)));
-    return obligation;
+    return this.normalizeObligationStatus(obligation, userId);
   }
 
   async createObligation(userId: number, obligation: InsertObligation): Promise<Obligation> {
@@ -180,19 +257,25 @@ export class DatabaseStorage implements IStorage {
       .insert(obligations)
       .values({ ...obligation, userId })
       .returning();
-    return created;
+    return (await this.normalizeObligationStatus(created, userId))!;
   }
 
   async updateObligation(id: number, userId: number, data: Partial<InsertObligation>): Promise<Obligation> {
+    const nextIsActive = data.isActive === true && data.endDate !== undefined && data.endDate !== null && data.endDate <= Math.floor(Date.now() / 1000)
+      ? false
+      : data.isActive;
     const [updated] = await db
       .update(obligations)
-      .set({ ...data, updatedAt: Math.floor(Date.now() / 1000) })
+      .set({ ...data, isActive: nextIsActive, updatedAt: Math.floor(Date.now() / 1000) })
       .where(and(eq(obligations.id, id), eq(obligations.userId, userId)))
       .returning();
-    return updated;
+    return (await this.normalizeObligationStatus(updated, userId))!;
   }
 
   async deleteObligation(id: number, userId: number): Promise<void> {
+    await db
+      .delete(variableObligationMonthStatuses)
+      .where(and(eq(variableObligationMonthStatuses.obligationId, id), eq(variableObligationMonthStatuses.userId, userId)));
     await db
       .delete(obligations)
       .where(and(eq(obligations.id, id), eq(obligations.userId, userId)));
@@ -204,6 +287,132 @@ export class DatabaseStorage implements IStorage {
       throw new Error("الالتزام غير موجود");
     }
     return this.updateObligation(id, userId, { isActive: !obligation.isActive });
+  }
+
+  async getVariableObligationMonthStatuses(obligationId: number, userId: number): Promise<VariableObligationMonthStatus[]> {
+    const obligation = await this.getObligationById(obligationId, userId);
+    if (!obligation) {
+      throw new Error("الالتزام غير موجود");
+    }
+
+    if (obligation.scheduleType !== "variable") {
+      throw new Error("هذه الصفحة مخصصة للالتزامات المتغيرة فقط");
+    }
+
+    return db
+      .select()
+      .from(variableObligationMonthStatuses)
+      .where(and(eq(variableObligationMonthStatuses.obligationId, obligationId), eq(variableObligationMonthStatuses.userId, userId)))
+      .orderBy(desc(variableObligationMonthStatuses.monthKey));
+  }
+
+  async upsertVariableObligationMonthStatus(obligationId: number, userId: number, data: InsertVariableObligationMonthStatus): Promise<VariableObligationMonthStatus> {
+    const obligation = await this.getObligationById(obligationId, userId);
+    if (!obligation) {
+      throw new Error("الالتزام غير موجود");
+    }
+
+    if (obligation.scheduleType !== "variable") {
+      throw new Error("يمكن تحديث حالات الأشهر للالتزام المتغير فقط");
+    }
+
+    const [existing] = await db
+      .select()
+      .from(variableObligationMonthStatuses)
+      .where(
+        and(
+          eq(variableObligationMonthStatuses.obligationId, obligationId),
+          eq(variableObligationMonthStatuses.userId, userId),
+          eq(variableObligationMonthStatuses.monthKey, data.monthKey),
+        ),
+      );
+
+    const now = Math.floor(Date.now() / 1000);
+    const normalizedNote = data.note ?? "";
+    const normalizedPaidAt = data.status === "paid" ? (data.paidAt ?? now) : null;
+
+    if (existing) {
+      const [updated] = await db
+        .update(variableObligationMonthStatuses)
+        .set({
+          status: data.status,
+          paidAt: normalizedPaidAt,
+          note: normalizedNote,
+          updatedAt: now,
+        })
+        .where(eq(variableObligationMonthStatuses.id, existing.id))
+        .returning();
+      return updated;
+    }
+
+    const [created] = await db
+      .insert(variableObligationMonthStatuses)
+      .values({
+        userId,
+        obligationId,
+        monthKey: data.monthKey,
+        status: data.status,
+        paidAt: normalizedPaidAt,
+        note: normalizedNote,
+      })
+      .returning();
+    return created;
+  }
+
+  async applyVariableObligationPayment(obligationId: number, userId: number, amount: number): Promise<{ allocatedMonths: number; monthKeys: string[] }> {
+    const obligation = await this.getObligationById(obligationId, userId);
+    if (!obligation) {
+      throw new Error("الالتزام غير موجود");
+    }
+
+    if (obligation.scheduleType !== "variable") {
+      throw new Error("هذا الإجراء متاح للالتزامات المتغيرة فقط");
+    }
+
+    if (amount <= 0 || obligation.amount <= 0) {
+      return { allocatedMonths: 0, monthKeys: [] };
+    }
+
+    const fullMonthsToAllocate = Math.floor(amount / obligation.amount);
+    if (fullMonthsToAllocate <= 0) {
+      return { allocatedMonths: 0, monthKeys: [] };
+    }
+
+    const existingStatuses = await this.getVariableObligationMonthStatuses(obligationId, userId);
+    const existingStatusMap = new Map(existingStatuses.map((item) => [item.monthKey, item]));
+
+    const startDate = startOfMonth(new Date(obligation.startDate * 1000));
+    const minimumEnd = addMonths(startOfMonth(new Date()), 23);
+    const explicitEnd = obligation.endDate ? startOfMonth(new Date(obligation.endDate * 1000)) : minimumEnd;
+    const endDate = explicitEnd > minimumEnd ? explicitEnd : minimumEnd;
+    const monthKeysToMarkPaid: string[] = [];
+
+    for (let cursor = new Date(startDate); cursor <= endDate; cursor = addMonths(cursor, 1)) {
+      const monthKey = formatMonthKey(cursor);
+      const existing = existingStatusMap.get(monthKey);
+      if (existing?.status === "paid") {
+        continue;
+      }
+
+      monthKeysToMarkPaid.push(monthKey);
+      if (monthKeysToMarkPaid.length === fullMonthsToAllocate) {
+        break;
+      }
+    }
+
+    for (const monthKey of monthKeysToMarkPaid) {
+      await this.upsertVariableObligationMonthStatus(obligationId, userId, {
+        monthKey,
+        status: "paid",
+        paidAt: Math.floor(Date.now() / 1000),
+        note: "",
+      });
+    }
+
+    return {
+      allocatedMonths: monthKeysToMarkPaid.length,
+      monthKeys: monthKeysToMarkPaid,
+    };
   }
 }
 

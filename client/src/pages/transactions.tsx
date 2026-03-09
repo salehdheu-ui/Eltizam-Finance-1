@@ -1,15 +1,11 @@
 import { Filter, Search, Calendar, Loader2, Trash2, Wallet, PieChart, ArrowLeftRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { cn, formatRelativeArabicDate, toDate } from "@/lib/utils";
+import { cn, formatCurrency, formatRelativeArabicDate, formatTime, toDate } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useMemo, useState } from "react";
 import { useTransactions, useDeleteTransaction, useWallets, useCategories } from "@/lib/hooks";
 import { useToast } from "@/hooks/use-toast";
-
-function formatTime(date: string | Date | number) {
-  return toDate(date).toLocaleTimeString("ar-OM", { hour: "2-digit", minute: "2-digit" });
-}
 
 function isWithinRange(dateInput: string | Date | number, range: "all" | "7days" | "30days" | "90days") {
   if (range === "all") return true;
@@ -137,14 +133,14 @@ export default function Transactions() {
               <ArrowLeftRight className="h-4 w-4" />
               إجمالي الدخل
             </div>
-            <p className="text-xl font-bold text-emerald-700 dark:text-emerald-300">+{totalIncome.toFixed(2)}</p>
+            <p className="text-xl font-bold text-emerald-700 dark:text-emerald-300">+{formatCurrency(totalIncome, 2)}</p>
           </div>
           <div className="bg-red-50 dark:bg-red-950/20 rounded-2xl p-4 border border-red-100 dark:border-red-900/50">
             <div className="flex items-center gap-2 text-red-700 dark:text-red-400 text-sm font-medium mb-1">
               <Filter className="h-4 w-4" />
               إجمالي الخروج
             </div>
-            <p className="text-xl font-bold text-red-700 dark:text-red-300">-{totalOutflow.toFixed(2)}</p>
+            <p className="text-xl font-bold text-red-700 dark:text-red-300">-{formatCurrency(totalOutflow, 2)}</p>
           </div>
         </div>
 
@@ -195,7 +191,7 @@ export default function Transactions() {
                             tx.type === 'expense' ? "text-red-500" :
                             "text-gray-900 dark:text-gray-100"
                           )}>
-                            {tx.type === 'income' ? '+' : '-'}{tx.amount.toFixed(2)}
+                            {tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount, 2)}
                           </span>
                           <span className="text-[10px] text-muted-foreground mt-1">
                             {tx.date && formatRelativeArabicDate(tx.date)} {tx.date && `• ${formatTime(tx.date)}`}

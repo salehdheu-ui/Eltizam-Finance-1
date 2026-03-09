@@ -9,6 +9,10 @@ export const users = sqliteTable("users", {
   password: text("password").notNull(),
   name: text("name").notNull(),
   email: text("email").notNull(),
+  role: text("role").notNull().default("user"),
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  lastLoginAt: integer("last_login_at"),
+  createdAt: integer("created_at").notNull().default(sql`(unixepoch())`),
 });
 
 export const wallets = sqliteTable("wallets", {
@@ -46,6 +50,7 @@ export const obligations = sqliteTable("obligations", {
   userId: integer("user_id").notNull().references(() => users.id),
   title: text("title").notNull(),
   amount: real("amount").notNull(),
+  scheduleType: text("schedule_type").notNull().default("fixed"),
   obligationType: text("obligation_type").notNull().default("custom"),
   frequency: text("frequency").notNull().default("monthly"),
   dueDay: integer("due_day"), // للالتزامات الشهرية (1-31)
@@ -62,11 +67,27 @@ export const obligations = sqliteTable("obligations", {
   updatedAt: integer("updated_at").notNull().default(sql`(unixepoch())`),
 });
 
+export const variableObligationMonthStatuses = sqliteTable("variable_obligation_month_statuses", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().references(() => users.id),
+  obligationId: integer("obligation_id").notNull().references(() => obligations.id),
+  monthKey: text("month_key").notNull(),
+  status: text("status").notNull().default("unpaid"),
+  paidAt: integer("paid_at"),
+  note: text("note").default(""),
+  createdAt: integer("created_at").notNull().default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at").notNull().default(sql`(unixepoch())`),
+});
+
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
   name: true,
   email: true,
+  role: true,
+  isActive: true,
+  lastLoginAt: true,
+  createdAt: true,
 });
 
 export const insertWalletSchema = createInsertSchema(wallets).pick({
@@ -98,6 +119,7 @@ export const insertTransactionSchema = createInsertSchema(transactions).pick({
 export const insertObligationSchema = createInsertSchema(obligations).pick({
   title: true,
   amount: true,
+  scheduleType: true,
   obligationType: true,
   frequency: true,
   dueDay: true,
@@ -113,13 +135,28 @@ export const insertObligationSchema = createInsertSchema(obligations).pick({
 }).extend({
   title: z.string().min(1, "يجب إدخال عنوان الالتزام"),
   amount: z.number().positive("المبلغ يجب أن يكون أكبر من صفر"),
+  scheduleType: z.enum(["fixed", "variable"]),
   obligationType: z.enum(["bill", "installment", "subscription", "association", "custom"]),
   frequency: z.enum(["monthly", "yearly", "one_time"]),
   dueDay: z.number().min(1).max(31).nullable().optional(),
   dueMonth: z.number().min(1).max(12).nullable().optional(),
   dueDate: z.number().nullable().optional(),
+  startDate: z.number().int().positive().optional(),
+  endDate: z.number().int().positive().nullable().optional(),
   walletId: z.number().nullable().optional(),
   categoryId: z.number().nullable().optional(),
+});
+
+export const insertVariableObligationMonthStatusSchema = createInsertSchema(variableObligationMonthStatuses).pick({
+  monthKey: true,
+  status: true,
+  paidAt: true,
+  note: true,
+}).extend({
+  monthKey: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "صيغة الشهر يجب أن تكون YYYY-MM"),
+  status: z.enum(["paid", "late", "unpaid"]),
+  paidAt: z.number().int().positive().nullable().optional(),
+  note: z.string().max(500).nullable().optional(),
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -132,3 +169,5 @@ export type InsertTransaction = z.infer<typeof insertTransactionSchema>;
 export type Transaction = typeof transactions.$inferSelect;
 export type InsertObligation = z.infer<typeof insertObligationSchema>;
 export type Obligation = typeof obligations.$inferSelect;
+export type InsertVariableObligationMonthStatus = z.infer<typeof insertVariableObligationMonthStatusSchema>;
+export type VariableObligationMonthStatus = typeof variableObligationMonthStatuses.$inferSelect;

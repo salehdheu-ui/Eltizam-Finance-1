@@ -2,7 +2,7 @@ import { ArrowDownLeft, ArrowUpRight, Eye, EyeOff, Settings, Loader2, Receipt, C
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
-import { cn, formatObligationDueDate, formatRelativeArabicDate, getUpcomingObligations } from "@/lib/utils";
+import { cn, formatCurrency, formatObligationDueDate, formatRelativeArabicDate, getUpcomingObligations } from "@/lib/utils";
 import { Link } from "wouter";
 import { useCategories, useDashboard, useUser, useObligations, useWallets } from "@/lib/hooks";
 
@@ -125,7 +125,7 @@ export default function Dashboard() {
                 <Loader2 className="h-8 w-8 animate-spin" />
               ) : showBalance ? (
                 <>
-                  <span>{(dashboard?.totalBalance ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span>{formatCurrency(dashboard?.totalBalance ?? 0, 2)}</span>
                   <span className="text-lg font-medium text-primary-foreground/80">ر.ع</span>
                 </>
               ) : (
@@ -142,7 +142,7 @@ export default function Dashboard() {
               <div>
                 <p className="text-xs text-primary-foreground/70 mb-0.5">الدخل</p>
                 <p className="font-semibold" data-testid="text-income">
-                  {showBalance ? `+${(dashboard?.totalIncome ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}` : "••••"}
+                  {showBalance ? `+${formatCurrency(dashboard?.totalIncome ?? 0, 2)}` : "••••"}
                 </p>
               </div>
             </div>
@@ -153,7 +153,7 @@ export default function Dashboard() {
               <div>
                 <p className="text-xs text-primary-foreground/70 mb-0.5">المصروفات</p>
                 <p className="font-semibold" data-testid="text-expenses">
-                  {showBalance ? `-${(dashboard?.totalExpenses ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}` : "••••"}
+                  {showBalance ? `-${formatCurrency(dashboard?.totalExpenses ?? 0, 2)}` : "••••"}
                 </p>
               </div>
             </div>
@@ -219,7 +219,7 @@ export default function Dashboard() {
                     </div>
                     <div className="text-left">
                       <span className="font-bold text-destructive text-sm">
-                        {obligation.amount.toLocaleString('ar-OM', { minimumFractionDigits: 3 })} ر.ع
+                        {formatCurrency(obligation.amount)} ر.ع
                       </span>
                     </div>
                   </div>
@@ -271,7 +271,7 @@ export default function Dashboard() {
                     "font-bold text-lg",
                     tx.type === 'income' ? "text-emerald-500" : tx.type === 'expense' ? "text-red-500" : ""
                   )}>
-                    {tx.type === 'income' ? '+' : '-'}{tx.amount.toFixed(2)}
+                    {tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount, 2)}
                   </div>
                 </div>
               );

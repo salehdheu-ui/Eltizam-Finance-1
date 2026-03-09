@@ -2,7 +2,8 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth } from "./auth";
-import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertObligationSchema } from "@shared/schema";
+import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema } from "@shared/schema";
+import { z } from "zod";
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.isAuthenticated()) {
@@ -11,9 +12,34 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+function requireSystemAdmin(req: Request, res: Response, next: NextFunction) {
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ message: "غير مسجل الدخول" });
+  }
+
+  if (req.user?.role !== "system_admin") {
+    return res.status(404).json({ message: "غير موجود" });
+  }
+
+  next();
+}
+
+function toAdminUser(user: Awaited<ReturnType<typeof storage.getUser>>) {
+  if (!user) {
+    return user;
+  }
+
+  const { password, ...safeUser } = user;
+  return safeUser;
+}
+
 function parseRouteId(param: string | string[]) {
   return parseInt(Array.isArray(param) ? param[0] : param, 10);
 }
+
+const applyVariableObligationPaymentSchema = z.object({
+  amount: z.number().positive("المبلغ يجب أن يكون أكبر من صفر"),
+});
 
 export async function registerRoutes(
   httpServer: Server,
@@ -21,7 +47,45 @@ export async function registerRoutes(
 ): Promise<Server> {
   setupAuth(app);
 
-  // Wallets
+  app.get("/api/admin/stats", requireSystemAdmin, async (_req, res, next) => {
+    try {
+      const stats = await storage.getUserStats();
+      res.json(stats);
+    } catch (e) { next(e); }
+  });
+
+  app.get("/api/admin/users", requireSystemAdmin, async (_req, res, next) => {
+    try {
+      const users = await storage.getAllUsers();
+      res.json(users.map((user) => toAdminUser(user)));
+    } catch (e) { next(e); }
+  });
+
+  app.patch("/api/admin/users/:id", requireSystemAdmin, async (req, res, next) => {
+    try {
+      const userId = parseRouteId(req.params.id);
+      if (req.user!.id === userId) {
+        return res.status(400).json({ message: "لا يمكنك تعديل حسابك الإداري من هذه الصفحة" });
+      }
+
+      const { isActive } = req.body;
+      const updated = await storage.updateUser(userId, { isActive: Boolean(isActive) });
+      res.json(toAdminUser(updated));
+    } catch (e) { next(e); }
+  });
+
+  app.delete("/api/admin/users/:id", requireSystemAdmin, async (req, res, next) => {
+    try {
+      const userId = parseRouteId(req.params.id);
+      if (req.user!.id === userId) {
+        return res.status(400).json({ message: "لا يمكنك حذف حسابك الإداري الحالي" });
+      }
+
+      await storage.deleteUser(userId);
+      res.json({ message: "تم حذف المستخدم بنجاح" });
+    } catch (e) { next(e); }
+  });
+
   app.get("/api/wallets", requireAuth, async (req, res, next) => {
     try {
       const wallets = await storage.getWallets(req.user!.id);
@@ -51,7 +115,6 @@ export async function registerRoutes(
     } catch (e) { next(e); }
   });
 
-  // Categories
   app.get("/api/categories", requireAuth, async (req, res, next) => {
     try {
       const cats = await storage.getCategories(req.user!.id);
@@ -81,7 +144,6 @@ export async function registerRoutes(
     } catch (e) { next(e); }
   });
 
-  // Transactions
   app.get("/api/transactions", requireAuth, async (req, res, next) => {
     try {
       const txs = await storage.getTransactions(req.user!.id);
@@ -91,7 +153,6 @@ export async function registerRoutes(
 
   app.post("/api/transactions", requireAuth, async (req, res, next) => {
     try {
-      // Convert string numbers to actual numbers for validation
       const body = {
         ...req.body,
         amount: typeof req.body.amount === 'string' ? parseFloat(req.body.amount) : req.body.amount,
@@ -119,7 +180,6 @@ export async function registerRoutes(
     } catch (e) { next(e); }
   });
 
-  // Dashboard summary
   app.get("/api/dashboard", requireAuth, async (req, res, next) => {
     try {
       const [walletsData, txsData] = await Promise.all([
@@ -136,7 +196,6 @@ export async function registerRoutes(
     } catch (e) { next(e); }
   });
 
-  // Obligations
   app.get("/api/obligations", requireAuth, async (req, res, next) => {
     try {
       const obligations = await storage.getObligations(req.user!.id);
@@ -151,6 +210,43 @@ export async function registerRoutes(
         return res.status(404).json({ message: "الالتزام غير موجود" });
       }
       res.json(obligation);
+    } catch (e) { next(e); }
+  });
+
+  app.get("/api/obligations/:id/variable-statuses", requireAuth, async (req, res, next) => {
+    try {
+      const statuses = await storage.getVariableObligationMonthStatuses(parseRouteId(req.params.id), req.user!.id);
+      res.json(statuses);
+    } catch (e) { next(e); }
+  });
+
+  app.patch("/api/obligations/:id/variable-statuses", requireAuth, async (req, res, next) => {
+    try {
+      const body = {
+        ...req.body,
+        paidAt: req.body.paidAt === undefined
+          ? undefined
+          : req.body.paidAt === null
+            ? null
+            : typeof req.body.paidAt === "string"
+              ? parseInt(req.body.paidAt)
+              : req.body.paidAt,
+        note: req.body.note === undefined ? undefined : req.body.note,
+      };
+      const data = insertVariableObligationMonthStatusSchema.parse(body);
+      const status = await storage.upsertVariableObligationMonthStatus(parseRouteId(req.params.id), req.user!.id, data);
+      res.json(status);
+    } catch (e) { next(e); }
+  });
+
+  app.post("/api/obligations/:id/apply-variable-payment", requireAuth, async (req, res, next) => {
+    try {
+      const body = {
+        amount: typeof req.body.amount === "string" ? parseFloat(req.body.amount) : req.body.amount,
+      };
+      const data = applyVariableObligationPaymentSchema.parse(body);
+      const result = await storage.applyVariableObligationPayment(parseRouteId(req.params.id), req.user!.id, data.amount);
+      res.json(result);
     } catch (e) { next(e); }
   });
 
@@ -175,6 +271,19 @@ export async function registerRoutes(
           : typeof req.body.dueDate === 'string' 
             ? parseInt(req.body.dueDate) 
             : req.body.dueDate,
+        scheduleType: req.body.scheduleType === null || req.body.scheduleType === undefined 
+          ? undefined
+          : req.body.scheduleType,
+        startDate: req.body.startDate === null || req.body.startDate === undefined 
+          ? undefined
+          : typeof req.body.startDate === 'string' 
+            ? parseInt(req.body.startDate) 
+            : req.body.startDate,
+        endDate: req.body.endDate === null || req.body.endDate === undefined 
+          ? null 
+          : typeof req.body.endDate === 'string' 
+            ? parseInt(req.body.endDate) 
+            : req.body.endDate,
         walletId: req.body.walletId === null || req.body.walletId === undefined 
           ? null 
           : typeof req.body.walletId === 'string' 
@@ -194,7 +303,6 @@ export async function registerRoutes(
 
   app.patch("/api/obligations/:id", requireAuth, async (req, res, next) => {
     try {
-      // Convert string numbers to actual numbers for validation
       const body = {
         ...req.body,
         amount: req.body.amount === undefined || req.body.amount === null
@@ -215,6 +323,19 @@ export async function registerRoutes(
           : req.body.dueDate === null
             ? null
             : typeof req.body.dueDate === 'string' ? parseInt(req.body.dueDate) : req.body.dueDate,
+        scheduleType: req.body.scheduleType === undefined
+          ? undefined
+          : req.body.scheduleType,
+        startDate: req.body.startDate === undefined
+          ? undefined
+          : req.body.startDate === null
+            ? null
+            : typeof req.body.startDate === 'string' ? parseInt(req.body.startDate) : req.body.startDate,
+        endDate: req.body.endDate === undefined
+          ? undefined
+          : req.body.endDate === null
+            ? null
+            : typeof req.body.endDate === 'string' ? parseInt(req.body.endDate) : req.body.endDate,
         walletId: req.body.walletId === undefined
           ? undefined
           : req.body.walletId === null

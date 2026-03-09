@@ -11,8 +11,10 @@ import Wallets from "@/pages/wallets";
 import Categories from "@/pages/categories";
 import Reports from "@/pages/reports";
 import Obligations from "@/pages/obligations";
+import VariableObligationDetails from "@/pages/variable-obligation-details";
 import Login from "@/pages/login";
 import Settings from "@/pages/settings";
+import AdminUsers from "@/pages/admin-users";
 import { useUser } from "@/lib/hooks";
 import { Loader2 } from "lucide-react";
 
@@ -37,6 +39,7 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 function Router() {
   const [location] = useLocation();
   const { data: user, isLoading } = useUser();
+  const isSystemAdmin = user?.role === "system_admin";
 
   if (isLoading) {
     return (
@@ -65,8 +68,14 @@ function Router() {
         <Route path="/wallets" component={Wallets} />
         <Route path="/categories" component={Categories} />
         <Route path="/reports" component={Reports} />
+        <Route path="/obligations/:id" component={VariableObligationDetails} />
         <Route path="/obligations" component={Obligations} />
         <Route path="/settings" component={Settings} />
+        {isSystemAdmin ? (
+          <Route path="/admin/users" component={AdminUsers} />
+        ) : (
+          <Route path="/admin/users" component={NotFound} />
+        )}
         <Route component={NotFound} />
       </Switch>
     </Layout>

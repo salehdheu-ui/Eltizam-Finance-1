@@ -29,6 +29,11 @@ async function comparePasswords(supplied: string, stored: string) {
   return timingSafeEqual(hashedBuf, suppliedBuf);
 }
 
+function toSafeUser(user: SelectUser) {
+  const { password, ...safeUser } = user;
+  return safeUser;
+}
+
 export function setupAuth(app: Express) {
   const MemoryStore = createMemoryStore(session);
 
@@ -54,6 +59,9 @@ export function setupAuth(app: Express) {
         const user = await storage.getUserByUsername(username);
         if (!user || !(await comparePasswords(password, user.password))) {
           return done(null, false, { message: "اسم المستخدم أو كلمة المرور غير صحيحة" });
+        }
+        if (!user.isActive) {
+          return done(null, false, { message: "تم إيقاف هذا الحساب" });
         }
         return done(null, user);
       } catch (err) {
@@ -84,12 +92,15 @@ export function setupAuth(app: Express) {
         password: await hashPassword(req.body.password),
         name: req.body.fullName || req.body.name,
         email: req.body.email,
+        role: "user",
+        isActive: true,
+        lastLoginAt: Math.floor(Date.now() / 1000),
+        createdAt: Math.floor(Date.now() / 1000),
       });
 
       req.login(user, (err) => {
         if (err) return next(err);
-        const { password, ...safeUser } = user;
-        return res.status(201).json(safeUser);
+        return res.status(201).json(toSafeUser(user));
       });
     } catch (error) {
       next(error);
@@ -97,15 +108,18 @@ export function setupAuth(app: Express) {
   });
 
   app.post("/api/login", (req, res, next) => {
-    passport.authenticate("local", (err: any, user: SelectUser | false, info: any) => {
+    passport.authenticate("local", async (err: any, user: SelectUser | false, info: any) => {
       if (err) return next(err);
       if (!user) {
         return res.status(401).json({ message: info?.message || "فشل تسجيل الدخول" });
       }
+      if (!user.isActive) {
+        return res.status(401).json({ message: "تم إيقاف هذا الحساب" });
+      }
+      const updatedUser = await storage.updateUser(user.id, { lastLoginAt: Math.floor(Date.now() / 1000) });
       req.login(user, (err) => {
         if (err) return next(err);
-        const { password, ...safeUser } = user;
-        return res.json(safeUser);
+        return res.json(toSafeUser(updatedUser));
       });
     })(req, res, next);
   });
@@ -121,8 +135,7 @@ export function setupAuth(app: Express) {
     if (!req.isAuthenticated()) {
       return res.status(401).json({ message: "غير مسجل الدخول" });
     }
-    const { password, ...safeUser } = req.user!;
-    res.json(safeUser);
+    res.json(toSafeUser(req.user!));
   });
 
   app.patch("/api/user", async (req, res, next) => {
@@ -130,9 +143,9 @@ export function setupAuth(app: Express) {
       return res.status(401).json({ message: "غير مسجل الدخول" });
     }
     try {
-      const updated = await storage.updateUser(req.user!.id, req.body);
-      const { password, ...safeUser } = updated;
-      res.json(safeUser);
+      const { role, isActive, lastLoginAt, createdAt, ...allowedUpdates } = req.body;
+      const updated = await storage.updateUser(req.user!.id, allowedUpdates);
+      res.json(toSafeUser(updated));
     } catch (error) {
       next(error);
     }

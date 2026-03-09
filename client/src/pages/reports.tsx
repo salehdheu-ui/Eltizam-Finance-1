@@ -1,27 +1,11 @@
 import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useTransactions, useCategories, useWallets, useObligations } from "@/lib/hooks";
-import { cn, formatObligationDueDate, getUpcomingObligations, toDate } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, formatNumber, formatObligationDueDate, formatPercentage, getUpcomingObligations, toDate } from "@/lib/utils";
 import { 
   ArrowDownLeft, ArrowUpRight, Wallet, TrendingUp, TrendingDown, 
   BarChart3, PieChart, Calendar, AlertTriangle, ChevronUp, ChevronDown, Receipt, Target, ArrowLeftRight 
 } from "lucide-react";
-
-function formatDate(dateInput: string | Date | number) {
-  const d = toDate(dateInput);
-  
-  if (isNaN(d.getTime())) {
-    return "تاريخ غير معروف";
-  }
-  
-  return d.toLocaleDateString("ar-OM", { 
-    day: "numeric", 
-    month: "long", 
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-}
 
 function isWithinPeriod(dateInput: string | Date | number, period: string) {
   const d = toDate(dateInput);
@@ -158,7 +142,7 @@ export default function Reports() {
       if (t.type === "expense" || t.type === "debt") days[date].expense += t.amount;
     });
     return Object.entries(days).slice(-7).map(([date, totals]) => ({
-      date: new Date(date).toLocaleDateString("ar-OM", { weekday: "short" }),
+      date: formatDate(new Date(date), { weekday: "short" }),
       ...totals
     }));
   };
@@ -214,13 +198,13 @@ export default function Reports() {
               {period !== "all" && (
                 <div className={cn("flex items-center text-xs font-medium", incomeChange >= 0 ? "text-emerald-600" : "text-red-600")}>
                   {incomeChange >= 0 ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  {Math.abs(incomeChange).toFixed(1)}%
+                  {formatPercentage(Math.abs(incomeChange))}
                 </div>
               )}
             </div>
             <div className="mt-3">
               <p className="text-xs text-emerald-600 font-medium">إجمالي الدخل</p>
-              <p className="text-xl font-bold text-emerald-700">+{currentIncome.toFixed(2)}</p>
+              <p className="text-xl font-bold text-emerald-700">+{formatCurrency(currentIncome, 2)}</p>
               {period !== "all" && (
                 <p className="text-xs text-muted-foreground mt-1">مقارنة بالفترة السابقة</p>
               )}
@@ -237,13 +221,13 @@ export default function Reports() {
               {period !== "all" && (
                 <div className={cn("flex items-center text-xs font-medium", expenseChange <= 0 ? "text-emerald-600" : "text-red-600")}>
                   {expenseChange <= 0 ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-                  {Math.abs(expenseChange).toFixed(1)}%
+                  {formatPercentage(Math.abs(expenseChange))}
                 </div>
               )}
             </div>
             <div className="mt-3">
               <p className="text-xs text-red-600 font-medium">إجمالي المصروفات</p>
-              <p className="text-xl font-bold text-red-700">-{totalOutflow.toFixed(2)}</p>
+              <p className="text-xl font-bold text-red-700">-{formatCurrency(totalOutflow, 2)}</p>
               {period !== "all" && (
                 <p className="text-xs text-muted-foreground mt-1">مقارنة بالفترة السابقة</p>
               )}
@@ -264,7 +248,7 @@ export default function Reports() {
             <div className="mt-3">
               <p className={cn("text-xs font-medium", gapStatus === "positive" ? "text-emerald-600" : "text-red-600")}>الفجوة المالية (الثغرة)</p>
               <p className={cn("text-xl font-bold", gapStatus === "positive" ? "text-emerald-700" : "text-red-700")}>
-                {gapStatus === "positive" ? "+" : ""}{balance.toFixed(2)}
+                {gapStatus === "positive" ? "+" : ""}{formatCurrency(balance, 2)}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
                 {gapStatus === "positive" ? "دخلك أعلى من مصروفاتك" : "مصروفاتك أعلى من دخلك"}
@@ -285,7 +269,7 @@ export default function Reports() {
             </div>
             <div className="mt-3">
               <p className="text-xs text-purple-600 font-medium">معدل الادخار</p>
-              <p className="text-xl font-bold text-purple-700">{savingsRate.toFixed(1)}%</p>
+              <p className="text-xl font-bold text-purple-700">{formatPercentage(savingsRate)}</p>
               <p className="text-xs text-muted-foreground mt-1">
                 {savingsRate >= 20 ? "أداء ممتاز! واصل" : savingsRate >= 0 ? "حاول زيادة الادخار" : "تحذير: أنفق أكثر مما تدخل"}
               </p>
@@ -302,10 +286,10 @@ export default function Reports() {
                 <p className="text-sm text-primary font-semibold mb-1">نظرة تنفيذية سريعة</p>
                 <h3 className="font-bold text-lg">ما الذي يحتاج انتباهك الآن؟</h3>
                 <div className="space-y-2 mt-3 text-sm text-muted-foreground">
-                  <p>صافي الفترة: <span className={cn("font-bold", balance >= 0 ? "text-emerald-600" : "text-red-600")}>{balance >= 0 ? "+" : ""}{balance.toFixed(2)} ر.ع</span></p>
-                  <p>الالتزامات القادمة خلال 30 يومًا: <span className="font-bold text-amber-600">{upcomingObligationsTotal.toFixed(2)} ر.ع</span></p>
+                  <p>صافي الفترة: <span className={cn("font-bold", balance >= 0 ? "text-emerald-600" : "text-red-600")}>{balance >= 0 ? "+" : ""}{formatCurrency(balance, 2)} ر.ع</span></p>
+                  <p>الالتزامات القادمة خلال 30 يومًا: <span className="font-bold text-amber-600">{formatCurrency(upcomingObligationsTotal, 2)} ر.ع</span></p>
                   <p>أكثر محفظة استخدامًا: <span className="font-bold text-foreground">{mostUsedWallet?.name || "لا توجد بيانات"}</span></p>
-                  <p>أعلى خطر ميزانية: <span className="font-bold text-foreground">{topBudgetRisk ? `${topBudgetRisk.name} (${topBudgetRisk.budgetUsage.toFixed(0)}%)` : "لا يوجد تجاوز"}</span></p>
+                  <p>أعلى خطر ميزانية: <span className="font-bold text-foreground">{topBudgetRisk ? `${topBudgetRisk.name} (${formatPercentage(topBudgetRisk.budgetUsage, 0)})` : "لا يوجد تجاوز"}</span></p>
                 </div>
               </div>
               <div className="h-11 w-11 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
@@ -333,8 +317,8 @@ export default function Reports() {
                     <div className="flex justify-between text-sm">
                       <span className="font-medium">{day.date}</span>
                       <div className="flex gap-4">
-                        <span className="text-emerald-600">+{day.income.toFixed(0)}</span>
-                        <span className="text-red-600">-{day.expense.toFixed(0)}</span>
+                        <span className="text-emerald-600">+{formatNumber(day.income)}</span>
+                        <span className="text-red-600">-{formatNumber(day.expense)}</span>
                       </div>
                     </div>
                     <div className="flex gap-1 h-8">
@@ -366,11 +350,11 @@ export default function Reports() {
           <div className="grid grid-cols-2 gap-4">
             <div className="p-3 bg-white rounded-xl border">
               <p className="text-sm text-muted-foreground">إجمالي الدخل</p>
-              <p className="text-lg font-bold text-emerald-600">+{currentIncome.toFixed(2)}</p>
+              <p className="text-lg font-bold text-emerald-600">+{formatCurrency(currentIncome, 2)}</p>
             </div>
             <div className="p-3 bg-white rounded-xl border">
               <p className="text-sm text-muted-foreground">إجمالي المصروفات</p>
-              <p className="text-lg font-bold text-red-600">-{totalOutflow.toFixed(2)}</p>
+              <p className="text-lg font-bold text-red-600">-{formatCurrency(totalOutflow, 2)}</p>
             </div>
           </div>
           
@@ -378,7 +362,7 @@ export default function Reports() {
             <div className="flex justify-between items-center mb-2">
               <span className="font-medium">الفرق (الفجوة)</span>
               <span className={cn("text-xl font-bold", gapStatus === "positive" ? "text-emerald-600" : "text-red-600")}>
-                {balance >= 0 ? "+" : ""}{balance.toFixed(2)}
+                {balance >= 0 ? "+" : ""}{formatCurrency(balance, 2)}
               </span>
             </div>
             <div className="h-3 bg-muted rounded-full overflow-hidden">
@@ -389,8 +373,8 @@ export default function Reports() {
             </div>
             <p className="text-sm text-muted-foreground mt-2 text-center">
               {gapStatus === "positive" 
-                ? `أنت توفر ${savingsRate.toFixed(1)}% من دخلك. استمر!` 
-                : `أنفقت ${Math.abs(savingsRate).toFixed(1)}% أكثر من دخلك. حاول تقليل المصروفات!`}
+                ? `أنت توفر ${formatPercentage(savingsRate)} من دخلك. استمر!` 
+                : `أنفقت ${formatPercentage(Math.abs(savingsRate))} أكثر من دخلك. حاول تقليل المصروفات!`}
             </p>
           </div>
 
@@ -398,7 +382,7 @@ export default function Reports() {
             <div className="p-3 bg-orange-50 border border-orange-200 rounded-xl">
               <div className="flex items-center gap-2 text-orange-700">
                 <AlertTriangle className="h-4 w-4" />
-                <span className="font-medium">ديون مستحقة: {currentDebt.toFixed(2)} ر.ع</span>
+                <span className="font-medium">ديون مستحقة: {formatCurrency(currentDebt, 2)} ر.ع</span>
               </div>
             </div>
           )}
@@ -426,13 +410,13 @@ export default function Reports() {
                       {isHigh && <span className="text-xs text-red-500 font-bold">⚠ مرتفع</span>}
                     </div>
                     <div className="text-left">
-                      <span className="font-bold">{cat.total.toFixed(2)}</span>
+                      <span className="font-bold">{formatCurrency(cat.total, 2)}</span>
                       <span className={cn("text-xs mr-1 font-medium", isHigh ? "text-red-500" : "text-muted-foreground")}>
-                        ({percentage.toFixed(1)}%)
+                        ({formatPercentage(percentage)})
                       </span>
                       {cat.budget > 0 ? (
                         <div className={cn("text-[11px] mt-1 font-medium", cat.total > cat.budget ? "text-red-500" : "text-emerald-600")}>
-                          الميزانية: {cat.budget.toFixed(2)} • {cat.budgetUsage.toFixed(0)}%
+                          الميزانية: {formatCurrency(cat.budget, 2)} • {formatPercentage(cat.budgetUsage, 0)}
                         </div>
                       ) : null}
                     </div>
@@ -466,7 +450,7 @@ export default function Reports() {
                   <p className="text-xs text-muted-foreground mt-1">{formatObligationDueDate(obligation)}</p>
                 </div>
                 <div className="text-left">
-                  <p className="font-bold text-destructive">{obligation.amount.toFixed(2)} ر.ع</p>
+                  <p className="font-bold text-destructive">{formatCurrency(obligation.amount, 2)} ر.ع</p>
                   <p className="text-xs text-amber-600">{obligation.daysLeft === 0 ? "اليوم" : obligation.daysLeft === 1 ? "غداً" : `بعد ${obligation.daysLeft} يوم`}</p>
                 </div>
               </div>
@@ -496,11 +480,11 @@ export default function Reports() {
                   <div>
                     <span className="font-medium block">{wallet.name}</span>
                     <span className="text-xs text-muted-foreground">
-                      +{walletIncome.toFixed(0)} / -{walletExpense.toFixed(0)} • {walletTransactions.length} حركة
+                      +{formatNumber(walletIncome)} / -{formatNumber(walletExpense)} • {formatNumber(walletTransactions.length)} حركة
                     </span>
                   </div>
                 </div>
-                <span className="font-bold">{wallet.balance.toFixed(2)} ر.ع</span>
+                <span className="font-bold">{formatCurrency(wallet.balance, 2)} ر.ع</span>
               </div>
             );
           })}
@@ -540,7 +524,7 @@ export default function Reports() {
                   tx.type === "expense" ? "text-red-600" :
                   "text-orange-600"
                 )}>
-                  {tx.type === "income" ? "+" : tx.type === "expense" ? "-" : ""}{tx.amount.toFixed(2)}
+                  {tx.type === "income" ? "+" : tx.type === "expense" ? "-" : ""}{formatCurrency(tx.amount, 2)}
                 </span>
               </div>
             ))

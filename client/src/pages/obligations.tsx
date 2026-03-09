@@ -3,11 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { cn, formatObligationDueDate, getUpcomingObligations } from "@/lib/utils";
-import { useState, useEffect } from "react";
+import { cn, formatCurrency, formatDate, formatObligationDueDate, getObligationStatusLabel, getUpcomingObligations, isObligationEnded, toDate } from "@/lib/utils";
+import { useState, useEffect, useRef } from "react";
 import { useObligations, useDeleteObligation, useToggleObligation, useCreateObligation, useUpdateObligation, useWallets, useCategories } from "@/lib/hooks";
 import { useToast } from "@/hooks/use-toast";
 import type { Obligation } from "@shared/schema";
+import { Link } from "wouter";
 import {
   Drawer,
   DrawerClose,
@@ -35,11 +36,14 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
   const [formData, setFormData] = useState({
     title: "",
     amount: "",
+    scheduleType: "fixed",
     obligationType: "custom",
     frequency: "monthly",
     dueDay: "",
     dueMonth: "",
     dueDate: "",
+    startDate: new Date().toISOString().split('T')[0],
+    endDate: "",
     walletId: "",
     categoryId: "",
     notes: "",
@@ -49,16 +53,23 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  const startDateRef = useRef<HTMLInputElement>(null);
+  const endDateRef = useRef<HTMLInputElement>(null);
+  const dueDateRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     if (editingObligation) {
       setFormData({
         title: editingObligation.title,
         amount: editingObligation.amount.toString(),
+        scheduleType: editingObligation.scheduleType,
         obligationType: editingObligation.obligationType,
         frequency: editingObligation.frequency,
         dueDay: editingObligation.dueDay?.toString() || "",
         dueMonth: editingObligation.dueMonth?.toString() || "",
         dueDate: editingObligation.dueDate ? new Date(editingObligation.dueDate * 1000).toISOString().split('T')[0] : "",
+        startDate: editingObligation.startDate ? new Date(editingObligation.startDate * 1000).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+        endDate: editingObligation.endDate ? new Date(editingObligation.endDate * 1000).toISOString().split('T')[0] : "",
         walletId: editingObligation.walletId?.toString() || "",
         categoryId: editingObligation.categoryId?.toString() || "",
         notes: editingObligation.notes || "",
@@ -69,11 +80,14 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
       setFormData({
         title: "",
         amount: "",
+        scheduleType: "fixed",
         obligationType: "custom",
         frequency: "monthly",
         dueDay: "",
         dueMonth: "",
         dueDate: "",
+        startDate: new Date().toISOString().split('T')[0],
+        endDate: "",
         walletId: "",
         categoryId: "",
         notes: "",
@@ -88,16 +102,23 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
     const newErrors: Record<string, string> = {};
     if (!formData.title.trim()) newErrors.title = "يجب إدخال عنوان الالتزام";
     if (!formData.amount || parseFloat(formData.amount) <= 0) newErrors.amount = "المبلغ يجب أن يكون أكبر من صفر";
-    
-    if (formData.frequency === "monthly" && !formData.dueDay) {
-      newErrors.dueDay = "يجب تحديد يوم الاستحقاق";
+    if (!formData.startDate) newErrors.startDate = "يجب تحديد تاريخ البداية";
+    if (formData.endDate && formData.startDate && new Date(formData.endDate) < new Date(formData.startDate)) {
+      newErrors.endDate = "يجب أن يكون تاريخ الانتهاء بعد تاريخ البداية";
     }
-    if (formData.frequency === "yearly") {
-      if (!formData.dueDay) newErrors.dueDay = "يجب تحديد يوم الاستحقاق";
+    
+    if (formData.scheduleType === "variable" && !formData.dueDate) {
+      newErrors.dueDate = "يجب تحديد تاريخ دفع الالتزام";
+    }
+    if (formData.scheduleType === "fixed" && formData.frequency === "monthly" && !formData.dueDay) {
+      newErrors.dueDay = "يجب تحديد يوم الدفع";
+    }
+    if (formData.scheduleType === "fixed" && formData.frequency === "yearly") {
+      if (!formData.dueDay) newErrors.dueDay = "يجب تحديد يوم الدفع";
       if (!formData.dueMonth) newErrors.dueMonth = "يجب تحديد شهر الاستحقاق";
     }
-    if (formData.frequency === "one_time" && !formData.dueDate) {
-      newErrors.dueDate = "يجب تحديد تاريخ الاستحقاق";
+    if (formData.scheduleType === "fixed" && formData.frequency === "one_time" && !formData.dueDate) {
+      newErrors.dueDate = "يجب تحديد تاريخ دفع الالتزام";
     }
     
     setErrors(newErrors);
@@ -111,11 +132,14 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
     const data = {
       title: formData.title,
       amount: parseFloat(formData.amount),
+      scheduleType: formData.scheduleType,
       obligationType: formData.obligationType,
       frequency: formData.frequency,
-      dueDay: formData.frequency === "monthly" || formData.frequency === "yearly" ? parseInt(formData.dueDay) : null,
-      dueMonth: formData.frequency === "yearly" ? parseInt(formData.dueMonth) : null,
-      dueDate: formData.frequency === "one_time" && formData.dueDate ? Math.floor(new Date(formData.dueDate).getTime() / 1000) : null,
+      dueDay: formData.scheduleType === "fixed" && (formData.frequency === "monthly" || formData.frequency === "yearly") ? parseInt(formData.dueDay) : null,
+      dueMonth: formData.scheduleType === "fixed" && formData.frequency === "yearly" ? parseInt(formData.dueMonth) : null,
+      dueDate: formData.dueDate ? Math.floor(new Date(formData.dueDate).getTime() / 1000) : null,
+      startDate: Math.floor(new Date(formData.startDate).getTime() / 1000),
+      endDate: formData.endDate ? Math.floor(new Date(formData.endDate).getTime() / 1000) : null,
       walletId: formData.walletId ? parseInt(formData.walletId) : null,
       categoryId: formData.categoryId ? parseInt(formData.categoryId) : null,
       notes: formData.notes || null,
@@ -140,6 +164,22 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
       });
     }
   };
+
+  const openDatePicker = (input: HTMLInputElement | null) => {
+    if (!input) return;
+    if (typeof input.showPicker === "function") {
+      try {
+        input.showPicker();
+      } catch {
+        input.focus();
+      }
+      return;
+    }
+    input.focus();
+    input.click();
+  };
+
+  const dateInputClassName = "text-left pl-12 pr-3 tracking-[0.02em] [color-scheme:light] [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:w-0 [&::-webkit-calendar-picker-indicator]:h-0";
 
   return (
     <Drawer open={isOpen} onOpenChange={onClose}>
@@ -181,15 +221,89 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
             </div>
 
             <div className="flex flex-col gap-3">
+              <Label className="text-right">جدولة الالتزام</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {[{ value: "fixed", label: "ثابت" }, { value: "variable", label: "متغير" }].map((schedule) => (
+                  <button
+                    key={schedule.value}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, scheduleType: schedule.value, frequency: schedule.value === "variable" ? "one_time" : formData.frequency, dueDay: "", dueMonth: "", dueDate: formData.scheduleType === schedule.value ? formData.dueDate : "", endDate: schedule.value === "fixed" ? "" : formData.endDate })}
+                    className={cn(
+                      "px-3 py-2 rounded-xl text-sm transition-all",
+                      formData.scheduleType === schedule.value
+                        ? "bg-primary/10 border-2 border-primary font-medium"
+                        : "bg-muted/50 border border-transparent hover:bg-muted"
+                    )}
+                  >
+                    {schedule.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className={cn("grid gap-3", formData.scheduleType === "variable" ? "grid-cols-2" : "grid-cols-1")}>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="startDate" className="text-right">تاريخ البداية <span className="text-destructive">*</span></Label>
+                <div className="relative">
+                  <Input
+                    ref={startDateRef}
+                    id="startDate"
+                    type="date"
+                    lang="en-GB"
+                    dir="ltr"
+                    value={formData.startDate}
+                    onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                    onClick={() => openDatePicker(startDateRef.current)}
+                    onKeyDown={(e) => e.preventDefault()}
+                    onPaste={(e) => e.preventDefault()}
+                    className={cn(dateInputClassName, errors.startDate && "border-destructive")}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => openDatePicker(startDateRef.current)}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-md bg-primary/10 text-primary flex items-center justify-center hover:bg-primary/15 transition-colors"
+                    aria-label="اختيار تاريخ البداية"
+                  >
+                    <Calendar className="h-4 w-4" />
+                  </button>
+                </div>
+                {errors.startDate && <p className="text-xs text-destructive">{errors.startDate}</p>}
+              </div>
+              {formData.scheduleType === "variable" && (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="endDate" className="text-right">تاريخ الانتهاء</Label>
+                <div className="relative">
+                  <Input
+                    ref={endDateRef}
+                    id="endDate"
+                    type="date"
+                    lang="en-GB"
+                    dir="ltr"
+                    value={formData.endDate}
+                    onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                    onClick={() => openDatePicker(endDateRef.current)}
+                    onKeyDown={(e) => e.preventDefault()}
+                    onPaste={(e) => e.preventDefault()}
+                    className={cn(dateInputClassName, errors.endDate && "border-destructive")}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => openDatePicker(endDateRef.current)}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-md bg-primary/10 text-primary flex items-center justify-center hover:bg-primary/15 transition-colors"
+                    aria-label="اختيار تاريخ الانتهاء"
+                  >
+                    <Calendar className="h-4 w-4" />
+                  </button>
+                </div>
+                {errors.endDate && <p className="text-xs text-destructive">{errors.endDate}</p>}
+              </div>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-3">
               <Label className="text-right">نوع الالتزام</Label>
               <div className="grid grid-cols-5 gap-2">
-                {[
-                  { value: "bill", label: "فاتورة", icon: "📄" },
-                  { value: "installment", label: "قسط", icon: "🏦" },
-                  { value: "subscription", label: "اشتراك", icon: "🔄" },
-                  { value: "association", label: "جمعية", icon: "👥" },
-                  { value: "custom", label: "مخصص", icon: "📝" },
-                ].map((type) => (
+                {[{ value: "bill", label: "فاتورة", icon: "📄" }, { value: "installment", label: "قسط", icon: "🏦" }, { value: "subscription", label: "اشتراك", icon: "🔄" }, { value: "association", label: "جمعية", icon: "👥" }, { value: "custom", label: "مخصص", icon: "📝" }].map((type) => (
                   <button
                     key={type.value}
                     type="button"
@@ -208,62 +322,98 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
               </div>
             </div>
 
-            <div className="flex flex-col gap-3">
-              <Label className="text-right">تكرار الدفع</Label>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { value: "monthly", label: "شهري" },
-                  { value: "yearly", label: "سنوي" },
-                  { value: "one_time", label: "مرة واحدة" },
-                ].map((freq) => (
-                  <button
-                    key={freq.value}
-                    type="button"
-                    onClick={() => setFormData({ ...formData, frequency: freq.value, dueDay: "", dueMonth: "", dueDate: "" })}
-                    className={cn(
-                      "px-3 py-2 rounded-xl text-sm transition-all",
-                      formData.frequency === freq.value
-                        ? "bg-primary/10 border-2 border-primary font-medium"
-                        : "bg-muted/50 border border-transparent hover:bg-muted"
-                    )}
-                  >
-                    {freq.label}
-                  </button>
-                ))}
+            {formData.scheduleType === "fixed" && (
+              <div className="flex flex-col gap-3">
+                <Label className="text-right">تكرار الدفع</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[{ value: "monthly", label: "شهري" }, { value: "yearly", label: "سنوي" }, { value: "one_time", label: "مرة واحدة" }].map((freq) => (
+                    <button
+                      key={freq.value}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, frequency: freq.value, dueDay: "", dueMonth: "", dueDate: "" })}
+                      className={cn(
+                        "px-3 py-2 rounded-xl text-sm transition-all",
+                        formData.frequency === freq.value
+                          ? "bg-primary/10 border-2 border-primary font-medium"
+                          : "bg-muted/50 border border-transparent hover:bg-muted"
+                      )}
+                    >
+                      {freq.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
-            {formData.frequency === "monthly" && (
+            {(formData.scheduleType === "variable" || formData.frequency === "one_time") && (
               <div className="flex flex-col gap-2">
-                <Label htmlFor="dueDay" className="text-right">يوم الاستحقاق <span className="text-destructive">*</span></Label>
-                <Input
+                <Label htmlFor="dueDate" className="text-right">تاريخ دفع الالتزام <span className="text-destructive">*</span></Label>
+                <div className="relative">
+                  <Input
+                    ref={dueDateRef}
+                    id="dueDate"
+                    type="date"
+                    lang="en-GB"
+                    dir="ltr"
+                    value={formData.dueDate}
+                    onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
+                    onClick={() => openDatePicker(dueDateRef.current)}
+                    onKeyDown={(e) => e.preventDefault()}
+                    onPaste={(e) => e.preventDefault()}
+                    className={cn(dateInputClassName, errors.dueDate && "border-destructive")}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => openDatePicker(dueDateRef.current)}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-md bg-primary/10 text-primary flex items-center justify-center hover:bg-primary/15 transition-colors"
+                    aria-label="اختيار تاريخ دفع الالتزام"
+                  >
+                    <Calendar className="h-4 w-4" />
+                  </button>
+                </div>
+                {errors.dueDate && <p className="text-xs text-destructive">{errors.dueDate}</p>}
+              </div>
+            )}
+
+            {formData.scheduleType === "fixed" && formData.frequency === "monthly" && (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="dueDay" className="text-right">يوم الدفع <span className="text-destructive">*</span></Label>
+                <select
                   id="dueDay"
-                  type="number"
-                  min="1"
-                  max="31"
                   value={formData.dueDay}
                   onChange={(e) => setFormData({ ...formData, dueDay: e.target.value })}
-                  placeholder="1-31"
-                  className={cn("text-right", errors.dueDay && "border-destructive")}
-                />
+                  className={cn(
+                    "w-full h-10 px-3 rounded-md border bg-background text-sm text-right",
+                    errors.dueDay && "border-destructive"
+                  )}
+                >
+                  <option value="">اختر يوم الدفع</option>
+                  {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
+                    <option key={day} value={day}>{day}</option>
+                  ))}
+                </select>
                 {errors.dueDay && <p className="text-xs text-destructive">{errors.dueDay}</p>}
               </div>
             )}
 
-            {formData.frequency === "yearly" && (
+            {formData.scheduleType === "fixed" && formData.frequency === "yearly" && (
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="dueDay" className="text-right">اليوم <span className="text-destructive">*</span></Label>
-                  <Input
+                  <Label htmlFor="dueDay" className="text-right">يوم الدفع <span className="text-destructive">*</span></Label>
+                  <select
                     id="dueDay"
-                    type="number"
-                    min="1"
-                    max="31"
                     value={formData.dueDay}
                     onChange={(e) => setFormData({ ...formData, dueDay: e.target.value })}
-                    placeholder="1-31"
-                    className={cn("text-right", errors.dueDay && "border-destructive")}
-                  />
+                    className={cn(
+                      "w-full h-10 px-3 rounded-md border bg-background text-sm text-right",
+                      errors.dueDay && "border-destructive"
+                    )}
+                  >
+                    <option value="">اختر يوم الدفع</option>
+                    {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
+                      <option key={day} value={day}>{day}</option>
+                    ))}
+                  </select>
                   {errors.dueDay && <p className="text-xs text-destructive">{errors.dueDay}</p>}
                 </div>
                 <div className="flex flex-col gap-2">
@@ -284,26 +434,6 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
                   </select>
                   {errors.dueMonth && <p className="text-xs text-destructive">{errors.dueMonth}</p>}
                 </div>
-              </div>
-            )}
-
-            {formData.frequency === "one_time" && (
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="dueDate" className="text-right">تاريخ الاستحقاق <span className="text-destructive">*</span></Label>
-                <div className="relative">
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                    <Calendar className="h-5 w-5 text-primary" />
-                  </div>
-                  <Input
-                    id="dueDate"
-                    type="date"
-                    lang="ar"
-                    value={formData.dueDate}
-                    onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
-                    className={cn("text-right pr-11", errors.dueDate && "border-destructive")}
-                  />
-                </div>
-                {errors.dueDate && <p className="text-xs text-destructive">{errors.dueDate}</p>}
               </div>
             )}
 
@@ -415,30 +545,12 @@ const obligationTypeColors: Record<string, string> = {
 
 // تنسيق المبلغ
 function formatAmount(amount: number) {
-  return new Intl.NumberFormat("ar-OM", {
-    style: "currency",
-    currency: "OMR",
-    minimumFractionDigits: 3,
-  }).format(amount);
+  return `${formatCurrency(amount)} ر.ع`;
 }
 
 // عرض موعد الاستحقاق
 function formatDueDate(obligation: Obligation) {
-  if (obligation.frequency === "monthly" && obligation.dueDay) {
-    return `${obligation.dueDay} من كل شهر`;
-  }
-  if (obligation.frequency === "yearly" && obligation.dueMonth && obligation.dueDay) {
-    const months = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
-    return `${obligation.dueDay} ${months[obligation.dueMonth - 1]} من كل عام`;
-  }
-  if (obligation.frequency === "one_time" && obligation.dueDate) {
-    return new Date(obligation.dueDate * 1000).toLocaleDateString("ar-OM", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    });
-  }
-  return "غير محدد";
+  return formatObligationDueDate(obligation);
 }
 
 export default function Obligations() {
@@ -510,6 +622,8 @@ export default function Obligations() {
         note: obligation.title,
         categoryId: obligation.categoryId?.toString() || "",
         walletId: obligation.walletId.toString(),
+        obligationId: obligation.id.toString(),
+        obligationScheduleType: obligation.scheduleType,
       },
     }));
 
@@ -655,11 +769,7 @@ export default function Obligations() {
                   <div>
                     <p className="text-xs text-muted-foreground mb-2">الحالة</p>
                     <div className="flex flex-wrap gap-2">
-                      {[
-                        { value: "all", label: "الكل" },
-                        { value: "active", label: `النشطة (${activeObligations.length})` },
-                        { value: "inactive", label: `المتوقفة (${inactiveObligations.length})` },
-                      ].map((item) => (
+                      {[{ value: "all", label: "الكل" }, { value: "active", label: `النشطة (${activeObligations.length})` }, { value: "inactive", label: `المتوقفة (${inactiveObligations.length})` }].map((item) => (
                         <button
                           key={item.value}
                           type="button"
@@ -677,12 +787,7 @@ export default function Obligations() {
                   <div>
                     <p className="text-xs text-muted-foreground mb-2">التكرار</p>
                     <div className="flex flex-wrap gap-2">
-                      {[
-                        { value: "all", label: "الكل" },
-                        { value: "monthly", label: "شهري" },
-                        { value: "yearly", label: "سنوي" },
-                        { value: "one_time", label: "مرة واحدة" },
-                      ].map((item) => (
+                      {[{ value: "all", label: "الكل" }, { value: "monthly", label: "شهري" }, { value: "yearly", label: "سنوي" }, { value: "one_time", label: "مرة واحدة" }].map((item) => (
                         <button
                           key={item.value}
                           type="button"
@@ -700,11 +805,7 @@ export default function Obligations() {
                   <div>
                     <p className="text-xs text-muted-foreground mb-2">التركيز</p>
                     <div className="flex flex-wrap gap-2">
-                      {[
-                        { value: "all", label: "كل الالتزامات" },
-                        { value: "upcoming", label: "القريبة" },
-                        { value: "auto", label: "التلقائية" },
-                      ].map((item) => (
+                      {[{ value: "all", label: "كل الالتزامات" }, { value: "upcoming", label: "القريبة" }, { value: "auto", label: "التلقائية" }].map((item) => (
                         <button
                           key={item.value}
                           type="button"
@@ -742,7 +843,7 @@ export default function Obligations() {
                           <div>
                             <h4 className="font-semibold text-sm">{obligation.title}</h4>
                             <span className="text-xs text-muted-foreground">
-                              {formatObligationDueDate(obligation)}
+                              {formatDueDate(obligation)}
                             </span>
                           </div>
                         </div>
@@ -774,6 +875,8 @@ export default function Obligations() {
                   const walletName = wallets.find((wallet) => wallet.id === obligation.walletId)?.name;
                   const categoryName = categories.find((category) => category.id === obligation.categoryId)?.name;
                   const upcoming = upcomingObligations.find((item) => item.id === obligation.id);
+                  const statusLabel = getObligationStatusLabel(obligation);
+                  const ended = isObligationEnded(obligation);
                   return (
                   <div 
                     key={obligation.id} 
@@ -795,6 +898,9 @@ export default function Obligations() {
                           <h4 className="font-bold text-base truncate">{obligation.title}</h4>
                           <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-muted-foreground">
                             {obligationTypeLabels[obligation.obligationType]}
+                            <span className="px-2 py-0.5 rounded-full bg-muted text-foreground font-medium">
+                              {obligation.scheduleType === "fixed" ? "ثابت" : "متغير"}
+                            </span>
                             {obligation.autoCreateTransaction ? (
                               <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">تلقائي</span>
                             ) : null}
@@ -805,7 +911,7 @@ export default function Obligations() {
                         </div>
                       </div>
                       <div className="text-left shrink-0">
-                        <span className="text-lg font-bold text-destructive">
+                        <span className="font-bold text-destructive text-sm">
                           {formatAmount(obligation.amount)}
                         </span>
                       </div>
@@ -818,14 +924,14 @@ export default function Obligations() {
                           <Calendar className="h-3.5 w-3.5" />
                           {formatDueDate(obligation)}
                         </span>
-                        <span>{frequencyLabels[obligation.frequency]}</span>
+                        <span>{obligation.scheduleType === "fixed" ? frequencyLabels[obligation.frequency] : "متغير"}</span>
+                        <span>البداية: {formatDate(obligation.startDate)}</span>
+                        {obligation.endDate ? <span>الانتهاء: {formatDate(obligation.endDate)}</span> : <span>بدون انتهاء</span>}
                         {walletName ? <span>المحفظة: {walletName}</span> : <span>بدون محفظة</span>}
                         {categoryName ? <span>القسم: {categoryName}</span> : null}
-                        {obligation.isActive ? (
-                          <span className="text-emerald-600 font-medium">• نشط</span>
-                        ) : (
-                          <span className="text-slate-400">• متوقف</span>
-                        )}
+                        <span className={cn("font-medium", ended ? "text-amber-600" : obligation.isActive ? "text-emerald-600" : "text-slate-400")}>
+                          • {statusLabel}
+                        </span>
                         {upcoming ? (
                           <span className="text-amber-600 font-medium">
                             {upcoming.daysLeft === 0 ? "مستحق اليوم" : upcoming.daysLeft === 1 ? "مستحق غداً" : `بعد ${upcoming.daysLeft} يوم`}
@@ -834,6 +940,18 @@ export default function Obligations() {
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2">
+                        {obligation.scheduleType === "variable" ? (
+                          <Link href={`/obligations/${obligation.id}`}>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="rounded-full"
+                            >
+                              <Calendar className="h-4 w-4 ml-1" />
+                              تفاصيل المتابعة
+                            </Button>
+                          </Link>
+                        ) : null}
                         <Button
                           variant="outline"
                           size="sm"

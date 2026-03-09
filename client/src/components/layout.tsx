@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { Home, ListFilter, Wallet, PieChart, Plus, Settings, Loader2, BarChart3, Menu, X, ChevronLeft, Receipt } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
@@ -15,7 +15,26 @@ import {
 } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useCategories, useWallets, useCreateTransaction } from "@/lib/hooks";
+import { apiRequest } from "@/lib/queryClient";
+import { queryClient } from "@/lib/queryClient";
+import { useCategories, useWallets, useCreateTransaction, useUser, useObligation, useVariableObligationStatuses } from "@/lib/hooks";
+
+function startOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function addMonths(date: Date, months: number) {
+  return new Date(date.getFullYear(), date.getMonth() + months, 1);
+}
+
+function formatMonthKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getDefaultMonthStatus(monthDate: Date) {
+  const currentMonth = startOfMonth(new Date());
+  return monthDate < currentMonth ? "late" : "unpaid";
+}
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -27,6 +46,8 @@ type AddTransactionDetail = {
   note?: string;
   categoryId?: string;
   walletId?: string;
+  obligationId?: string;
+  obligationScheduleType?: string;
 };
 
 export default function Layout({ children }: LayoutProps) {
@@ -40,14 +61,53 @@ export default function Layout({ children }: LayoutProps) {
   const [txNote, setTxNote] = useState("");
   const [txCategoryId, setTxCategoryId] = useState("");
   const [txWalletId, setTxWalletId] = useState("");
+  const [sourceObligationId, setSourceObligationId] = useState("");
+  const [sourceObligationScheduleType, setSourceObligationScheduleType] = useState("");
+  const sourceObligationNumericId = sourceObligationId ? parseInt(sourceObligationId, 10) : undefined;
 
   const { data: categoriesData } = useCategories();
   const { data: walletsData } = useWallets();
+  const { data: user } = useUser();
+  const { data: sourceObligation } = useObligation(sourceObligationNumericId);
+  const { data: sourceObligationStatuses = [] } = useVariableObligationStatuses(sourceObligationNumericId);
   const createTransaction = useCreateTransaction();
+  const isSystemAdmin = user?.role === "system_admin";
 
   const categories = categoriesData || [];
   const wallets = walletsData || [];
   const filteredCategories = categories.filter(c => c.type === txType);
+  const isVariableObligationQuickPay = sourceObligationScheduleType === "variable" && txType === "expense" && !!sourceObligation;
+  const remainingVariableMonths = sourceObligation && sourceObligation.scheduleType === "variable"
+    ? (() => {
+        const startDate = startOfMonth(new Date(sourceObligation.startDate * 1000));
+        const minimumEnd = addMonths(startOfMonth(new Date()), 23);
+        const explicitEnd = sourceObligation.endDate ? startOfMonth(new Date(sourceObligation.endDate * 1000)) : minimumEnd;
+        const endDate = explicitEnd > minimumEnd ? explicitEnd : minimumEnd;
+        const paidMonths = new Set(
+          sourceObligationStatuses.filter((item) => item.status === "paid").map((item) => item.monthKey),
+        );
+        const months: string[] = [];
+
+        for (let cursor = new Date(startDate); cursor <= endDate; cursor = addMonths(cursor, 1)) {
+          const monthKey = formatMonthKey(cursor);
+          const savedStatus = sourceObligationStatuses.find((item) => item.monthKey === monthKey)?.status ?? getDefaultMonthStatus(cursor);
+          if (savedStatus !== "paid" && !paidMonths.has(monthKey)) {
+            months.push(monthKey);
+          }
+        }
+
+        return months;
+      })()
+    : [];
+  const quickPayAmountOptions = isVariableObligationQuickPay && sourceObligation
+    ? remainingVariableMonths.slice(0, 12).map((_, index) => {
+        const monthsCount = index + 1;
+        return {
+          monthsCount,
+          amount: Number((sourceObligation.amount * monthsCount).toFixed(3)),
+        };
+      })
+    : [];
 
   useEffect(() => {
     const handleOpenAddTransaction = (event: Event) => {
@@ -55,11 +115,21 @@ export default function Layout({ children }: LayoutProps) {
       const detail = customEvent.detail;
 
       if (detail) {
-        if (detail.type) setTxType(detail.type);
-        if (detail.amount !== undefined) setTxAmount(detail.amount);
-        if (detail.note !== undefined) setTxNote(detail.note);
-        if (detail.categoryId !== undefined) setTxCategoryId(detail.categoryId);
-        if (detail.walletId !== undefined) setTxWalletId(detail.walletId);
+        setTxType(detail.type ?? "expense");
+        setTxAmount(detail.amount ?? "");
+        setTxNote(detail.note ?? "");
+        setTxCategoryId(detail.categoryId ?? "");
+        setTxWalletId(detail.walletId ?? "");
+        setSourceObligationId(detail.obligationId ?? "");
+        setSourceObligationScheduleType(detail.obligationScheduleType ?? "");
+      } else {
+        setTxType("expense");
+        setTxAmount("");
+        setTxNote("");
+        setTxCategoryId("");
+        setTxWalletId("");
+        setSourceObligationId("");
+        setSourceObligationScheduleType("");
       }
 
       setIsAddTxOpen(true);
@@ -68,6 +138,18 @@ export default function Layout({ children }: LayoutProps) {
     window.addEventListener('open-add-transaction', handleOpenAddTransaction as EventListener);
     return () => window.removeEventListener('open-add-transaction', handleOpenAddTransaction);
   }, []);
+
+  useEffect(() => {
+    if (isVariableObligationQuickPay) {
+      const matchingOption = quickPayAmountOptions.find((option) => option.amount.toString() === txAmount);
+      if (!matchingOption && quickPayAmountOptions.length > 0) {
+        setTxAmount(quickPayAmountOptions[0].amount.toString());
+      }
+      if (quickPayAmountOptions.length === 0) {
+        setTxAmount("");
+      }
+    }
+  }, [isVariableObligationQuickPay, quickPayAmountOptions, txAmount]);
 
   // Main bottom navigation (most important)
   const mainNavItems = [
@@ -82,6 +164,7 @@ export default function Layout({ children }: LayoutProps) {
     { href: "/obligations", icon: Receipt, label: "الالتزامات" },
     { href: "/categories", icon: PieChart, label: "الأقسام" },
     { href: "/settings", icon: Settings, label: "الإعدادات" },
+    ...(isSystemAdmin ? [{ href: "/admin/users", icon: Settings, label: "إدارة المستخدمين" }] : []),
   ];
 
   const handleAddTransaction = async (e: React.FormEvent) => {
@@ -96,17 +179,40 @@ export default function Layout({ children }: LayoutProps) {
     }
     
     try {
+      const parsedAmount = parseFloat(txAmount);
+      if (isVariableObligationQuickPay && !quickPayAmountOptions.some((option) => option.amount === parsedAmount)) {
+        toast({ title: "خطأ", description: "اختر مبلغًا من الخيارات الجاهزة لهذا الالتزام", variant: "destructive" });
+        return;
+      }
+
       await createTransaction.mutateAsync({
         type: txType,
-        amount: parseFloat(txAmount),
+        amount: parsedAmount,
         note: txNote || "",
         categoryId: txCategoryId ? parseInt(txCategoryId) : null,
         walletId: parseInt(txWalletId),
       });
+
+      let allocationDescription = "";
+
+      if (sourceObligationId && sourceObligationScheduleType === "variable" && txType === "expense") {
+        const response = await apiRequest("POST", `/api/obligations/${sourceObligationId}/apply-variable-payment`, {
+          amount: parsedAmount,
+        });
+        const result = await response.json() as { allocatedMonths: number };
+
+        await queryClient.invalidateQueries({ queryKey: ["/api/obligations"] });
+        await queryClient.invalidateQueries({ queryKey: ["/api/obligations", Number(sourceObligationId)] });
+        await queryClient.invalidateQueries({ queryKey: ["/api/obligations", Number(sourceObligationId), "variable-statuses"] });
+
+        if (result.allocatedMonths > 0) {
+          allocationDescription = ` وربطنا ${result.allocatedMonths} شهر بالتسلسل`;
+        }
+      }
       
       toast({
         title: "تمت الإضافة بنجاح",
-        description: `تم تسجيل ${txType === 'expense' ? 'مصروف' : txType === 'income' ? 'دخل' : 'دين'} بقيمة ${txAmount} ر.ع`,
+        description: `تم تسجيل ${txType === 'expense' ? 'مصروف' : txType === 'income' ? 'دخل' : 'دين'} بقيمة ${txAmount} ر.ع${allocationDescription}`,
       });
       
       setIsAddTxOpen(false);
@@ -114,6 +220,8 @@ export default function Layout({ children }: LayoutProps) {
       setTxNote("");
       setTxCategoryId("");
       setTxWalletId("");
+      setSourceObligationId("");
+      setSourceObligationScheduleType("");
       setTxType("expense");
     } catch (error: any) {
       const message = error?.response?.data?.message || error?.message || "فشل إضافة المعاملة";
@@ -256,18 +364,19 @@ export default function Layout({ children }: LayoutProps) {
 
       <Drawer open={isAddTxOpen} onOpenChange={setIsAddTxOpen}>
         <DrawerContent dir="rtl">
-          <div className="mx-auto w-full max-w-sm">
-            <DrawerHeader>
-              <DrawerTitle>إضافة معاملة جديدة</DrawerTitle>
-              <DrawerDescription>سجل تفاصيل الدخل، المصروف، أو الدين.</DrawerDescription>
+          <div className="mx-auto flex w-full max-w-sm min-h-0 flex-1 flex-col">
+            <DrawerHeader className="shrink-0 pb-3">
+              <DrawerTitle className="text-xl">إضافة معاملة جديدة</DrawerTitle>
+              <DrawerDescription className="text-sm leading-6">سجل تفاصيل الدخل، المصروف، أو الدين بشكل واضح وسريع.</DrawerDescription>
             </DrawerHeader>
-            
-            <form onSubmit={handleAddTransaction} className="p-4 pb-0 flex flex-col gap-5">
-              <div className="flex bg-muted/50 p-1 rounded-xl">
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+            <form onSubmit={handleAddTransaction} className="flex flex-col gap-5 pb-2">
+              <div className="flex bg-muted/60 p-1 rounded-2xl border border-border/50 shadow-sm">
                 {["expense", "income", "debt"].map((type) => (
                   <button key={type} type="button" onClick={() => { setTxType(type); setTxCategoryId(""); }}
-                    className={cn("flex-1 py-2 text-sm rounded-lg transition-all",
-                      txType === type ? "bg-background shadow-sm font-medium text-foreground" : "text-muted-foreground"
+                    className={cn("flex-1 py-2.5 text-sm rounded-xl transition-all",
+                      txType === type ? "bg-background shadow-sm font-medium text-foreground" : "text-muted-foreground hover:text-foreground"
                     )}>
                     {type === 'expense' ? 'مصروف' : type === 'income' ? 'دخل' : 'دين'}
                   </button>
@@ -275,22 +384,62 @@ export default function Layout({ children }: LayoutProps) {
               </div>
 
               <div className="flex flex-col gap-2">
-                <Label htmlFor="tx-amount">المبلغ (ر.ع)</Label>
-                <Input id="tx-amount" type="number" placeholder="0.00" value={txAmount} onChange={(e) => setTxAmount(e.target.value)} className="text-right text-lg" required step="0.01" />
+                <Label htmlFor="tx-amount" className="text-base font-semibold">المبلغ (ر.ع)</Label>
+                {isVariableObligationQuickPay ? (
+                  <div className="rounded-2xl border border-primary/15 bg-gradient-to-b from-primary/5 to-background p-4 shadow-sm space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">اختيار مبلغ الدفعة</p>
+                        <p className="text-xs leading-5 text-muted-foreground">اختر من القائمة داخل هذا المستطيل حسب عدد الأشهر التي تريد دفعها.</p>
+                      </div>
+                      <div className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                        {quickPayAmountOptions.length} خيارات
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-border/60 bg-background px-4 py-3 shadow-sm space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-xs text-muted-foreground">المبلغ المحدد</p>
+                          <p className="text-xl font-bold text-foreground">{txAmount ? `${formatCurrency(Number(txAmount))} ر.ع` : "-"}</p>
+                        </div>
+                        <div className="text-left text-xs text-muted-foreground">
+                          {quickPayAmountOptions.find((option) => option.amount.toString() === txAmount)?.monthsCount ?? 0} أشهر
+                        </div>
+                      </div>
+
+                      <select
+                        id="tx-amount"
+                        value={txAmount}
+                        onChange={(e) => setTxAmount(e.target.value)}
+                        className="h-12 w-full rounded-xl border border-border bg-background px-3 text-sm text-right shadow-sm outline-none focus:border-primary"
+                        required
+                      >
+                        {quickPayAmountOptions.map((option) => (
+                          <option key={option.monthsCount} value={option.amount.toString()}>
+                            {formatCurrency(option.amount)} ر.ع - {option.monthsCount} {option.monthsCount === 1 ? "شهر" : "أشهر"}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                ) : (
+                  <Input id="tx-amount" type="number" placeholder="0.00" value={txAmount} onChange={(e) => setTxAmount(e.target.value)} className="text-right text-lg h-14 rounded-2xl shadow-sm" required step="0.01" />
+                )}
               </div>
 
               <div className="flex flex-col gap-2">
-                <Label htmlFor="tx-note">ملاحظة</Label>
-                <Input id="tx-note" placeholder="مثال: عشاء، راتب شهري..." value={txNote} onChange={(e) => setTxNote(e.target.value)} className="text-right" />
+                <Label htmlFor="tx-note" className="text-base font-semibold">ملاحظة</Label>
+                <Input id="tx-note" placeholder="مثال: قسط، إيجار، دفعة شهرية..." value={txNote} onChange={(e) => setTxNote(e.target.value)} className="text-right h-14 rounded-2xl shadow-sm" />
               </div>
 
               {filteredCategories.length > 0 && (
                 <div className="flex flex-col gap-2">
-                  <Label>القسم</Label>
+                  <Label className="text-base font-semibold">القسم</Label>
                   <div className="flex flex-wrap gap-2">
                     {filteredCategories.map((cat) => (
                       <button key={cat.id} type="button" onClick={() => setTxCategoryId(cat.id.toString())}
-                        className={cn("px-3 py-1.5 rounded-full text-sm border transition-all flex items-center gap-1.5",
+                        className={cn("px-3 py-2 rounded-full text-sm border transition-all flex items-center gap-1.5 shadow-sm",
                           txCategoryId === cat.id.toString() ? "border-primary bg-primary/10 text-primary font-medium" : "border-border/50 hover:bg-muted/50"
                         )}>
                         <span>{cat.icon}</span>
@@ -302,19 +451,19 @@ export default function Layout({ children }: LayoutProps) {
               )}
 
               <div className="flex flex-col gap-2">
-                <Label className="flex items-center gap-1">
+                <Label className="flex items-center gap-1 text-base font-semibold">
                   المحفظة
                   <span className="text-destructive">*</span>
                 </Label>
                 {wallets.length === 0 ? (
-                  <div className="p-3 rounded-xl bg-destructive/10 text-destructive text-sm text-center">
+                  <div className="p-3 rounded-2xl bg-destructive/10 text-destructive text-sm text-center">
                     لا توجد محافظ. يجب إنشاء محفظة أولاً من صفحة المحافظ
                   </div>
                 ) : (
                   <div className="flex flex-wrap gap-2">
                     {wallets.map((w) => (
                       <button key={w.id} type="button" onClick={() => setTxWalletId(w.id.toString())}
-                        className={cn("px-3 py-1.5 rounded-full text-sm border transition-all",
+                        className={cn("px-3 py-2 rounded-full text-sm border transition-all shadow-sm",
                           txWalletId === w.id.toString() ? "border-primary bg-primary/10 text-primary font-medium" : "border-border/50 hover:bg-muted/50"
                         )}>
                         {w.name}
@@ -327,15 +476,16 @@ export default function Layout({ children }: LayoutProps) {
                 )}
               </div>
             </form>
+            </div>
 
-            <DrawerFooter className="pt-6">
-              <Button onClick={handleAddTransaction} className="w-full" disabled={createTransaction.isPending}>
+            <DrawerFooter className="shrink-0 border-t border-border/50 bg-background/95 pt-4 pb-5 backdrop-blur">
+              <Button onClick={handleAddTransaction} className="w-full h-14 rounded-2xl text-base shadow-lg shadow-primary/20" disabled={createTransaction.isPending}>
                 {createTransaction.isPending ? (
                   <div className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /><span>جاري الحفظ...</span></div>
                 ) : "حفظ المعاملة"}
               </Button>
               <DrawerClose asChild>
-                <Button variant="outline" className="w-full">إلغاء</Button>
+                <Button variant="outline" className="w-full h-14 rounded-2xl">إلغاء</Button>
               </DrawerClose>
             </DrawerFooter>
           </div>

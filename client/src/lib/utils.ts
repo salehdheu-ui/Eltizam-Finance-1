@@ -2,6 +2,10 @@ import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 import type { Obligation } from "@shared/schema"
 
+const obligationMonths = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"]
+const englishNumberLocale = "en-US"
+const englishDateLocale = "en-GB"
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
@@ -30,69 +34,110 @@ export function formatRelativeArabicDate(dateInput: string | Date | number) {
   if (days === 0) return "اليوم"
   if (days === 1) return "أمس"
 
-  return d.toLocaleDateString("ar-OM", { day: "numeric", month: "long" })
+  return formatDate(d, { day: "2-digit", month: "2-digit", year: "numeric" })
+}
+
+export function isObligationEnded(obligation: Obligation) {
+  return !!obligation.endDate && obligation.endDate <= Math.floor(Date.now() / 1000)
+}
+
+export function getObligationStatusLabel(obligation: Obligation) {
+  if (isObligationEnded(obligation)) return "منتهي"
+  return obligation.isActive ? "نشط" : "غير نشط"
 }
 
 export function formatObligationDueDate(obligation: Obligation) {
+  if (obligation.scheduleType === "variable" && obligation.dueDate) {
+    return formatDate(obligation.dueDate)
+  }
+
   if (obligation.frequency === "monthly" && obligation.dueDay) {
-    return `${obligation.dueDay} من الشهر`
+    return `${formatNumber(obligation.dueDay)} من الشهر`
   }
 
   if (obligation.frequency === "yearly" && obligation.dueMonth && obligation.dueDay) {
-    const months = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"]
-    return `${obligation.dueDay} ${months[obligation.dueMonth - 1]}`
+    return `${formatNumber(obligation.dueDay)} ${obligationMonths[obligation.dueMonth - 1]}`
   }
 
   if (obligation.frequency === "one_time" && obligation.dueDate) {
-    return toDate(obligation.dueDate).toLocaleDateString("ar-OM", {
-      day: "numeric",
-      month: "short",
-    })
+    return formatDate(obligation.dueDate)
   }
 
   return "غير محدد"
 }
 
+export function formatNumber(value: number, minimumFractionDigits = 0, maximumFractionDigits = minimumFractionDigits) {
+  return new Intl.NumberFormat(englishNumberLocale, {
+    minimumFractionDigits,
+    maximumFractionDigits,
+  }).format(value)
+}
+
+export function formatCurrency(value: number, fractionDigits = 3) {
+  return formatNumber(value, fractionDigits, fractionDigits)
+}
+
+export function formatPercentage(value: number, fractionDigits = 1) {
+  return `${formatNumber(value, fractionDigits, fractionDigits)}%`
+}
+
+export function formatDate(dateInput: string | Date | number, options?: Intl.DateTimeFormatOptions) {
+  return toDate(dateInput).toLocaleDateString(englishDateLocale, options)
+}
+
+export function formatTime(dateInput: string | Date | number, options?: Intl.DateTimeFormatOptions) {
+  return toDate(dateInput).toLocaleTimeString(englishDateLocale, {
+    hour: "2-digit",
+    minute: "2-digit",
+    ...options,
+  })
+}
+
 export type UpcomingObligation = Obligation & { daysLeft: number }
+
+function differenceInDays(from: Date, to: Date) {
+  return Math.ceil((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24))
+}
+
+function getNextMonthlyOccurrence(now: Date, dueDay: number) {
+  const occurrence = new Date(now.getFullYear(), now.getMonth(), dueDay)
+  if (occurrence.getTime() < now.getTime()) {
+    return new Date(now.getFullYear(), now.getMonth() + 1, dueDay)
+  }
+  return occurrence
+}
+
+function getNextYearlyOccurrence(now: Date, dueMonth: number, dueDay: number) {
+  let occurrence = new Date(now.getFullYear(), dueMonth - 1, dueDay)
+  if (occurrence.getTime() < now.getTime()) {
+    occurrence = new Date(now.getFullYear() + 1, dueMonth - 1, dueDay)
+  }
+  return occurrence
+}
 
 export function getUpcomingObligations(obligations: Obligation[] | undefined, limit = 5): UpcomingObligation[] {
   if (!obligations) return []
 
   const now = new Date()
-  const currentDay = now.getDate()
-  const currentMonth = now.getMonth() + 1
 
   return obligations
-    .filter((obligation) => obligation.isActive)
+    .filter((obligation) => obligation.isActive && !isObligationEnded(obligation))
     .map((obligation) => {
-      let daysLeft = 0
+      let daysLeft = Number.POSITIVE_INFINITY
 
-      if (obligation.frequency === "monthly" && obligation.dueDay) {
-        daysLeft = obligation.dueDay - currentDay
-        if (daysLeft < 0) {
-          daysLeft += 30
-        }
+      if (obligation.scheduleType === "variable" && obligation.dueDate) {
+        daysLeft = differenceInDays(now, toDate(obligation.dueDate))
+      } else if (obligation.frequency === "monthly" && obligation.dueDay) {
+        daysLeft = differenceInDays(now, getNextMonthlyOccurrence(now, obligation.dueDay))
       } else if (obligation.frequency === "yearly" && obligation.dueMonth && obligation.dueDay) {
-        const monthsLeft = obligation.dueMonth - currentMonth
-        if (monthsLeft < 0) {
-          daysLeft = (12 + monthsLeft) * 30 + (obligation.dueDay - currentDay)
-        } else if (monthsLeft === 0) {
-          daysLeft = obligation.dueDay - currentDay
-          if (daysLeft < 0) {
-            daysLeft += 365
-          }
-        } else {
-          daysLeft = monthsLeft * 30 + (obligation.dueDay - currentDay)
-        }
+        daysLeft = differenceInDays(now, getNextYearlyOccurrence(now, obligation.dueMonth, obligation.dueDay))
       } else if (obligation.frequency === "one_time" && obligation.dueDate) {
-        const dueDate = toDate(obligation.dueDate)
-        const diffTime = dueDate.getTime() - now.getTime()
-        daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+        daysLeft = differenceInDays(now, toDate(obligation.dueDate))
       }
 
       return { ...obligation, daysLeft }
     })
-    .filter((obligation): obligation is UpcomingObligation => obligation.daysLeft >= 0)
+    .filter((obligation): obligation is UpcomingObligation => Number.isFinite(obligation.daysLeft) && obligation.daysLeft >= 0)
     .sort((a, b) => a.daysLeft - b.daysLeft)
     .slice(0, limit)
 }
