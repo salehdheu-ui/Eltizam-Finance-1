@@ -45,6 +45,22 @@ export const transactions = sqliteTable("transactions", {
   date: integer("date").notNull().default(sql`(unixepoch())`),
 });
 
+export const recurringIncomes = sqliteTable("recurring_incomes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().references(() => users.id),
+  title: text("title").notNull(),
+  amount: real("amount").notNull(),
+  incomeType: text("income_type").notNull().default("salary"),
+  dayOfMonth: integer("day_of_month").notNull(),
+  walletId: integer("wallet_id").notNull().references(() => wallets.id),
+  categoryId: integer("category_id").references(() => categories.id),
+  note: text("note").default(""),
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  lastAppliedMonth: text("last_applied_month"),
+  createdAt: integer("created_at").notNull().default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at").notNull().default(sql`(unixepoch())`),
+});
+
 export const obligations = sqliteTable("obligations", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull().references(() => users.id),
@@ -116,6 +132,28 @@ export const insertTransactionSchema = createInsertSchema(transactions).pick({
   categoryId: z.number().nullable(),
 });
 
+export const insertRecurringIncomeSchema = createInsertSchema(recurringIncomes).pick({
+  title: true,
+  amount: true,
+  incomeType: true,
+  dayOfMonth: true,
+  walletId: true,
+  categoryId: true,
+  note: true,
+  isActive: true,
+  lastAppliedMonth: true,
+}).extend({
+  title: z.string().min(1, "يجب إدخال اسم الدخل"),
+  amount: z.number().positive("المبلغ يجب أن يكون أكبر من صفر"),
+  incomeType: z.enum(["salary", "other_recurring"]),
+  dayOfMonth: z.number().int().min(1).max(28),
+  walletId: z.number({ required_error: "يجب اختيار محفظة أو بنك" }),
+  categoryId: z.number().nullable().optional(),
+  note: z.string().max(500).nullable().optional(),
+  isActive: z.boolean().optional(),
+  lastAppliedMonth: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "صيغة الشهر يجب أن تكون YYYY-MM").nullable().optional(),
+});
+
 export const insertObligationSchema = createInsertSchema(obligations).pick({
   title: true,
   amount: true,
@@ -167,6 +205,8 @@ export type InsertCategory = z.infer<typeof insertCategorySchema>;
 export type Category = typeof categories.$inferSelect;
 export type InsertTransaction = z.infer<typeof insertTransactionSchema>;
 export type Transaction = typeof transactions.$inferSelect;
+export type InsertRecurringIncome = z.infer<typeof insertRecurringIncomeSchema>;
+export type RecurringIncome = typeof recurringIncomes.$inferSelect;
 export type InsertObligation = z.infer<typeof insertObligationSchema>;
 export type Obligation = typeof obligations.$inferSelect;
 export type InsertVariableObligationMonthStatus = z.infer<typeof insertVariableObligationMonthStatusSchema>;

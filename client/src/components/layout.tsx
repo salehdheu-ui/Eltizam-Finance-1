@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Home, ListFilter, Wallet, PieChart, Plus, Settings, Loader2, BarChart3, Menu, X, ChevronLeft, Receipt } from "lucide-react";
+import { Home, ListFilter, Wallet, PieChart, Plus, Settings, Loader2, BarChart3, Menu, X, ChevronLeft, Receipt, Landmark } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { apiRequest } from "@/lib/queryClient";
+import { ApiError, apiRequest } from "@/lib/queryClient";
 import { queryClient } from "@/lib/queryClient";
 import { useCategories, useWallets, useCreateTransaction, useUser, useObligation, useVariableObligationStatuses } from "@/lib/hooks";
 
@@ -71,6 +71,7 @@ export default function Layout({ children }: LayoutProps) {
   const { data: sourceObligation } = useObligation(sourceObligationNumericId);
   const { data: sourceObligationStatuses = [] } = useVariableObligationStatuses(sourceObligationNumericId);
   const createTransaction = useCreateTransaction();
+  const isSubmittingTransaction = createTransaction.isPending;
   const isSystemAdmin = user?.role === "system_admin";
 
   const categories = categoriesData || [];
@@ -160,6 +161,7 @@ export default function Layout({ children }: LayoutProps) {
 
   // Sidebar navigation (less frequently used)
   const sidebarItems = [
+    { href: "/income", icon: Landmark, label: "الدخل والراتب" },
     { href: "/wallets", icon: Wallet, label: "المحافظ" },
     { href: "/obligations", icon: Receipt, label: "الالتزامات" },
     { href: "/categories", icon: PieChart, label: "الأقسام" },
@@ -169,6 +171,9 @@ export default function Layout({ children }: LayoutProps) {
 
   const handleAddTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingTransaction) {
+      return;
+    }
     if (!txAmount) {
       toast({ title: "خطأ", description: "يجب إدخال المبلغ", variant: "destructive" });
       return;
@@ -223,9 +228,15 @@ export default function Layout({ children }: LayoutProps) {
       setSourceObligationId("");
       setSourceObligationScheduleType("");
       setTxType("expense");
-    } catch (error: any) {
-      const message = error?.response?.data?.message || error?.message || "فشل إضافة المعاملة";
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "فشل إضافة المعاملة";
+      const queueWaitMessage = error instanceof ApiError && error.queueWaitMs && error.queueWaitMs >= 1000
+        ? ` بعد انتظار ${Math.ceil(error.queueWaitMs / 1000)} ثانية في طابور الحفظ`
+        : "";
       toast({ title: "خطأ", description: message, variant: "destructive" });
+      if (queueWaitMessage) {
+        toast({ title: "معلومة", description: `تمت معالجة طلبك${queueWaitMessage}. يمكنك إعادة المحاولة الآن.` });
+      }
     }
   };
 
@@ -479,13 +490,13 @@ export default function Layout({ children }: LayoutProps) {
             </div>
 
             <DrawerFooter className="shrink-0 border-t border-border/50 bg-background/95 pt-4 pb-5 backdrop-blur">
-              <Button onClick={handleAddTransaction} className="w-full h-14 rounded-2xl text-base shadow-lg shadow-primary/20" disabled={createTransaction.isPending}>
-                {createTransaction.isPending ? (
+              <Button onClick={handleAddTransaction} className="w-full h-14 rounded-2xl text-base shadow-lg shadow-primary/20" disabled={isSubmittingTransaction}>
+                {isSubmittingTransaction ? (
                   <div className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /><span>جاري الحفظ...</span></div>
                 ) : "حفظ المعاملة"}
               </Button>
               <DrawerClose asChild>
-                <Button variant="outline" className="w-full h-14 rounded-2xl">إلغاء</Button>
+                <Button variant="outline" className="w-full h-14 rounded-2xl" disabled={isSubmittingTransaction}>إلغاء</Button>
               </DrawerClose>
             </DrawerFooter>
           </div>

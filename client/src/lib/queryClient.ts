@@ -1,9 +1,32 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+export class ApiError extends Error {
+  status: number;
+  queueWaitMs?: number;
+
+  constructor(message: string, status: number, queueWaitMs?: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.queueWaitMs = queueWaitMs;
+  }
+}
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
-    const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    const rawText = (await res.text()) || res.statusText;
+    const queueWaitHeader = res.headers.get("X-Write-Queue-Wait-Ms");
+    const queueWaitMs = queueWaitHeader ? Number(queueWaitHeader) : undefined;
+    let message = rawText;
+
+    try {
+      const parsed = JSON.parse(rawText) as { message?: string };
+      message = parsed.message || rawText;
+    } catch {
+      message = rawText;
+    }
+
+    throw new ApiError(message, res.status, queueWaitMs);
   }
 }
 

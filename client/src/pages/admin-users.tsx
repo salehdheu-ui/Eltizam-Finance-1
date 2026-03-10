@@ -1,46 +1,98 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Shield, Trash2, UserCheck, UserX, Users } from "lucide-react";
-import { useAdminDeleteUser, useAdminStats, useAdminUpdateUser, useAdminUsers, useUser } from "@/lib/hooks";
+import { DatabaseBackup, Loader2, Shield, Trash2, UserCheck, UserX, Users } from "lucide-react";
+import { useAdminBackups, useAdminCreateManualBackup, useAdminDeleteUser, useAdminStats, useAdminUpdateUser, useAdminUsers, useUser } from "@/lib/hooks";
+import { formatDate } from "@/lib/utils";
+import { useState } from "react";
 
 export default function AdminUsers() {
   const { toast } = useToast();
   const { data: currentUser } = useUser();
   const { data: stats, isLoading: isLoadingStats } = useAdminStats();
   const { data: users = [], isLoading: isLoadingUsers } = useAdminUsers();
+  const { data: backups, isLoading: isLoadingBackups } = useAdminBackups();
   const updateUserMutation = useAdminUpdateUser();
   const deleteUserMutation = useAdminDeleteUser();
+  const createManualBackupMutation = useAdminCreateManualBackup();
+  const [pendingUserId, setPendingUserId] = useState<number | null>(null);
 
   const visibleUsers = users.filter((user) => user.role !== "system_admin");
+  const backupGroups = [
+    { label: "نسخ يومية", records: backups?.daily ?? [] },
+    { label: "نسخ أسبوعية", records: backups?.weekly ?? [] },
+    { label: "نسخة سنوية", records: backups?.annual ?? [] },
+    { label: "نسخ يدوية", records: backups?.manual ?? [] },
+  ];
 
   const handleToggleUser = async (id: number, isActive: boolean) => {
+    if (updateUserMutation.isPending || deleteUserMutation.isPending) {
+      return;
+    }
+
+    setPendingUserId(id);
     try {
       await updateUserMutation.mutateAsync({ id, isActive: !isActive });
       toast({
         title: "تم تحديث المستخدم",
         description: isActive ? "تم إيقاف الحساب" : "تم تفعيل الحساب",
       });
-    } catch (error: any) {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "تعذر تحديث حالة المستخدم";
       toast({
         title: "خطأ",
-        description: error?.message || "تعذر تحديث حالة المستخدم",
+        description: message,
         variant: "destructive",
       });
+    } finally {
+      setPendingUserId(null);
     }
   };
 
   const handleDeleteUser = async (id: number) => {
+    if (deleteUserMutation.isPending || updateUserMutation.isPending) {
+      return;
+    }
+
+    if (!window.confirm("هل تريد حذف هذا المستخدم وجميع بياناته المرتبطة؟")) {
+      return;
+    }
+
+    setPendingUserId(id);
     try {
       await deleteUserMutation.mutateAsync(id);
       toast({
         title: "تم حذف المستخدم",
         description: "تم حذف الحساب وبياناته المرتبطة بنجاح",
       });
-    } catch (error: any) {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "تعذر حذف المستخدم";
       toast({
         title: "خطأ",
-        description: error?.message || "تعذر حذف المستخدم",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setPendingUserId(null);
+    }
+  };
+
+  const handleCreateManualBackup = async () => {
+    if (createManualBackupMutation.isPending) {
+      return;
+    }
+
+    try {
+      await createManualBackupMutation.mutateAsync();
+      toast({
+        title: "تم إنشاء النسخة الاحتياطية",
+        description: "تم إنشاء نسخة احتياطية يدوية بنجاح وتحديث القائمة.",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "تعذر إنشاء النسخة الاحتياطية";
+      toast({
+        title: "خطأ",
+        description: message,
         variant: "destructive",
       });
     }
@@ -61,6 +113,53 @@ export default function AdminUsers() {
       <Card className="border-primary/10 bg-primary/5">
         <CardContent className="p-4 text-sm text-muted-foreground leading-7">
           لديك صلاحية إدارة الحسابات والعدادات العامة فقط. لا يتم عرض المحافظ أو المعاملات أو الالتزامات الخاصة بالمستخدمين داخل هذه الصفحة.
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/50 shadow-sm">
+        <CardContent className="p-4 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold">النسخ الاحتياطي</h2>
+              <p className="text-sm text-muted-foreground">خيارات النسخ الاحتياطي متاحة لمسؤول النظام فقط، وتشمل النسخ اليومية والأسبوعية والسنوية واليدوية.</p>
+            </div>
+            <div className="h-11 w-11 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+              <DatabaseBackup className="h-5 w-5" />
+            </div>
+          </div>
+
+          <div className="flex justify-end">
+            <Button onClick={handleCreateManualBackup} disabled={createManualBackupMutation.isPending}>
+              {createManualBackupMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "إنشاء نسخة يدوية"}
+            </Button>
+          </div>
+
+          <div className="grid gap-3">
+            {backupGroups.map((group) => (
+              <div key={group.label} className="rounded-xl border border-border/50 bg-muted/20 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="font-semibold">{group.label}</h3>
+                  <span className="text-xs text-muted-foreground">{group.records.length} ملف</span>
+                </div>
+                {isLoadingBackups ? (
+                  <div className="flex justify-center py-3">
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  </div>
+                ) : group.records.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">لا توجد ملفات ضمن هذا النوع حاليًا.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {group.records.map((record) => (
+                      <div key={record.filePath} className="rounded-lg bg-background px-3 py-2 text-sm">
+                        <p className="font-medium break-all" dir="ltr">{record.fileName}</p>
+                        <p className="text-xs text-muted-foreground break-all" dir="ltr">{record.filePath}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </CardContent>
       </Card>
 
@@ -118,11 +217,11 @@ export default function AdminUsers() {
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div className="rounded-xl bg-muted/40 p-3">
                     <p className="text-muted-foreground mb-1">تاريخ الإنشاء</p>
-                    <p className="font-medium">{user.createdAt ? new Date(user.createdAt * 1000).toLocaleDateString("ar") : "-"}</p>
+                    <p className="font-medium">{user.createdAt ? formatDate(user.createdAt) : "-"}</p>
                   </div>
                   <div className="rounded-xl bg-muted/40 p-3">
                     <p className="text-muted-foreground mb-1">آخر دخول</p>
-                    <p className="font-medium">{user.lastLoginAt ? new Date(user.lastLoginAt * 1000).toLocaleDateString("ar") : "لا يوجد"}</p>
+                    <p className="font-medium">{user.lastLoginAt ? formatDate(user.lastLoginAt) : "لا يوجد"}</p>
                   </div>
                 </div>
 
@@ -133,7 +232,7 @@ export default function AdminUsers() {
                     onClick={() => handleToggleUser(user.id, user.isActive)}
                     disabled={updateUserMutation.isPending || deleteUserMutation.isPending || currentUser?.id === user.id}
                   >
-                    {updateUserMutation.isPending ? (
+                    {updateUserMutation.isPending && pendingUserId === user.id ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : user.isActive ? (
                       "إيقاف الحساب"
@@ -147,7 +246,7 @@ export default function AdminUsers() {
                     onClick={() => handleDeleteUser(user.id)}
                     disabled={deleteUserMutation.isPending || updateUserMutation.isPending || currentUser?.id === user.id}
                   >
-                    {deleteUserMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                    {deleteUserMutation.isPending && pendingUserId === user.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                   </Button>
                 </div>
               </CardContent>

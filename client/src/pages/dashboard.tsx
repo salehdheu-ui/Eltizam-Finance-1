@@ -28,6 +28,9 @@ export default function Dashboard() {
   const hasWallets = wallets.length > 0;
   const hasCategories = categories.length > 0;
   const hasTransactions = (dashboard?.recentTransactions?.length ?? 0) > 0;
+  const isInitialLoading = isLoading || isLoadingObligations;
+  const totalUpcomingObligations = upcomingObligations.reduce((sum, obligation) => sum + obligation.amount, 0);
+  const netBalance = (dashboard?.totalIncome ?? 0) - (dashboard?.totalExpenses ?? 0);
   const setupSteps = [
     {
       key: "wallets",
@@ -161,6 +164,28 @@ export default function Dashboard() {
         </CardContent>
       </Card>
 
+      {!nextStep && !isInitialLoading ? (
+        <Card className="border-border/50 shadow-sm bg-card/80">
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-primary mb-1">ملخص سريع</p>
+                <h3 className="font-bold text-base">وضعك الحالي باختصار</h3>
+                <div className="space-y-1.5 mt-3 text-sm text-muted-foreground">
+                  <p>صافي الحركة: <span className={cn("font-bold", netBalance >= 0 ? "text-emerald-600" : "text-red-600")}>{netBalance >= 0 ? "+" : ""}{formatCurrency(netBalance, 2)} ر.ع</span></p>
+                  <p>الالتزامات القريبة: <span className="font-bold text-amber-600">{formatCurrency(totalUpcomingObligations, 2)} ر.ع</span></p>
+                  <p>المحافظ المتاحة: <span className="font-bold text-foreground">{wallets.length}</span></p>
+                  <p>الأقسام المعرفة: <span className="font-bold text-foreground">{categories.length}</span></p>
+                </div>
+              </div>
+              <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <Sparkles className="h-5 w-5" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <div className="grid grid-cols-2 gap-3">
         <Link href="/wallets">
           <div className="bg-card border border-border/50 rounded-2xl p-4 shadow-sm hover:bg-muted/30 transition-colors cursor-pointer">
@@ -215,6 +240,9 @@ export default function Dashboard() {
                           <Calendar className="h-3 w-3" />
                           <span>{formatObligationDueDate(obligation)}</span>
                         </div>
+                        <p className="text-[11px] text-amber-600 mt-1">
+                          {obligation.daysLeft === 0 ? "اليوم" : obligation.daysLeft === 1 ? "غدًا" : `بعد ${obligation.daysLeft} يوم`}
+                        </p>
                       </div>
                     </div>
                     <div className="text-left">
@@ -291,6 +319,9 @@ export default function Dashboard() {
                 <Link href="/categories">
                   <Button variant="outline" size="sm">إضافة قسم</Button>
                 </Link>
+              ) : null}
+              {hasWallets && hasCategories ? (
+                <Button variant="outline" size="sm" onClick={() => window.dispatchEvent(new CustomEvent("open-add-transaction"))}>إضافة معاملة</Button>
               ) : null}
             </div>
           </div>

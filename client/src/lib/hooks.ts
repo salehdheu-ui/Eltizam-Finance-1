@@ -1,7 +1,60 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "./queryClient";
 import { queryClient } from "./queryClient";
-import type { User, Wallet, Category, Transaction, Obligation, VariableObligationMonthStatus } from "@shared/schema";
+import type { User, Wallet, Category, Transaction, RecurringIncome, Obligation, VariableObligationMonthStatus } from "@shared/schema";
+
+type WalletPayload = Pick<Wallet, "name" | "type" | "balance" | "color">;
+type WalletUpdatePayload = Partial<WalletPayload> & { id: number };
+type CategoryPayload = Pick<Category, "name" | "type" | "icon" | "color" | "budget">;
+type TransactionPayload = Pick<Transaction, "walletId" | "categoryId" | "type" | "amount" | "note">;
+type RecurringIncomePayload = Pick<RecurringIncome, "title" | "amount" | "incomeType" | "dayOfMonth" | "walletId" | "categoryId" | "note" | "isActive" | "lastAppliedMonth">;
+type RecurringIncomeUpdatePayload = Partial<RecurringIncomePayload> & { id: number };
+type ObligationPayload = Omit<Obligation, "id" | "userId" | "createdAt" | "updatedAt">;
+type ObligationUpdatePayload = Partial<ObligationPayload> & { id: number };
+
+export type ReportsSummary = {
+  period: string;
+  summary: {
+    totalIncome: number;
+    totalExpenses: number;
+    netFlow: number;
+    savingsRate: number;
+    transactionCount: number;
+    recurringConfiguredTotal: number;
+    salarySourceCount: number;
+  };
+  expensesByCategory: Array<{
+    categoryId: number | null;
+    categoryName: string;
+    total: number;
+    count: number;
+  }>;
+  walletBreakdown: Array<{
+    id: number;
+    name: string;
+    color: string;
+    balance: number;
+    income: number;
+    expenses: number;
+    transactionCount: number;
+  }>;
+  timeline: Array<{
+    label: string;
+    income: number;
+    expenses: number;
+  }>;
+  upcomingObligations: Array<{
+    id: number;
+    title: string;
+    amount: number;
+    dueDay: number | null;
+    dueMonth: number | null;
+    dueDate: number | null;
+    frequency: string;
+  }>;
+  recentTransactions: (Transaction & { categoryName?: string | null; categoryIcon?: string | null; walletName?: string | null })[];
+  insights: string[];
+};
 
 export type AdminUserStats = {
   totalUsers: number;
@@ -9,6 +62,19 @@ export type AdminUserStats = {
   inactiveUsers: number;
   newUsersThisMonth: number;
   usersLoggedInToday: number;
+};
+
+export type AdminBackupRecord = {
+  fileName: string;
+  filePath: string;
+  frequency: "daily" | "weekly" | "annual" | "manual";
+};
+
+export type AdminBackupCollection = {
+  daily: AdminBackupRecord[];
+  weekly: AdminBackupRecord[];
+  annual: AdminBackupRecord[];
+  manual: AdminBackupRecord[];
 };
 
 export function useUser() {
@@ -78,6 +144,21 @@ export function useAdminUsers() {
   });
 }
 
+export function useAdminBackups() {
+  return useQuery<AdminBackupCollection>({
+    queryKey: ["/api/admin/backups"],
+  });
+}
+
+export function useAdminCreateManualBackup() {
+  return useMutation({
+    mutationFn: () => apiRequest("POST", "/api/admin/backups/manual"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/backups"] });
+    },
+  });
+}
+
 export function useAdminUpdateUser() {
   return useMutation({
     mutationFn: ({ id, ...data }: { id: number; isActive: boolean }) =>
@@ -118,7 +199,7 @@ export function useWallets() {
 
 export function useCreateWallet() {
   return useMutation({
-    mutationFn: (data: any) => apiRequest("POST", "/api/wallets", data),
+    mutationFn: (data: WalletPayload) => apiRequest("POST", "/api/wallets", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/wallets"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
@@ -128,7 +209,7 @@ export function useCreateWallet() {
 
 export function useUpdateWallet() {
   return useMutation({
-    mutationFn: ({ id, ...data }: any) => apiRequest("PATCH", `/api/wallets/${id}`, data),
+    mutationFn: ({ id, ...data }: WalletUpdatePayload) => apiRequest("PATCH", `/api/wallets/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/wallets"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
@@ -154,7 +235,7 @@ export function useCategories() {
 
 export function useCreateCategory() {
   return useMutation({
-    mutationFn: (data: any) => apiRequest("POST", "/api/categories", data),
+    mutationFn: (data: CategoryPayload) => apiRequest("POST", "/api/categories", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/categories"] });
     },
@@ -178,7 +259,7 @@ export function useTransactions() {
 
 export function useCreateTransaction() {
   return useMutation({
-    mutationFn: (data: any) => apiRequest("POST", "/api/transactions", data),
+    mutationFn: (data: TransactionPayload) => apiRequest("POST", "/api/transactions", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/wallets"] });
@@ -194,6 +275,64 @@ export function useDeleteTransaction() {
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/wallets"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+    },
+  });
+}
+
+export function useRecurringIncomes() {
+  return useQuery<RecurringIncome[]>({
+    queryKey: ["/api/recurring-incomes"],
+  });
+}
+
+export function useCreateRecurringIncome() {
+  return useMutation({
+    mutationFn: (data: RecurringIncomePayload) => apiRequest("POST", "/api/recurring-incomes", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recurring-incomes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/reports/summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+    },
+  });
+}
+
+export function useUpdateRecurringIncome() {
+  return useMutation({
+    mutationFn: ({ id, ...data }: RecurringIncomeUpdatePayload) => apiRequest("PATCH", `/api/recurring-incomes/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recurring-incomes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/reports/summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+    },
+  });
+}
+
+export function useDeleteRecurringIncome() {
+  return useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/recurring-incomes/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recurring-incomes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/reports/summary"] });
+    },
+  });
+}
+
+export function useReportsSummary(period: "all" | "1month" | "3months" | "6months" | "1year") {
+  return useQuery<ReportsSummary>({
+    queryKey: ["/api/reports/summary", period],
+    queryFn: async () => {
+      const response = await fetch(`/api/reports/summary?period=${period}`, {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const message = (await response.text()) || "فشل تحميل التقارير";
+        throw new Error(message);
+      }
+
+      return response.json();
     },
   });
 }
@@ -214,7 +353,7 @@ export function useObligation(id: number | undefined) {
 
 export function useCreateObligation() {
   return useMutation({
-    mutationFn: (data: any) => apiRequest("POST", "/api/obligations", data),
+    mutationFn: (data: ObligationPayload) => apiRequest("POST", "/api/obligations", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/obligations"] });
     },
@@ -223,7 +362,7 @@ export function useCreateObligation() {
 
 export function useUpdateObligation() {
   return useMutation({
-    mutationFn: ({ id, ...data }: any) => apiRequest("PATCH", `/api/obligations/${id}`, data),
+    mutationFn: ({ id, ...data }: ObligationUpdatePayload) => apiRequest("PATCH", `/api/obligations/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/obligations"] });
     },

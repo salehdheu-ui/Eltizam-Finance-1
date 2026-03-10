@@ -56,6 +56,7 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
   const startDateRef = useRef<HTMLInputElement>(null);
   const endDateRef = useRef<HTMLInputElement>(null);
   const dueDateRef = useRef<HTMLInputElement>(null);
+  const isSubmitting = createObligation.isPending || updateObligation.isPending;
 
   useEffect(() => {
     if (editingObligation) {
@@ -127,6 +128,7 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     if (!validate()) return;
 
     const data = {
@@ -156,10 +158,11 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
         toast({ title: "تم الإضافة", description: "تم إضافة الالتزام بنجاح" });
       }
       onClose();
-    } catch (error: any) {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "فشل حفظ الالتزام";
       toast({ 
         title: "خطأ", 
-        description: error?.message || "فشل حفظ الالتزام", 
+        description: message,
         variant: "destructive" 
       });
     }
@@ -179,7 +182,14 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
     input.click();
   };
 
-  const dateInputClassName = "text-left pl-12 pr-3 tracking-[0.02em] [color-scheme:light] [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:w-0 [&::-webkit-calendar-picker-indicator]:h-0";
+  const dateInputClassName = "absolute inset-0 opacity-0 cursor-pointer [color-scheme:light] [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:h-full";
+
+  const getDisplayedDateValue = (value: string) => {
+    if (!value) return "";
+    const date = new Date(`${value}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return value;
+    return formatDate(date, { day: "2-digit", month: "2-digit", year: "numeric" });
+  };
 
   return (
     <Drawer open={isOpen} onOpenChange={onClose}>
@@ -246,6 +256,13 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
                 <Label htmlFor="startDate" className="text-right">تاريخ البداية <span className="text-destructive">*</span></Label>
                 <div className="relative">
                   <Input
+                    value={getDisplayedDateValue(formData.startDate)}
+                    readOnly
+                    dir="ltr"
+                    onClick={() => openDatePicker(startDateRef.current)}
+                    className={cn("text-left pl-12 pr-3 tracking-[0.02em] [font-variant-numeric:lining-nums] [font-family:Arial,Helvetica,sans-serif]", errors.startDate && "border-destructive")}
+                  />
+                  <Input
                     ref={startDateRef}
                     id="startDate"
                     type="date"
@@ -273,6 +290,13 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
               <div className="flex flex-col gap-2">
                 <Label htmlFor="endDate" className="text-right">تاريخ الانتهاء</Label>
                 <div className="relative">
+                  <Input
+                    value={getDisplayedDateValue(formData.endDate)}
+                    readOnly
+                    dir="ltr"
+                    onClick={() => openDatePicker(endDateRef.current)}
+                    className={cn("text-left pl-12 pr-3 tracking-[0.02em] [font-variant-numeric:lining-nums] [font-family:Arial,Helvetica,sans-serif]", errors.endDate && "border-destructive")}
+                  />
                   <Input
                     ref={endDateRef}
                     id="endDate"
@@ -349,6 +373,13 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
               <div className="flex flex-col gap-2">
                 <Label htmlFor="dueDate" className="text-right">تاريخ دفع الالتزام <span className="text-destructive">*</span></Label>
                 <div className="relative">
+                  <Input
+                    value={getDisplayedDateValue(formData.dueDate)}
+                    readOnly
+                    dir="ltr"
+                    onClick={() => openDatePicker(dueDateRef.current)}
+                    className={cn("text-left pl-12 pr-3 tracking-[0.02em] [font-variant-numeric:lining-nums] [font-family:Arial,Helvetica,sans-serif]", errors.dueDate && "border-destructive")}
+                  />
                   <Input
                     ref={dueDateRef}
                     id="dueDate"
@@ -496,12 +527,12 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
             <Button 
               onClick={handleSubmit}
               className="w-full"
-              disabled={createObligation.isPending || updateObligation.isPending}
+              disabled={isSubmitting}
             >
-              {createObligation.isPending || updateObligation.isPending ? "جاري الحفظ..." : editingObligation ? "حفظ التغييرات" : "إضافة الالتزام"}
+              {isSubmitting ? "جاري الحفظ..." : editingObligation ? "حفظ التغييرات" : "إضافة الالتزام"}
             </Button>
             <DrawerClose asChild>
-              <Button type="button" variant="outline" className="w-full">إلغاء</Button>
+              <Button type="button" variant="outline" className="w-full" disabled={isSubmitting}>إلغاء</Button>
             </DrawerClose>
           </DrawerFooter>
         </div>

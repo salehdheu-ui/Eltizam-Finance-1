@@ -69,11 +69,20 @@ export default function Transactions() {
   const totalOutflow = filteredTransactions.filter((tx) => tx.type === "expense" || tx.type === "debt").reduce((sum, tx) => sum + tx.amount, 0);
 
   const handleDelete = async (id: number) => {
+    if (deleteTransaction.isPending) {
+      return;
+    }
+
+    if (!window.confirm("هل تريد حذف هذه المعاملة؟")) {
+      return;
+    }
+
     try {
       await deleteTransaction.mutateAsync(id);
       toast({ title: "تم الحذف", description: "تم حذف المعاملة بنجاح" });
-    } catch {
-      toast({ title: "خطأ", description: "فشل حذف المعاملة", variant: "destructive" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "فشل حذف المعاملة";
+      toast({ title: "خطأ", description: message, variant: "destructive" });
     }
   };
 
@@ -202,6 +211,7 @@ export default function Transactions() {
                           size="icon" 
                           className="h-8 w-8 text-muted-foreground/50 hover:text-destructive shrink-0"
                           onClick={() => handleDelete(tx.id)}
+                          disabled={deleteTransaction.isPending}
                           data-testid={`button-delete-${tx.id}`}
                         >
                           <Trash2 className="h-4 w-4" />

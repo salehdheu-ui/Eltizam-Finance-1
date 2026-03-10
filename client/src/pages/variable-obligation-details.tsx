@@ -5,13 +5,18 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useObligation, useUpdateVariableObligationMonthStatus, useVariableObligationStatuses } from "@/lib/hooks";
+import { ApiError } from "@/lib/queryClient";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { useState } from "react";
 
-const monthFormatter = new Intl.DateTimeFormat("ar-OM", {
-  month: "long",
-  year: "numeric",
-});
+const monthFormatter = {
+  format: (date: Date) => {
+    const month = date.toLocaleDateString("ar-OM", { month: "long" });
+    const year = date.getFullYear();
+    return `${month} ${year}`;
+  },
+};
 
 type MonthStatusValue = "paid" | "late" | "unpaid";
 
@@ -100,6 +105,7 @@ export default function VariableObligationDetails() {
   const [, params] = useRoute("/obligations/:id");
   const obligationId = params?.id ? parseInt(params.id, 10) : undefined;
   const { toast } = useToast();
+  const [pendingMonthKey, setPendingMonthKey] = useState<string | null>(null);
   const { data: obligation, isLoading: isLoadingObligation } = useObligation(obligationId);
   const { data: statuses = [], isLoading: isLoadingStatuses } = useVariableObligationStatuses(obligationId);
   const updateStatus = useUpdateVariableObligationMonthStatus(obligationId);
@@ -125,18 +131,29 @@ export default function VariableObligationDetails() {
   );
 
   const handleUpdateStatus = async (monthKey: string, status: MonthStatusValue) => {
+    if (updateStatus.isPending) {
+      return;
+    }
+
+    setPendingMonthKey(monthKey);
     try {
       await updateStatus.mutateAsync({ monthKey, status });
       toast({
         title: "تم تحديث الحالة",
         description: `تم حفظ حالة شهر ${monthFormatter.format(parseMonthKey(monthKey))}`,
       });
-    } catch (error: any) {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "تعذر تحديث حالة الشهر";
+      const queueWaitMessage = error instanceof ApiError && error.queueWaitMs && error.queueWaitMs >= 1000
+        ? ` بعد انتظار ${Math.ceil(error.queueWaitMs / 1000)} ثانية في طابور الحفظ`
+        : "";
       toast({
         title: "خطأ",
-        description: error?.message || "تعذر تحديث حالة الشهر",
+        description: `${message}${queueWaitMessage}`,
         variant: "destructive",
       });
+    } finally {
+      setPendingMonthKey(null);
     }
   };
 
@@ -262,7 +279,7 @@ export default function VariableObligationDetails() {
                       onClick={() => handleUpdateStatus(month.monthKey, "paid")}
                       disabled={updateStatus.isPending}
                     >
-                      <CheckCircle2 className="ml-1 h-4 w-4" />
+                      {updateStatus.isPending && pendingMonthKey === month.monthKey && month.status !== "paid" ? <Loader2 className="ml-1 h-4 w-4 animate-spin" /> : <CheckCircle2 className="ml-1 h-4 w-4" />}
                       مدفوع
                     </Button>
                     <Button
@@ -273,7 +290,7 @@ export default function VariableObligationDetails() {
                       onClick={() => handleUpdateStatus(month.monthKey, "late")}
                       disabled={updateStatus.isPending}
                     >
-                      <Clock3 className="ml-1 h-4 w-4" />
+                      {updateStatus.isPending && pendingMonthKey === month.monthKey && month.status !== "late" ? <Loader2 className="ml-1 h-4 w-4 animate-spin" /> : <Clock3 className="ml-1 h-4 w-4" />}
                       متأخر
                     </Button>
                     <Button
@@ -284,13 +301,14 @@ export default function VariableObligationDetails() {
                       onClick={() => handleUpdateStatus(month.monthKey, "unpaid")}
                       disabled={updateStatus.isPending}
                     >
-                      <XCircle className="ml-1 h-4 w-4" />
+                      {updateStatus.isPending && pendingMonthKey === month.monthKey && month.status !== "unpaid" ? <Loader2 className="ml-1 h-4 w-4 animate-spin" /> : <XCircle className="ml-1 h-4 w-4" />}
                       غير مدفوع
                     </Button>
                   </div>
 
                   <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
                     <span>الحالة الحالية: {status.label}</span>
+                    {updateStatus.isPending && pendingMonthKey === month.monthKey ? <span>جاري حفظ التحديث...</span> : null}
                     {month.paidAt ? <span>تم السداد: {formatDate(month.paidAt)}</span> : null}
                     {month.note ? <span>ملاحظة: {month.note}</span> : null}
                   </div>

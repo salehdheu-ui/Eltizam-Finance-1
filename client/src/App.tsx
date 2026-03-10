@@ -7,6 +7,7 @@ import NotFound from "@/pages/not-found";
 import Layout from "@/components/layout";
 import Dashboard from "@/pages/dashboard";
 import Transactions from "@/pages/transactions";
+import Income from "@/pages/income";
 import Wallets from "@/pages/wallets";
 import Categories from "@/pages/categories";
 import Reports from "@/pages/reports";
@@ -65,6 +66,7 @@ function Router() {
       <Switch>
         <Route path="/" component={Dashboard} />
         <Route path="/transactions" component={Transactions} />
+        <Route path="/income" component={Income} />
         <Route path="/wallets" component={Wallets} />
         <Route path="/categories" component={Categories} />
         <Route path="/reports" component={Reports} />
@@ -73,9 +75,9 @@ function Router() {
         <Route path="/settings" component={Settings} />
         {isSystemAdmin ? (
           <Route path="/admin/users" component={AdminUsers} />
-        ) : (
-          <Route path="/admin/users" component={NotFound} />
-        )}
+        ) : location === "/admin/users" ? (
+          <Redirect to="/" />
+        ) : null}
         <Route component={NotFound} />
       </Switch>
     </Layout>

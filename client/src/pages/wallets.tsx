@@ -41,10 +41,11 @@ export default function Wallets() {
   const [newWalletName, setNewWalletName] = useState("");
   const [newWalletBalance, setNewWalletBalance] = useState("");
   const [selectedColor, setSelectedColor] = useState("from-slate-600 to-slate-800");
+  const isSaving = createWallet.isPending || updateWallet.isPending;
 
   const handleAddWallet = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newWalletName) return;
+    if (!newWalletName || createWallet.isPending) return;
     try {
       await createWallet.mutateAsync({ name: newWalletName, balance: parseFloat(newWalletBalance) || 0, color: selectedColor, type: "cash" });
       setIsAddDrawerOpen(false);
@@ -52,31 +53,37 @@ export default function Wallets() {
       setNewWalletBalance("");
       setSelectedColor("from-slate-600 to-slate-800");
       toast({ title: "تمت الإضافة", description: `تمت إضافة محفظة "${newWalletName}" بنجاح` });
-    } catch {
-      toast({ title: "خطأ", description: "فشل إضافة المحفظة", variant: "destructive" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "فشل إضافة المحفظة";
+      toast({ title: "خطأ", description: message, variant: "destructive" });
     }
   };
 
   const handleEditWallet = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedWallet) return;
+    if (!selectedWallet || updateWallet.isPending) return;
     try {
       await updateWallet.mutateAsync({ id: selectedWallet.id, name: newWalletName, balance: parseFloat(newWalletBalance) || 0 });
       setIsEditDrawerOpen(false);
       toast({ title: "تم التعديل", description: "تم تحديث بيانات المحفظة بنجاح" });
-    } catch {
-      toast({ title: "خطأ", description: "فشل تعديل المحفظة", variant: "destructive" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "فشل تعديل المحفظة";
+      toast({ title: "خطأ", description: message, variant: "destructive" });
     }
   };
   
   const handleDeleteWallet = async () => {
-    if (!selectedWallet) return;
+    if (!selectedWallet || deleteWallet.isPending) return;
+    if (!window.confirm(`هل تريد حذف المحفظة "${selectedWallet.name}"؟`)) {
+      return;
+    }
     try {
       await deleteWallet.mutateAsync(selectedWallet.id);
       setIsEditDrawerOpen(false);
       toast({ title: "تم الحذف", description: "تم حذف المحفظة بنجاح", variant: "destructive" });
-    } catch {
-      toast({ title: "خطأ", description: "فشل حذف المحفظة", variant: "destructive" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "فشل حذف المحفظة";
+      toast({ title: "خطأ", description: message, variant: "destructive" });
     }
   };
 
@@ -202,10 +209,10 @@ export default function Wallets() {
               </div>
             </form>
             <DrawerFooter>
-              <Button onClick={handleAddWallet} className="w-full" disabled={createWallet.isPending}>
+              <Button type="submit" onClick={handleAddWallet} className="w-full" disabled={createWallet.isPending}>
                 {createWallet.isPending ? "جاري الإضافة..." : "إضافة"}
               </Button>
-              <DrawerClose asChild><Button variant="outline" className="w-full">إلغاء</Button></DrawerClose>
+              <DrawerClose asChild><Button variant="outline" className="w-full" disabled={createWallet.isPending}>إلغاء</Button></DrawerClose>
             </DrawerFooter>
           </div>
         </DrawerContent>
@@ -229,10 +236,10 @@ export default function Wallets() {
               </div>
             </form>
             <DrawerFooter className="flex-row gap-2 px-4 pb-8 pt-4">
-              <Button onClick={handleEditWallet} className="flex-1" disabled={updateWallet.isPending}>
+              <Button type="submit" onClick={handleEditWallet} className="flex-1" disabled={isSaving}>
                 {updateWallet.isPending ? "جاري الحفظ..." : "حفظ التعديلات"}
               </Button>
-              <Button variant="destructive" size="icon" onClick={handleDeleteWallet} disabled={deleteWallet.isPending}>
+              <Button variant="destructive" size="icon" onClick={handleDeleteWallet} disabled={deleteWallet.isPending || updateWallet.isPending}>
                 <Trash2 className="h-5 w-5" />
               </Button>
             </DrawerFooter>

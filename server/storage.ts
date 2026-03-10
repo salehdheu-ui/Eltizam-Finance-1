@@ -1,11 +1,12 @@
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, wallets, categories, transactions, obligations, variableObligationMonthStatuses,
+  users, wallets, categories, transactions, recurringIncomes, obligations, variableObligationMonthStatuses,
   type User, type InsertUser,
   type Wallet, type InsertWallet,
   type Category, type InsertCategory,
   type Transaction, type InsertTransaction,
+  type RecurringIncome, type InsertRecurringIncome,
   type Obligation, type InsertObligation,
   type VariableObligationMonthStatus, type InsertVariableObligationMonthStatus,
 } from "@shared/schema";
@@ -24,6 +25,11 @@ function addMonths(date: Date, months: number) {
 
 function formatMonthKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getClampedMonthlyDay(dayOfMonth: number, date: Date) {
+  const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  return Math.min(dayOfMonth, lastDay);
 }
 
 export interface IStorage {
@@ -57,6 +63,12 @@ export interface IStorage {
   getTransactionsByType(userId: number, type: string): Promise<Transaction[]>;
   createTransaction(userId: number, transaction: InsertTransaction): Promise<Transaction>;
   deleteTransaction(id: number, userId: number): Promise<void>;
+
+  getRecurringIncomes(userId: number): Promise<RecurringIncome[]>;
+  createRecurringIncome(userId: number, income: InsertRecurringIncome): Promise<RecurringIncome>;
+  updateRecurringIncome(id: number, userId: number, data: Partial<InsertRecurringIncome>): Promise<RecurringIncome>;
+  deleteRecurringIncome(id: number, userId: number): Promise<void>;
+  applyDueRecurringIncomes(userId: number): Promise<RecurringIncome[]>;
 
   getObligations(userId: number): Promise<Obligation[]>;
   getObligationById(id: number, userId: number): Promise<Obligation | undefined>;
@@ -129,6 +141,7 @@ export class DatabaseStorage implements IStorage {
 
   async deleteUser(id: number): Promise<void> {
     await db.delete(transactions).where(eq(transactions.userId, id));
+    await db.delete(recurringIncomes).where(eq(recurringIncomes.userId, id));
     await db.delete(variableObligationMonthStatuses).where(eq(variableObligationMonthStatuses.userId, id));
     await db.delete(obligations).where(eq(obligations.userId, id));
     await db.delete(categories).where(eq(categories.userId, id));
@@ -232,6 +245,72 @@ export class DatabaseStorage implements IStorage {
       }
     }
     await db.delete(transactions).where(and(eq(transactions.id, id), eq(transactions.userId, userId)));
+  }
+
+  async getRecurringIncomes(userId: number): Promise<RecurringIncome[]> {
+    return db.select().from(recurringIncomes).where(eq(recurringIncomes.userId, userId)).orderBy(desc(recurringIncomes.createdAt));
+  }
+
+  async createRecurringIncome(userId: number, income: InsertRecurringIncome): Promise<RecurringIncome> {
+    const now = Math.floor(Date.now() / 1000);
+    const [created] = await db.insert(recurringIncomes).values({
+      ...income,
+      userId,
+      note: income.note ?? "",
+      categoryId: income.categoryId ?? null,
+      isActive: income.isActive ?? true,
+      lastAppliedMonth: income.lastAppliedMonth ?? null,
+      createdAt: now,
+      updatedAt: now,
+    }).returning();
+    return created;
+  }
+
+  async updateRecurringIncome(id: number, userId: number, data: Partial<InsertRecurringIncome>): Promise<RecurringIncome> {
+    const [updated] = await db.update(recurringIncomes).set({
+      ...data,
+      updatedAt: Math.floor(Date.now() / 1000),
+    }).where(and(eq(recurringIncomes.id, id), eq(recurringIncomes.userId, userId))).returning();
+    return updated;
+  }
+
+  async deleteRecurringIncome(id: number, userId: number): Promise<void> {
+    await db.delete(recurringIncomes).where(and(eq(recurringIncomes.id, id), eq(recurringIncomes.userId, userId)));
+  }
+
+  async applyDueRecurringIncomes(userId: number): Promise<RecurringIncome[]> {
+    const activeIncomes = await db.select().from(recurringIncomes).where(and(eq(recurringIncomes.userId, userId), eq(recurringIncomes.isActive, true)));
+    const now = new Date();
+    const currentMonthKey = formatMonthKey(now);
+    const applied: RecurringIncome[] = [];
+
+    for (const income of activeIncomes) {
+      if (income.lastAppliedMonth === currentMonthKey) {
+        continue;
+      }
+
+      const dueDay = getClampedMonthlyDay(income.dayOfMonth, now);
+      if (now.getDate() < dueDay) {
+        continue;
+      }
+
+      await this.createTransaction(userId, {
+        type: "income",
+        amount: income.amount,
+        note: income.note?.trim() ? income.note : `${income.incomeType === "salary" ? "راتب شهري" : "دخل متكرر"} - ${income.title}`,
+        categoryId: income.categoryId ?? null,
+        walletId: income.walletId,
+      });
+
+      const [updated] = await db.update(recurringIncomes).set({
+        lastAppliedMonth: currentMonthKey,
+        updatedAt: Math.floor(Date.now() / 1000),
+      }).where(and(eq(recurringIncomes.id, income.id), eq(recurringIncomes.userId, userId))).returning();
+
+      applied.push(updated);
+    }
+
+    return applied;
   }
 
   async getObligations(userId: number): Promise<Obligation[]> {
