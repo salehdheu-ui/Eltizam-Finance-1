@@ -228,12 +228,15 @@ export function setupAuth(app: Express) {
         return res.status(400).json({ message: "اسم المستخدم مستخدم بالفعل" });
       }
 
+      const existingUsers = await storage.getAllUsers();
+      const assignedRole = existingUsers.length === 0 ? "system_admin" : "user";
+
       const user = await storage.createUser({
         username: input.username,
         password: await hashPassword(input.password),
         name: input.fullName || input.name || input.username,
         email: input.email,
-        role: "user",
+        role: assignedRole,
         isActive: true,
         lastLoginAt: Math.floor(Date.now() / 1000),
         createdAt: Math.floor(Date.now() / 1000),
