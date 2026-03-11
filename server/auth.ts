@@ -23,13 +23,14 @@ const loginRateLimitWindowMs = 10 * 60 * 1000;
 const loginRateLimitMaxAttempts = 5;
 const sessionCookieName = "eltizam.sid";
 const authAttempts = new Map<string, { count: number; windowStartedAt: number }>();
+const passwordStrengthMessage = "كلمة المرور ضعيفة. استخدم 8 أحرف على الأقل مع حرف كبير وحرف صغير ورقم واحد على الأقل";
 
 const passwordSchema = z.string()
-  .min(8)
+  .min(8, passwordStrengthMessage)
   .max(128)
-  .regex(/[A-Z]/, "يجب أن تحتوي كلمة المرور على حرف كبير واحد على الأقل")
-  .regex(/[a-z]/, "يجب أن تحتوي كلمة المرور على حرف صغير واحد على الأقل")
-  .regex(/[0-9]/, "يجب أن تحتوي كلمة المرور على رقم واحد على الأقل");
+  .regex(/[A-Z]/, passwordStrengthMessage)
+  .regex(/[a-z]/, passwordStrengthMessage)
+  .regex(/[0-9]/, passwordStrengthMessage);
 
 const registerSchema = z.object({
   username: z.string().min(3).max(50),
@@ -152,6 +153,10 @@ function toSafeUser(user: SelectUser) {
   return safeUser;
 }
 
+function getValidationMessage(error: z.ZodError) {
+  return error.issues[0]?.message || "البيانات المدخلة غير صالحة";
+}
+
 export function setupAuth(app: Express) {
   if (!derivedSessionSecret) {
     throw new Error("SESSION_SECRET must be set in production");
@@ -213,7 +218,11 @@ export function setupAuth(app: Express) {
 
   app.post("/api/register", async (req, res, next) => {
     try {
-      const input = registerSchema.parse(req.body);
+      const parsedInput = registerSchema.safeParse(req.body);
+      if (!parsedInput.success) {
+        return res.status(400).json({ message: getValidationMessage(parsedInput.error) });
+      }
+      const input = parsedInput.data;
       const existing = await storage.getUserByUsername(input.username);
       if (existing) {
         return res.status(400).json({ message: "اسم المستخدم مستخدم بالفعل" });
@@ -348,7 +357,11 @@ export function setupAuth(app: Express) {
       return res.status(401).json({ message: "غير مسجل الدخول" });
     }
     try {
-      const { currentPassword, newPassword } = changePasswordSchema.parse(req.body);
+      const parsedInput = changePasswordSchema.safeParse(req.body);
+      if (!parsedInput.success) {
+        return res.status(400).json({ message: getValidationMessage(parsedInput.error) });
+      }
+      const { currentPassword, newPassword } = parsedInput.data;
       const user = await storage.getUser(req.user!.id);
       if (!user || !(await comparePasswords(currentPassword, user.password))) {
         return res.status(400).json({ message: "كلمة المرور الحالية غير صحيحة" });

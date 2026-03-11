@@ -8,6 +8,8 @@ import { useState } from "react";
 import { useLogin, useRegister } from "@/lib/hooks";
 import { useToast } from "@/hooks/use-toast";
 
+const passwordGuidanceMessage = "استخدم 8 أحرف على الأقل مع حرف كبير وحرف صغير ورقم واحد على الأقل";
+
 export default function Login() {
   const [, setLocation] = useLocation();
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -15,6 +17,7 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [passwordGuidance, setPasswordGuidance] = useState("");
   const { toast } = useToast();
   
   const loginMutation = useLogin();
@@ -22,8 +25,45 @@ export default function Login() {
   const isLoading = loginMutation.isPending || registerMutation.isPending;
   const isLoginMode = mode === "login";
 
+  const isPasswordStrong = (value: string) => {
+    return value.length >= 8 && /[A-Z]/.test(value) && /[a-z]/.test(value) && /[0-9]/.test(value);
+  };
+
+  const parseAuthErrorMessage = (error: any) => {
+    const fallbackMessage = isLoginMode ? "حدث خطأ، حاول مرة أخرى" : "تعذر إنشاء الحساب، حاول مرة أخرى";
+    const rawMessage = typeof error?.message === "string" ? error.message.trim() : "";
+
+    if (!rawMessage) {
+      return fallbackMessage;
+    }
+
+    if (rawMessage.includes("كلمة المرور ضعيفة")) {
+      return `كلمة المرور ضعيفة. ${passwordGuidanceMessage}`;
+    }
+
+    if (rawMessage.includes("اسم المستخدم مستخدم بالفعل")) {
+      return "اسم المستخدم مستخدم بالفعل";
+    }
+
+    if (rawMessage.includes("اسم المستخدم أو كلمة المرور غير صحيحة")) {
+      return "اسم المستخدم أو كلمة المرور غير صحيحة";
+    }
+
+    if (rawMessage.includes("تم إيقاف هذا الحساب")) {
+      return "تم إيقاف هذا الحساب";
+    }
+
+    return rawMessage.length > 180 ? fallbackMessage : rawMessage;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!isLoginMode && !isPasswordStrong(password)) {
+      setPasswordGuidance(passwordGuidanceMessage);
+      toast({ title: "توجيه", description: passwordGuidanceMessage, variant: "destructive" });
+      return;
+    }
     
     try {
       if (isLoginMode) {
@@ -31,22 +71,14 @@ export default function Login() {
         toast({ title: "مرحباً بعودتك!", description: "تم تسجيل الدخول بنجاح" });
       } else {
         await registerMutation.mutateAsync({ username, password, name, email });
+        setPasswordGuidance("");
         toast({ title: "تم إنشاء الحساب بنجاح", description: "مرحباً بك في التزام!" });
       }
       setLocation("/");
     } catch (error: any) {
-      let msg = "حدث خطأ، حاول مرة أخرى";
-      try {
-        const text = error.message || "";
-        if (text.includes(":")) {
-          const jsonPart = text.split(":").slice(1).join(":").trim();
-          const parsed = JSON.parse(jsonPart);
-          msg = parsed.message || jsonPart;
-        }
-      } catch {
-        if (error.message?.includes("اسم المستخدم")) {
-          msg = !isLoginMode ? "اسم المستخدم مستخدم بالفعل" : "اسم المستخدم أو كلمة المرور غير صحيحة";
-        }
+      const msg = parseAuthErrorMessage(error);
+      if (msg.includes("كلمة المرور ضعيفة")) {
+        setPasswordGuidance(passwordGuidanceMessage);
       }
       toast({ title: "خطأ", description: msg, variant: "destructive" });
     }
@@ -146,11 +178,26 @@ export default function Login() {
                   type="password" 
                   placeholder="••••••••" 
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    const nextPassword = e.target.value;
+                    setPassword(nextPassword);
+                    if (!isLoginMode) {
+                      if (!nextPassword) {
+                        setPasswordGuidance("");
+                      } else if (isPasswordStrong(nextPassword)) {
+                        setPasswordGuidance("");
+                      } else {
+                        setPasswordGuidance(passwordGuidanceMessage);
+                      }
+                    }
+                  }}
                   required 
                   className="h-12 bg-background/50 border-muted-foreground/20 focus:border-primary rounded-xl text-md text-left"
                   dir="ltr"
                 />
+                {!isLoginMode && passwordGuidance ? (
+                  <p className="text-xs font-medium text-amber-600 dark:text-amber-400">{passwordGuidance}</p>
+                ) : null}
               </div>
             </CardContent>
             <CardFooter className="px-6 pb-8 pt-2 flex flex-col gap-4">
