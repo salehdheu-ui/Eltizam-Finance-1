@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Home, ListFilter, Wallet, PieChart, Plus, Settings, Loader2, BarChart3, Menu, X, ChevronLeft, Receipt, Landmark } from "lucide-react";
+import { Home, ListFilter, Wallet, PieChart, Plus, Settings, Loader2, BarChart3, Menu, X, ChevronLeft, Receipt, Landmark, LogOut } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError, apiRequest } from "@/lib/queryClient";
 import { queryClient } from "@/lib/queryClient";
-import { useCategories, useWallets, useCreateTransaction, useUser, useObligation, useVariableObligationStatuses } from "@/lib/hooks";
+import { useCategories, useWallets, useCreateTransaction, useUser, useObligation, useVariableObligationStatuses, useLogout } from "@/lib/hooks";
 
 function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
@@ -51,7 +51,7 @@ type AddTransactionDetail = {
 };
 
 export default function Layout({ children }: LayoutProps) {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const { toast } = useToast();
   
   const [isAddTxOpen, setIsAddTxOpen] = useState(false);
@@ -71,6 +71,7 @@ export default function Layout({ children }: LayoutProps) {
   const { data: sourceObligation } = useObligation(sourceObligationNumericId);
   const { data: sourceObligationStatuses = [] } = useVariableObligationStatuses(sourceObligationNumericId);
   const createTransaction = useCreateTransaction();
+  const logoutMutation = useLogout();
   const isSubmittingTransaction = createTransaction.isPending;
   const isSystemAdmin = user?.role === "system_admin";
 
@@ -168,6 +169,17 @@ export default function Layout({ children }: LayoutProps) {
     { href: "/settings", icon: Settings, label: "الإعدادات" },
     ...(isSystemAdmin ? [{ href: "/admin/users", icon: Settings, label: "إدارة المستخدمين" }] : []),
   ];
+
+  const handleLogout = async () => {
+    try {
+      await logoutMutation.mutateAsync();
+      setIsSidebarOpen(false);
+      setLocation("/login");
+    } catch {
+      setIsSidebarOpen(false);
+      setLocation("/login");
+    }
+  };
 
   const handleAddTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -320,6 +332,19 @@ export default function Layout({ children }: LayoutProps) {
 
             {/* Sidebar Footer */}
             <div className="p-4 border-t border-border">
+              <Button
+                variant="ghost"
+                className="w-full justify-start gap-3 rounded-xl px-4 py-6 text-base text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/30"
+                onClick={handleLogout}
+                disabled={logoutMutation.isPending}
+              >
+                {logoutMutation.isPending ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <LogOut className="h-5 w-5" />
+                )}
+                <span className="flex-1 text-right">تسجيل الخروج</span>
+              </Button>
               <div className="text-xs text-muted-foreground text-center">
                 التزام - نظام المالية الشخصية
               </div>

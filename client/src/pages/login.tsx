@@ -9,14 +9,25 @@ import { useLogin, useRegister } from "@/lib/hooks";
 import { useToast } from "@/hooks/use-toast";
 
 const passwordGuidanceMessage = "استخدم 8 أحرف على الأقل مع حرف كبير وحرف صغير ورقم واحد على الأقل";
+const phoneCountryOptions = [
+  { code: "+968", label: "عُمان (+968)" },
+  { code: "+966", label: "السعودية (+966)" },
+  { code: "+971", label: "الإمارات (+971)" },
+  { code: "+965", label: "الكويت (+965)" },
+  { code: "+973", label: "البحرين (+973)" },
+  { code: "+974", label: "قطر (+974)" },
+];
 
 export default function Login() {
   const [, setLocation] = useLocation();
   const [mode, setMode] = useState<"login" | "register">("login");
+  const [contactMethod, setContactMethod] = useState<"email" | "phone">("email");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [phoneCountryCode, setPhoneCountryCode] = useState(phoneCountryOptions[0].code);
   const [passwordGuidance, setPasswordGuidance] = useState("");
   const { toast } = useToast();
   
@@ -24,6 +35,16 @@ export default function Login() {
   const registerMutation = useRegister();
   const isLoading = loginMutation.isPending || registerMutation.isPending;
   const isLoginMode = mode === "login";
+
+  const buildPhoneWithCountryCode = () => {
+    const trimmedPhone = phone.trim();
+    if (!trimmedPhone) {
+      return "";
+    }
+
+    const normalizedPhone = trimmedPhone.replace(/^0+/, "");
+    return `${phoneCountryCode}${normalizedPhone}`;
+  };
 
   const isPasswordStrong = (value: string) => {
     return value.length >= 8 && /[A-Z]/.test(value) && /[a-z]/.test(value) && /[0-9]/.test(value);
@@ -43,6 +64,26 @@ export default function Login() {
 
     if (rawMessage.includes("اسم المستخدم مستخدم بالفعل")) {
       return "اسم المستخدم مستخدم بالفعل";
+    }
+
+    if (rawMessage.includes("البريد الإلكتروني مستخدم بالفعل")) {
+      return "البريد الإلكتروني مستخدم بالفعل";
+    }
+
+    if (rawMessage.includes("رقم الهاتف مستخدم بالفعل")) {
+      return "رقم الهاتف مستخدم بالفعل";
+    }
+
+    if (rawMessage.includes("أدخل البريد الإلكتروني أو رقم الهاتف")) {
+      return "أدخل البريد الإلكتروني أو رقم الهاتف";
+    }
+
+    if (rawMessage.includes("رقم الهاتف غير صالح")) {
+      return "رقم الهاتف غير صالح";
+    }
+
+    if (rawMessage.includes("البريد الإلكتروني غير صالح")) {
+      return "البريد الإلكتروني غير صالح";
     }
 
     if (rawMessage.includes("اسم المستخدم أو كلمة المرور غير صحيحة")) {
@@ -70,7 +111,13 @@ export default function Login() {
         await loginMutation.mutateAsync({ username, password });
         toast({ title: "مرحباً بعودتك!", description: "تم تسجيل الدخول بنجاح" });
       } else {
-        await registerMutation.mutateAsync({ username, password, name, email });
+        await registerMutation.mutateAsync({
+          username,
+          password,
+          name,
+          email: contactMethod === "email" ? email : "",
+          phone: contactMethod === "phone" ? buildPhoneWithCountryCode() : "",
+        });
         setPasswordGuidance("");
         toast({ title: "تم إنشاء الحساب بنجاح", description: "مرحباً بك في التزام!" });
       }
@@ -135,6 +182,25 @@ export default function Login() {
               {!isLoginMode && (
                 <>
                   <div className="space-y-2.5">
+                    <Label className="text-sm font-semibold">طريقة التواصل للتسجيل</Label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setContactMethod("email")}
+                        className={`h-11 rounded-xl border text-sm font-semibold transition-all ${contactMethod === "email" ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-muted-foreground"}`}
+                      >
+                        البريد الإلكتروني
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setContactMethod("phone")}
+                        className={`h-11 rounded-xl border text-sm font-semibold transition-all ${contactMethod === "phone" ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-muted-foreground"}`}
+                      >
+                        رقم الهاتف
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-2.5">
                     <Label htmlFor="name" className="text-sm font-semibold">الاسم الكامل</Label>
                     <Input 
                       id="name" 
@@ -146,17 +212,45 @@ export default function Login() {
                     />
                   </div>
                   <div className="space-y-2.5">
-                    <Label htmlFor="email" className="text-sm font-semibold">البريد الإلكتروني</Label>
-                    <Input 
-                      id="email" 
-                      type="email"
-                      placeholder="example@mail.com" 
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required 
-                      dir="ltr"
-                      className="h-12 bg-background/50 border-muted-foreground/20 focus:border-primary rounded-xl text-md text-left"
-                    />
+                    <Label htmlFor="contact" className="text-sm font-semibold">
+                      {contactMethod === "email" ? "البريد الإلكتروني" : "رقم الهاتف"}
+                    </Label>
+                    {contactMethod === "email" ? (
+                      <Input 
+                        id="contact" 
+                        type="email"
+                        placeholder="example@mail.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required 
+                        dir="ltr"
+                        className="h-12 bg-background/50 border-muted-foreground/20 focus:border-primary rounded-xl text-md text-left"
+                      />
+                    ) : (
+                      <div className="flex gap-2" dir="ltr">
+                        <select
+                          value={phoneCountryCode}
+                          onChange={(e) => setPhoneCountryCode(e.target.value)}
+                          className="h-12 rounded-xl border border-muted-foreground/20 bg-background/50 px-3 text-sm focus:border-primary focus:outline-none"
+                        >
+                          {phoneCountryOptions.map((option) => (
+                            <option key={option.code} value={option.code}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                        <Input 
+                          id="contact" 
+                          type="tel"
+                          placeholder="91234567"
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          required 
+                          dir="ltr"
+                          className="h-12 bg-background/50 border-muted-foreground/20 focus:border-primary rounded-xl text-md text-left"
+                        />
+                      </div>
+                    )}
                   </div>
                 </>
               )}

@@ -16,6 +16,7 @@ export function initializeDatabase() {
       password TEXT NOT NULL,
       name TEXT NOT NULL,
       email TEXT NOT NULL,
+      phone TEXT,
       role TEXT NOT NULL DEFAULT 'user',
       is_active INTEGER NOT NULL DEFAULT 1,
       last_login_at INTEGER,
@@ -119,6 +120,31 @@ export function initializeDatabase() {
   sqliteDb.exec("CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique ON users (username)");
   sqliteDb.exec("CREATE UNIQUE INDEX IF NOT EXISTS variable_obligation_month_statuses_unique_month ON variable_obligation_month_statuses (user_id, obligation_id, month_key)");
   sqliteDb.exec("CREATE INDEX IF NOT EXISTS variable_obligation_month_statuses_obligation_idx ON variable_obligation_month_statuses (obligation_id, month_key)");
+}
+
+export function ensureUserEmailUniqueIndex() {
+  try {
+    sqliteDb.exec("CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users (email) WHERE email IS NOT NULL AND email <> ''");
+  } catch (error) {
+    console.warn("Skipping users_email_unique index creation because duplicate emails already exist", error);
+  }
+}
+
+export function ensureUserPhoneColumns() {
+  const existingColumns = sqliteDb.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
+  const columnNames = new Set(existingColumns.map((column) => column.name));
+
+  if (!columnNames.has("phone")) {
+    sqliteDb.exec("ALTER TABLE users ADD COLUMN phone TEXT");
+  }
+}
+
+export function ensureUserPhoneUniqueIndex() {
+  try {
+    sqliteDb.exec("CREATE UNIQUE INDEX IF NOT EXISTS users_phone_unique ON users (phone) WHERE phone IS NOT NULL AND phone <> ''");
+  } catch (error) {
+    console.warn("Skipping users_phone_unique index creation because duplicate phone numbers already exist", error);
+  }
 }
 
 export function ensureUserAdminColumns() {

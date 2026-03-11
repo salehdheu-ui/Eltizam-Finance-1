@@ -32,12 +32,34 @@ const passwordSchema = z.string()
   .regex(/[a-z]/, passwordStrengthMessage)
   .regex(/[0-9]/, passwordStrengthMessage);
 
+const emailSchema = z.union([
+  z.literal(""),
+  z.string().trim().email("البريد الإلكتروني غير صالح"),
+]);
+
+const phoneSchema = z.string()
+  .trim()
+  .regex(/^[0-9+\-\s()]{7,20}$/, "رقم الهاتف غير صالح");
+
+const optionalPhoneSchema = z.union([
+  z.literal(""),
+  phoneSchema,
+]);
+
 const registerSchema = z.object({
   username: z.string().min(3).max(50),
   password: passwordSchema,
   name: z.string().min(1).max(120).optional(),
   fullName: z.string().min(1).max(120).optional(),
-  email: z.string().email(),
+  email: emailSchema.optional().default(""),
+  phone: optionalPhoneSchema.optional().default(""),
+}).refine((data) => {
+  const hasEmail = !!data.email?.trim();
+  const hasPhone = !!data.phone?.trim();
+  return hasEmail || hasPhone;
+}, {
+  message: "أدخل البريد الإلكتروني أو رقم الهاتف",
+  path: ["email"],
 });
 
 const loginSchema = z.object({
@@ -72,6 +94,18 @@ function regenerateSession(req: Express.Request) {
 function loginUser(req: Express.Request, user: SelectUser) {
   return new Promise<void>((resolve, reject) => {
     req.login(user, (err) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+function saveSession(req: Express.Request) {
+  return new Promise<void>((resolve, reject) => {
+    req.session.save((err) => {
       if (err) {
         reject(err);
         return;
@@ -228,6 +262,23 @@ export function setupAuth(app: Express) {
         return res.status(400).json({ message: "اسم المستخدم مستخدم بالفعل" });
       }
 
+      const normalizedEmail = input.email?.trim() || "";
+      const normalizedPhone = input.phone?.trim() || "";
+
+      if (normalizedEmail) {
+        const existingEmail = await storage.getUserByEmail(normalizedEmail);
+        if (existingEmail) {
+          return res.status(400).json({ message: "البريد الإلكتروني مستخدم بالفعل" });
+        }
+      }
+
+      if (normalizedPhone) {
+        const existingPhone = await storage.getUserByPhone(normalizedPhone);
+        if (existingPhone) {
+          return res.status(400).json({ message: "رقم الهاتف مستخدم بالفعل" });
+        }
+      }
+
       const existingUsers = await storage.getAllUsers();
       const assignedRole = existingUsers.length === 0 ? "system_admin" : "user";
 
@@ -235,15 +286,17 @@ export function setupAuth(app: Express) {
         username: input.username,
         password: await hashPassword(input.password),
         name: input.fullName || input.name || input.username,
-        email: input.email,
+        email: normalizedEmail,
+        phone: normalizedPhone || null,
         role: assignedRole,
         isActive: true,
         lastLoginAt: Math.floor(Date.now() / 1000),
         createdAt: Math.floor(Date.now() / 1000),
       });
-
+      
       await regenerateSession(req);
       await loginUser(req, user);
+      await saveSession(req);
       await writeAuditEvent({
         action: "user.registered",
         actorUserId: user.id,
@@ -303,6 +356,7 @@ export function setupAuth(app: Express) {
       const updatedUser = await storage.updateUser(user.id, { lastLoginAt: Math.floor(Date.now() / 1000) });
       await regenerateSession(req);
       await loginUser(req, updatedUser);
+      await saveSession(req);
       clearAuthAttempts(attemptKey);
       await writeAuditEvent({
         action: "auth.login.success",

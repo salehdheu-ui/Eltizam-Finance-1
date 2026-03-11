@@ -107,9 +107,12 @@ export function useLogin() {
 
 export function useRegister() {
   return useMutation({
-    mutationFn: (data: { username: string; password: string; name: string; email: string }) =>
-      apiRequest("POST", "/api/register", data),
-    onSuccess: () => {
+    mutationFn: async (data: { username: string; password: string; name: string; email?: string; phone?: string }) => {
+      const res = await apiRequest("POST", "/api/register", data);
+      return res.json() as Promise<User>;
+    },
+    onSuccess: (user) => {
+      queryClient.setQueryData(["/api/user"], user);
       queryClient.invalidateQueries({ queryKey: ["/api/user"] });
     },
   });
