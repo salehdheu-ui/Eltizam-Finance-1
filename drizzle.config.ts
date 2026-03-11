@@ -5,6 +5,6 @@ export default defineConfig({
   schema: "./shared/schema.ts",
   dialect: "sqlite",
   dbCredentials: {
-    url: process.env.DATABASE_PATH || "./eltizam.db",
+    url: "./eltizam.db",
   },
 });

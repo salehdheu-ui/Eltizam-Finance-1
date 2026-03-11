@@ -1,11 +1,10 @@
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../shared/schema";
-import { databasePath } from "../server/database-path";
 
 console.log("Resetting database...");
 
-const sqliteDb = new Database(databasePath);
+const sqliteDb = new Database("./eltizam.db");
 
 // Drop existing tables
 sqliteDb.exec(`
