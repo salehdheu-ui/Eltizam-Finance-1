@@ -10,18 +10,18 @@ import { z } from "zod";
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.isAuthenticated()) {
-    return res.status(401).json({ message: "ØºÙŠØ± Ù…Ø³Ø¬Ù„ Ø§Ù„Ø¯Ø®ÙˆÙ„" });
+    return res.status(401).json({ message: "غير مسجل الدخول" });
   }
   next();
 }
 
 function requireSystemAdmin(req: Request, res: Response, next: NextFunction) {
   if (!req.isAuthenticated()) {
-    return res.status(401).json({ message: "ØºÙŠØ± Ù…Ø³Ø¬Ù„ Ø§Ù„Ø¯Ø®ÙˆÙ„" });
+    return res.status(401).json({ message: "غير مسجل الدخول" });
   }
 
   if (req.user?.role !== "system_admin") {
-    return res.status(404).json({ message: "ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯" });
+    return res.status(404).json({ message: "غير موجود" });
   }
 
   next();
@@ -71,7 +71,7 @@ async function runQueuedWrite<T>(res: Response, key: string, task: () => Promise
 }
 
 const applyVariableObligationPaymentSchema = z.object({
-  amount: z.number().positive("Ø§Ù„Ù…Ø¨Ù„Øº ÙŠØ¬Ø¨ Ø£Ù† ÙŠÙƒÙˆÙ† Ø£ÙƒØ¨Ø± Ù…Ù† ØµÙØ±"),
+  amount: z.number().positive("المبلغ يجب أن يكون أكبر من صفر"),
 });
 
 const adminUserUpdateSchema = z.object({
@@ -90,8 +90,9 @@ const categoryUpdateSchema = insertCategorySchema.partial();
 
 const transactionCreateRequestSchema = z.object({
   walletId: z.union([z.number(), z.string()]),
+  targetWalletId: z.union([z.number(), z.string()]).nullable().optional(),
   categoryId: z.union([z.number(), z.string()]).nullable().optional(),
-  type: z.enum(["income", "expense", "debt"]),
+  type: z.enum(["income", "expense", "debt", "transfer"]),
   amount: z.union([z.number(), z.string()]),
   note: z.string().optional(),
 });
@@ -247,7 +248,7 @@ export async function registerRoutes(
     try {
       const userId = parseRouteId(req.params.id);
       if (req.user!.id === userId) {
-        return res.status(400).json({ message: "Ù„Ø§ ÙŠÙ…ÙƒÙ†Ùƒ ØªØ¹Ø¯ÙŠÙ„ Ø­Ø³Ø§Ø¨Ùƒ Ø§Ù„Ø¥Ø¯Ø§Ø±ÙŠ Ù…Ù† Ù‡Ø°Ù‡ Ø§Ù„ØµÙØ­Ø©" });
+        return res.status(400).json({ message: "لا يمكنك تعديل حسابك الإداري من هذه الصفحة" });
       }
 
       const { isActive } = adminUserUpdateSchema.parse(req.body);
@@ -272,7 +273,7 @@ export async function registerRoutes(
     try {
       const userId = parseRouteId(req.params.id);
       if (req.user!.id === userId) {
-        return res.status(400).json({ message: "Ù„Ø§ ÙŠÙ…ÙƒÙ†Ùƒ Ø­Ø°Ù Ø­Ø³Ø§Ø¨Ùƒ Ø§Ù„Ø¥Ø¯Ø§Ø±ÙŠ Ø§Ù„Ø­Ø§Ù„ÙŠ" });
+        return res.status(400).json({ message: "لا يمكنك حذف حسابك الإداري الحالي" });
       }
 
       await runQueuedWrite(
@@ -287,7 +288,7 @@ export async function registerRoutes(
         targetUserId: userId,
         ipAddress: req.ip,
       });
-      res.json({ message: "ØªÙ… Ø­Ø°Ù Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… Ø¨Ù†Ø¬Ø§Ø­" });
+      res.json({ message: "تم حذف المستخدم بنجاح" });
     } catch (e) { next(e); }
   });
 
@@ -335,7 +336,7 @@ export async function registerRoutes(
         buildWriteQueueKey("user", req.user!.id, "wallet", walletId),
         () => storage.deleteWallet(walletId, req.user!.id),
       );
-      res.json({ message: "ØªÙ… Ø§Ù„Ø­Ø°Ù Ø¨Ù†Ø¬Ø§Ø­" });
+      res.json({ message: "تم حذف المحفظة بنجاح" });
     } catch (e) { next(e); }
   });
 
@@ -383,7 +384,7 @@ export async function registerRoutes(
         buildWriteQueueKey("user", req.user!.id, "category", categoryId),
         () => storage.deleteCategory(categoryId, req.user!.id),
       );
-      res.json({ message: "ØªÙ… Ø§Ù„Ø­Ø°Ù Ø¨Ù†Ø¬Ø§Ø­" });
+      res.json({ message: "تم حذف الفئة بنجاح" });
     } catch (e) { next(e); }
   });
 
@@ -449,7 +450,7 @@ export async function registerRoutes(
         buildWriteQueueKey("user", req.user!.id, "recurring-income", recurringIncomeId),
         () => storage.deleteRecurringIncome(recurringIncomeId, req.user!.id),
       );
-      res.json({ message: "ØªÙ… Ø­Ø°Ù Ø§Ù„Ø¯Ø®Ù„ Ø§Ù„Ù…ØªÙƒØ±Ø± Ø¨Ù†Ø¬Ø§Ø­" });
+      res.json({ message: "تم حذف الدخل المتكرر بنجاح" });
     } catch (e) { next(e); }
   });
 
@@ -461,7 +462,29 @@ export async function registerRoutes(
         amount: toRequiredNumber(input.amount),
         categoryId: toOptionalNumber(input.categoryId),
         walletId: toOptionalNumber(input.walletId),
+        targetWalletId: toOptionalNumber(input.targetWalletId),
       };
+      if (input.type === "transfer") {
+        if (!body.walletId || !body.targetWalletId) {
+          throw new Error("يجب اختيار المحفظة المحوَّل منها والمحفظة المحوَّل إليها");
+        }
+        const sourceWalletId = Number(body.walletId);
+        const targetWalletId = Number(body.targetWalletId);
+        const transferAmount = Number(body.amount);
+
+        const tx = await runQueuedWrite(
+          res,
+          buildWriteQueueKey("user", req.user!.id, "wallet", sourceWalletId, "transfer", targetWalletId),
+          () => storage.createTransfer(req.user!.id, {
+            sourceWalletId,
+            targetWalletId,
+            amount: transferAmount,
+            note: body.note,
+          }),
+        );
+        return res.status(201).json(tx);
+      }
+
       const data = insertTransactionSchema.parse(body);
       const tx = await runQueuedWrite(
         res,
@@ -480,7 +503,7 @@ export async function registerRoutes(
         buildWriteQueueKey("user", req.user!.id, "transactions"),
         () => storage.deleteTransaction(transactionId, req.user!.id),
       );
-      res.json({ message: "ØªÙ… Ø§Ù„Ø­Ø°Ù Ø¨Ù†Ø¬Ø§Ø­" });
+      res.json({ message: "تم حذف الحركة بنجاح" });
     } catch (e) { next(e); }
   });
 
@@ -491,11 +514,12 @@ export async function registerRoutes(
         storage.getWallets(req.user!.id),
         storage.getTransactions(req.user!.id),
       ]);
+      const visibleTransactions = txsData.filter((tx) => !(typeof tx.note === "string" && tx.note.startsWith("__transfer__:")));
 
       const totalBalance = walletsData.reduce((acc, w) => acc + w.balance, 0);
-      const totalIncome = txsData.filter(t => t.type === "income").reduce((acc, t) => acc + t.amount, 0);
-      const totalExpenses = txsData.filter(t => t.type === "expense" || t.type === "debt").reduce((acc, t) => acc + t.amount, 0);
-      const recentTransactions = txsData.slice(0, 5);
+      const totalIncome = visibleTransactions.filter(t => t.type === "income").reduce((acc, t) => acc + t.amount, 0);
+      const totalExpenses = visibleTransactions.filter(t => t.type === "expense" || t.type === "debt").reduce((acc, t) => acc + t.amount, 0);
+      const recentTransactions = visibleTransactions.slice(0, 5);
 
       res.json({ totalBalance, totalIncome, totalExpenses, recentTransactions });
     } catch (e) { next(e); }
@@ -516,7 +540,7 @@ export async function registerRoutes(
       const filteredTransactions = txsData.filter((tx) => {
         const date = new Date(tx.date * 1000);
         return date >= start && date <= end;
-      });
+      }).filter((tx) => !(typeof tx.note === "string" && tx.note.startsWith("__transfer__:")));
 
       const incomeTransactions = filteredTransactions.filter((tx) => tx.type === "income");
       const outflowTransactions = filteredTransactions.filter((tx) => tx.type === "expense" || tx.type === "debt");
@@ -531,7 +555,8 @@ export async function registerRoutes(
       const expensesByCategoryMap = new Map<string, { categoryName: string; total: number; count: number }>();
       for (const tx of outflowTransactions) {
         const key = String(tx.categoryId ?? "uncategorized");
-        const current = expensesByCategoryMap.get(key) ?? { categoryName: tx.categoryName || "ØºÙŠØ± Ù…ØµÙ†Ù", total: 0, count: 0 };
+        const current = expensesByCategoryMap.get(key) ?? { categoryName: tx.categoryName || "غير مصنف", total: 0, count: 0 };
+
         current.total += tx.amount;
         current.count += 1;
         expensesByCategoryMap.set(key, current);
@@ -585,10 +610,10 @@ export async function registerRoutes(
         }));
 
       const insights = [
-        topExpenseCategory ? `Ø£Ø¹Ù„Ù‰ Ø¨Ù†Ø¯ ØµØ±Ù Ù„Ø¯ÙŠÙƒ Ø®Ù„Ø§Ù„ Ø§Ù„ÙØªØ±Ø© Ù‡Ùˆ ${topExpenseCategory.categoryName} Ø¨Ù‚ÙŠÙ…Ø© ${topExpenseCategory.total.toFixed(2)} Ø±.Ø¹` : null,
-        mostUsedWallet ? `Ø£ÙƒØ«Ø± Ù…Ø­ÙØ¸Ø© Ø§Ø³ØªØ®Ø¯Ø§Ù…Ù‹Ø§ Ù‡ÙŠ ${mostUsedWallet.name} Ø¨Ø¹Ø¯Ø¯ ${mostUsedWallet.transactionCount} Ø­Ø±ÙƒØ©` : null,
-        salarySourceCount > 0 ? `Ù„Ø¯ÙŠÙƒ ${salarySourceCount} Ù…ØµØ¯Ø± Ø±Ø§ØªØ¨ Ù†Ø´Ø· Ø¨Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø¯ÙˆØ±ÙŠ ${recurringConfiguredTotal.toFixed(2)} Ø±.Ø¹` : "ÙŠÙ…ÙƒÙ†Ùƒ Ø¥Ø¶Ø§ÙØ© Ø±Ø§ØªØ¨ Ø´Ù‡Ø±ÙŠ Ù„ØªØªØ¨Ù‘Ø¹ Ø¯Ø®Ù„Ùƒ Ø§Ù„Ø«Ø§Ø¨Øª ØªÙ„Ù‚Ø§Ø¦ÙŠÙ‹Ø§",
-        netFlow >= 0 ? `ØµØ§ÙÙŠ Ø§Ù„ØªØ¯ÙÙ‚ Ø§Ù„Ù…Ø§Ù„ÙŠ Ù…ÙˆØ¬Ø¨ Ø¨Ù…Ù‚Ø¯Ø§Ø± ${netFlow.toFixed(2)} Ø±.Ø¹` : `Ù‡Ù†Ø§Ùƒ Ø¹Ø¬Ø² Ù…Ø§Ù„ÙŠ Ø¨Ù…Ù‚Ø¯Ø§Ø± ${Math.abs(netFlow).toFixed(2)} Ø±.Ø¹`,
+        topExpenseCategory ? `أعلى بند صرف لديك خلال الفترة هو ${topExpenseCategory.categoryName} بقيمة ${topExpenseCategory.total.toFixed(2)} ر.ع` : null,
+        mostUsedWallet ? `أكثر محفظة استخدامًا هي ${mostUsedWallet.name} بعدد ${mostUsedWallet.transactionCount} حركة` : null,
+        salarySourceCount > 0 ? `لديك ${salarySourceCount} مصدر راتب نشط بإجمالي دوري ${recurringConfiguredTotal.toFixed(2)} ر.ع` : "يمكنك إضافة راتب شهري لتتبّع دخلك الثابت تلقائيًا",
+        netFlow >= 0 ? `صافي التدفق المالي موجب بمقدار ${netFlow.toFixed(2)} ر.ع` : `هناك عجز مالي بمقدار ${Math.abs(netFlow).toFixed(2)} ر.ع`,
       ].filter(Boolean);
 
       res.json({
@@ -623,7 +648,7 @@ export async function registerRoutes(
     try {
       const obligation = await storage.getObligationById(parseRouteId(req.params.id), req.user!.id);
       if (!obligation) {
-        return res.status(404).json({ message: "Ø§Ù„Ø§Ù„ØªØ²Ø§Ù… ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯" });
+        return res.status(404).json({ message: "الالتزام غير موجود" });
       }
       res.json(obligation);
     } catch (e) { next(e); }
@@ -775,7 +800,7 @@ export async function registerRoutes(
         buildWriteQueueKey("user", req.user!.id, "obligation", obligationId),
         () => storage.deleteObligation(obligationId, req.user!.id),
       );
-      res.json({ message: "ØªÙ… Ø­Ø°Ù Ø§Ù„Ø§Ù„ØªØ²Ø§Ù… Ø¨Ù†Ø¬Ø§Ø­" });
+      res.json({ message: "تم حذف الالتزام بنجاح" });
     } catch (e) { next(e); }
   });
 

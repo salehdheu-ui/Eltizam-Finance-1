@@ -38,9 +38,13 @@ export default function Reports() {
   const { data, isLoading } = useReportsSummary(period);
 
   const pieData = useMemo(() => {
-    return (data?.expensesByCategory ?? []).slice(0, 5).map((item, index) => ({
+    const expenses = (data?.expensesByCategory ?? []).slice(0, 3);
+    const total = expenses.reduce((sum, item) => sum + item.total, 0);
+
+    return expenses.map((item, index) => ({
       ...item,
-      fill: ["#f97316", "#ef4444", "#8b5cf6", "#0ea5e9", "#14b8a6"][index % 5],
+      fill: ["#234F8D", "#3F93A8", "#4FC3A1"][index % 3],
+      percentValue: total > 0 ? Math.round((item.total / total) * 100) : 0,
     }));
   }, [data]);
 
@@ -211,38 +215,88 @@ export default function Reports() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Receipt className="h-5 w-5 text-primary" />
-            توزيع المصروفات حسب القسم
+      <Card className="overflow-hidden rounded-[28px] border border-border/50 bg-card shadow-sm">
+        <CardHeader className="pb-0 pt-6">
+          <CardTitle className="justify-center text-center text-2xl font-bold leading-tight text-foreground sm:text-[28px]">
+            توزيع النفقات حسب الأقسام
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-6 px-6 pb-6 pt-4">
           {pieData.length > 0 ? (
-            <div className="grid gap-4 md:grid-cols-[1fr_260px] items-center">
-              <div className="space-y-3">
-                {data.expensesByCategory.slice(0, 5).map((item) => (
-                  <div key={`${item.categoryId}-${item.categoryName}`} className="rounded-xl border border-border/60 p-3 bg-muted/20">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-medium">{item.categoryName}</span>
-                      <span className="font-bold">{formatCurrency(item.total, 2)} ر.ع</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">{item.count} معاملة</p>
-                  </div>
-                ))}
-              </div>
-              <div className="h-[250px]">
-                <ChartContainer config={{ total: { label: "المصروفات" } }} className="h-full w-full">
-                  <PieChart>
-                    <ChartTooltip content={<ChartTooltipContent nameKey="categoryName" />} />
-                    <Pie data={pieData} dataKey="total" nameKey="categoryName" innerRadius={55} outerRadius={85} paddingAngle={3}>
+            <div className="flex flex-col items-center justify-center">
+              <div className="h-[290px] w-full max-w-[320px]">
+                <ChartContainer config={{ total: { label: "النفقات" } }} className="h-full w-full">
+                  <PieChart margin={{ top: 20, right: 30, left: 30, bottom: 20 }}>
+                    <ChartTooltip
+                      content={
+                        <ChartTooltipContent
+                          nameKey="categoryName"
+                          formatter={(value, name, item) => (
+                            <div className="flex min-w-[10rem] items-center justify-between gap-4">
+                              <span className="text-muted-foreground">{name}</span>
+                              <span className="font-medium">
+                                {formatCurrency(Number(value), 2)} ({item.payload.percentValue}%)
+                              </span>
+                            </div>
+                          )}
+                        />
+                      }
+                    />
+                    <Pie
+                      data={pieData}
+                      dataKey="total"
+                      nameKey="categoryName"
+                      innerRadius={58}
+                      outerRadius={96}
+                      paddingAngle={2}
+                      cornerRadius={4}
+                      stroke="#ffffff"
+                      strokeWidth={2}
+                      labelLine={false}
+                      label={({ cx, cy, midAngle, outerRadius, percent }) => {
+                        const radius = Number(outerRadius) + 24;
+                        const x = Number(cx) + radius * Math.cos((-midAngle * Math.PI) / 180);
+                        const y = Number(cy) + radius * Math.sin((-midAngle * Math.PI) / 180);
+
+                        return (
+                          <text
+                            x={x}
+                            y={y}
+                            fill="currentColor"
+                            textAnchor={x > Number(cx) ? "start" : "end"}
+                            dominantBaseline="central"
+                            className="fill-foreground text-base font-bold"
+                          >
+                            {`${Math.round((percent ?? 0) * 100)}%`}
+                          </text>
+                        );
+                      }}
+                    >
                       {pieData.map((entry) => (
                         <Cell key={`${entry.categoryId}-${entry.categoryName}`} fill={entry.fill} />
                       ))}
                     </Pie>
                   </PieChart>
                 </ChartContainer>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-[15px] font-semibold text-foreground">
+                {pieData.map((item) => (
+                  <div key={`${item.categoryId}-${item.categoryName}-legend`} className="flex items-center gap-2">
+                    <span>{item.categoryName}</span>
+                    <span className="h-4 w-4 rounded-md" style={{ backgroundColor: item.fill }} />
+                  </div>
+                ))}
+              </div>
+              <div className="grid w-full max-w-[360px] gap-2 pt-1">
+                {pieData.map((item) => (
+                  <div key={`${item.categoryId}-${item.categoryName}-details`} className="flex items-center justify-between rounded-2xl border border-border/40 bg-muted/30 px-4 py-3 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="h-3 w-3 rounded-full" style={{ backgroundColor: item.fill }} />
+                      <span className="font-medium text-foreground">{item.categoryName}</span>
+                    </div>
+                    <span className="font-bold text-foreground">{item.percentValue}%</span>
+                  </div>
+                ))}
               </div>
             </div>
           ) : (

@@ -40,12 +40,15 @@ interface LayoutProps {
   children: React.ReactNode;
 }
 
+type TransactionKind = "expense" | "income" | "debt" | "transfer";
+
 type AddTransactionDetail = {
-  type?: string;
+  type?: TransactionKind;
   amount?: string;
   note?: string;
   categoryId?: string;
   walletId?: string;
+  targetWalletId?: string;
   obligationId?: string;
   obligationScheduleType?: string;
 };
@@ -56,11 +59,12 @@ export default function Layout({ children }: LayoutProps) {
   
   const [isAddTxOpen, setIsAddTxOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [txType, setTxType] = useState("expense");
+  const [txType, setTxType] = useState<TransactionKind>("expense");
   const [txAmount, setTxAmount] = useState("");
   const [txNote, setTxNote] = useState("");
   const [txCategoryId, setTxCategoryId] = useState("");
   const [txWalletId, setTxWalletId] = useState("");
+  const [txTargetWalletId, setTxTargetWalletId] = useState("");
   const [sourceObligationId, setSourceObligationId] = useState("");
   const [sourceObligationScheduleType, setSourceObligationScheduleType] = useState("");
   const sourceObligationNumericId = sourceObligationId ? parseInt(sourceObligationId, 10) : undefined;
@@ -77,7 +81,7 @@ export default function Layout({ children }: LayoutProps) {
 
   const categories = categoriesData || [];
   const wallets = walletsData || [];
-  const filteredCategories = categories.filter(c => c.type === txType);
+  const filteredCategories = txType === "transfer" ? [] : categories.filter(c => c.type === txType);
   const isVariableObligationQuickPay = sourceObligationScheduleType === "variable" && txType === "expense" && !!sourceObligation;
   const remainingVariableMonths = sourceObligation && sourceObligation.scheduleType === "variable"
     ? (() => {
@@ -122,6 +126,7 @@ export default function Layout({ children }: LayoutProps) {
         setTxNote(detail.note ?? "");
         setTxCategoryId(detail.categoryId ?? "");
         setTxWalletId(detail.walletId ?? "");
+        setTxTargetWalletId(detail.targetWalletId ?? "");
         setSourceObligationId(detail.obligationId ?? "");
         setSourceObligationScheduleType(detail.obligationScheduleType ?? "");
       } else {
@@ -130,6 +135,7 @@ export default function Layout({ children }: LayoutProps) {
         setTxNote("");
         setTxCategoryId("");
         setTxWalletId("");
+        setTxTargetWalletId("");
         setSourceObligationId("");
         setSourceObligationScheduleType("");
       }
@@ -194,6 +200,14 @@ export default function Layout({ children }: LayoutProps) {
       toast({ title: "خطأ", description: "يجب اختيار محفظة أو بنك", variant: "destructive" });
       return;
     }
+    if (txType === "transfer" && !txTargetWalletId) {
+      toast({ title: "خطأ", description: "يجب اختيار المحفظة المحوَّل إليها", variant: "destructive" });
+      return;
+    }
+    if (txType === "transfer" && txWalletId === txTargetWalletId) {
+      toast({ title: "خطأ", description: "يجب اختيار محفظتين مختلفتين للتحويل", variant: "destructive" });
+      return;
+    }
     
     try {
       const parsedAmount = parseFloat(txAmount);
@@ -206,8 +220,9 @@ export default function Layout({ children }: LayoutProps) {
         type: txType,
         amount: parsedAmount,
         note: txNote || "",
-        categoryId: txCategoryId ? parseInt(txCategoryId) : null,
+        categoryId: txType === "transfer" ? null : txCategoryId ? parseInt(txCategoryId) : null,
         walletId: parseInt(txWalletId),
+        targetWalletId: txType === "transfer" ? parseInt(txTargetWalletId, 10) : null,
       });
 
       let allocationDescription = "";
@@ -229,7 +244,9 @@ export default function Layout({ children }: LayoutProps) {
       
       toast({
         title: "تمت الإضافة بنجاح",
-        description: `تم تسجيل ${txType === 'expense' ? 'مصروف' : txType === 'income' ? 'دخل' : 'دين'} بقيمة ${txAmount} ر.ع${allocationDescription}`,
+        description: txType === "transfer"
+          ? `تم تحويل ${txAmount} ر.ع بنجاح بين المحافظ`
+          : `تم تسجيل ${txType === 'expense' ? 'مصروف' : txType === 'income' ? 'دخل' : 'دين'} بقيمة ${txAmount} ر.ع${allocationDescription}`,
       });
       
       setIsAddTxOpen(false);
@@ -237,6 +254,7 @@ export default function Layout({ children }: LayoutProps) {
       setTxNote("");
       setTxCategoryId("");
       setTxWalletId("");
+      setTxTargetWalletId("");
       setSourceObligationId("");
       setSourceObligationScheduleType("");
       setTxType("expense");
@@ -409,12 +427,12 @@ export default function Layout({ children }: LayoutProps) {
             <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
             <form onSubmit={handleAddTransaction} className="flex flex-col gap-5 pb-2">
               <div className="flex bg-muted/60 p-1 rounded-2xl border border-border/50 shadow-sm">
-                {["expense", "income", "debt"].map((type) => (
-                  <button key={type} type="button" onClick={() => { setTxType(type); setTxCategoryId(""); }}
+                {(["expense", "income", "debt", "transfer"] as TransactionKind[]).map((type) => (
+                  <button key={type} type="button" onClick={() => { setTxType(type); setTxCategoryId(""); if (type !== "transfer") setTxTargetWalletId(""); }}
                     className={cn("flex-1 py-2.5 text-sm rounded-xl transition-all",
                       txType === type ? "bg-background shadow-sm font-medium text-foreground" : "text-muted-foreground hover:text-foreground"
                     )}>
-                    {type === 'expense' ? 'مصروف' : type === 'income' ? 'دخل' : 'دين'}
+                    {type === 'expense' ? 'مصروف' : type === 'income' ? 'دخل' : type === 'transfer' ? 'تحويل' : 'دين'}
                   </button>
                 ))}
               </div>
@@ -488,7 +506,7 @@ export default function Layout({ children }: LayoutProps) {
 
               <div className="flex flex-col gap-2">
                 <Label className="flex items-center gap-1 text-base font-semibold">
-                  المحفظة
+                  {txType === "transfer" ? "التحويل من" : "المحفظة"}
                   <span className="text-destructive">*</span>
                 </Label>
                 {wallets.length === 0 ? (
@@ -511,6 +529,27 @@ export default function Layout({ children }: LayoutProps) {
                   <p className="text-xs text-emerald-600">✓ تم اختيار المحفظة</p>
                 )}
               </div>
+              {txType === "transfer" && (
+                <div className="flex flex-col gap-2">
+                  <Label className="flex items-center gap-1 text-base font-semibold">
+                    التحويل إلى
+                    <span className="text-destructive">*</span>
+                  </Label>
+                  <div className="flex flex-wrap gap-2">
+                    {wallets.filter((w) => w.id.toString() !== txWalletId).map((w) => (
+                      <button key={w.id} type="button" onClick={() => setTxTargetWalletId(w.id.toString())}
+                        className={cn("px-3 py-2 rounded-full text-sm border transition-all shadow-sm",
+                          txTargetWalletId === w.id.toString() ? "border-primary bg-primary/10 text-primary font-medium" : "border-border/50 hover:bg-muted/50"
+                        )}>
+                        {w.name}
+                      </button>
+                    ))}
+                  </div>
+                  {txTargetWalletId && (
+                    <p className="text-xs text-emerald-600">✓ تم اختيار المحفظة المستقبلة</p>
+                  )}
+                </div>
+              )}
             </form>
             </div>
 

@@ -6,7 +6,14 @@ import type { User, Wallet, Category, Transaction, RecurringIncome, Obligation, 
 type WalletPayload = Pick<Wallet, "name" | "type" | "balance" | "color">;
 type WalletUpdatePayload = Partial<WalletPayload> & { id: number };
 type CategoryPayload = Pick<Category, "name" | "type" | "icon" | "color" | "budget">;
-type TransactionPayload = Pick<Transaction, "walletId" | "categoryId" | "type" | "amount" | "note">;
+type TransactionPayload = {
+  walletId: number;
+  targetWalletId?: number | null;
+  categoryId: number | null;
+  type: "income" | "expense" | "debt" | "transfer";
+  amount: number;
+  note: string;
+};
 type RecurringIncomePayload = Pick<RecurringIncome, "title" | "amount" | "incomeType" | "dayOfMonth" | "walletId" | "categoryId" | "note" | "isActive" | "lastAppliedMonth">;
 type RecurringIncomeUpdatePayload = Partial<RecurringIncomePayload> & { id: number };
 type ObligationPayload = Omit<Obligation, "id" | "userId" | "createdAt" | "updatedAt">;
@@ -430,15 +437,33 @@ export type AdminPasswordResetRequest = {
   } | null;
 };
 
+export type PasswordResetSelfServiceStartResponse = {
+  message: string;
+  deliveryMethod: "email" | "phone" | null;
+  maskedContact: string | null;
+  fallbackToAdmin: boolean;
+  debugCode?: string;
+};
+
 export function useForgotPasswordRequest() {
   return useMutation({
     mutationFn: (data: { identifier: string }) => apiRequest("POST", "/api/password-reset/request", data),
   });
 }
 
-export function useSelfServicePasswordReset() {
+export function usePasswordResetSelfServiceStart() {
   return useMutation({
-    mutationFn: (data: { identifier: string; contactValue: string; newPassword: string }) => apiRequest("POST", "/api/password-reset/self-service", data),
+    mutationFn: async (data: { identifier: string }) => {
+      const response = await apiRequest("POST", "/api/password-reset/request-token", data);
+      return response.json() as Promise<PasswordResetSelfServiceStartResponse>;
+    },
+  });
+}
+
+export function usePasswordResetSelfServiceComplete() {
+  return useMutation({
+    mutationFn: (data: { token: string; newPassword: string }) =>
+      apiRequest("POST", "/api/password-reset/complete", data),
   });
 }
 

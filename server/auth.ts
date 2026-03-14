@@ -21,8 +21,12 @@ const isProduction = process.env.NODE_ENV === "production";
 const derivedSessionSecret = process.env.SESSION_SECRET || (!isProduction ? randomBytes(32).toString("hex") : "");
 const loginRateLimitWindowMs = 10 * 60 * 1000;
 const loginRateLimitMaxAttempts = 5;
+const passwordResetRateLimitWindowMs = 10 * 60 * 1000;
+const passwordResetRateLimitMaxAttempts = 5;
+const passwordResetTokenTtlSec = 10 * 60;
 const sessionCookieName = "eltizam.sid";
 const authAttempts = new Map<string, { count: number; windowStartedAt: number }>();
+const passwordResetAttempts = new Map<string, { count: number; windowStartedAt: number }>();
 const passwordStrengthMessage = "كلمة المرور ضعيفة. استخدم 8 أحرف على الأقل مع حرف كبير وحرف صغير ورقم واحد على الأقل";
 
 const passwordSchema = z.string()
@@ -83,9 +87,12 @@ const forgotPasswordRequestSchema = z.object({
   identifier: z.string().trim().min(1).max(120),
 });
 
-const selfServicePasswordResetSchema = z.object({
+const passwordResetStartSchema = z.object({
   identifier: z.string().trim().min(1).max(120),
-  contactValue: z.string().trim().min(1).max(120),
+});
+
+const passwordResetCompleteSchema = z.object({
+  token: z.string().trim().min(4).max(32),
   newPassword: passwordSchema,
 });
 
@@ -179,6 +186,32 @@ function clearAuthAttempts(key: string) {
   authAttempts.delete(key);
 }
 
+function consumePasswordResetAttempt(key: string) {
+  const now = Date.now();
+  const current = passwordResetAttempts.get(key);
+
+  if (!current || now - current.windowStartedAt > passwordResetRateLimitWindowMs) {
+    passwordResetAttempts.set(key, { count: 1, windowStartedAt: now });
+    return { allowed: true, remaining: passwordResetRateLimitMaxAttempts - 1, retryAfterSec: 0 };
+  }
+
+  if (current.count >= passwordResetRateLimitMaxAttempts) {
+    return {
+      allowed: false,
+      remaining: 0,
+      retryAfterSec: Math.ceil((passwordResetRateLimitWindowMs - (now - current.windowStartedAt)) / 1000),
+    };
+  }
+
+  current.count += 1;
+  passwordResetAttempts.set(key, current);
+  return { allowed: true, remaining: Math.max(passwordResetRateLimitMaxAttempts - current.count, 0), retryAfterSec: 0 };
+}
+
+function clearPasswordResetAttempts(key: string) {
+  passwordResetAttempts.delete(key);
+}
+
 async function hashPassword(password: string) {
   const salt = randomBytes(16).toString("hex");
   const buf = (await scryptAsync(password, salt, 64)) as Buffer;
@@ -201,11 +234,90 @@ function getValidationMessage(error: z.ZodError) {
   return error.issues[0]?.message || "البيانات المدخلة غير صالحة";
 }
 
+function normalizePhoneForLookup(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  let normalized = trimmed.replace(/[\s\-()]/g, "");
+  if (normalized.startsWith("00")) {
+    normalized = `+${normalized.slice(2)}`;
+  }
+
+  return normalized;
+}
+
+function getPhoneDigits(value: string) {
+  return normalizePhoneForLookup(value).replace(/\D/g, "");
+}
+
+async function findUserByPhoneIdentifier(identifier: string) {
+  const normalizedPhone = normalizePhoneForLookup(identifier);
+  if (!normalizedPhone) {
+    return undefined;
+  }
+
+  const exactPhoneMatch = await storage.getUserByPhone(normalizedPhone);
+  if (exactPhoneMatch) {
+    return exactPhoneMatch;
+  }
+
+  const identifierDigits = getPhoneDigits(identifier);
+  if (!identifierDigits) {
+    return undefined;
+  }
+
+  const matchedUsers = (await storage.getAllUsers()).filter((user) => {
+    const userPhone = user.phone?.trim();
+    if (!userPhone) {
+      return false;
+    }
+
+    const normalizedUserPhone = normalizePhoneForLookup(userPhone);
+    if (normalizedUserPhone === normalizedPhone) {
+      return true;
+    }
+
+    const userDigits = getPhoneDigits(userPhone);
+    if (!userDigits) {
+      return false;
+    }
+
+    return userDigits.endsWith(identifierDigits) || identifierDigits.endsWith(userDigits);
+  });
+
+  if (matchedUsers.length === 1) {
+    return matchedUsers[0];
+  }
+
+  return undefined;
+}
+
 async function findUserByIdentifier(identifier: string) {
   const normalized = identifier.trim();
   return (await storage.getUserByUsername(normalized))
     || (await storage.getUserByEmail(normalized))
-    || (await storage.getUserByPhone(normalized));
+    || (await findUserByPhoneIdentifier(normalized));
+}
+
+function maskContactValue(value: string) {
+  if (value.includes("@")) {
+    const [localPart, domain] = value.split("@");
+    const visibleLocal = localPart.slice(0, 2);
+    return `${visibleLocal}${"*".repeat(Math.max(localPart.length - visibleLocal.length, 2))}@${domain}`;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length <= 4) {
+    return "*".repeat(trimmed.length);
+  }
+
+  return `${trimmed.slice(0, 2)}${"*".repeat(Math.max(trimmed.length - 4, 2))}${trimmed.slice(-2)}`;
+}
+
+function buildPasswordResetToken() {
+  return (Math.floor(100000 + Math.random() * 900000)).toString();
 }
 
 export async function hashPlainPassword(password: string) {
@@ -371,25 +483,122 @@ export function setupAuth(app: Express) {
     }
   });
 
-  app.post("/api/password-reset/self-service", async (req, res, next) => {
+  app.post("/api/password-reset/request-token", async (req, res, next) => {
     try {
-      const parsedInput = selfServicePasswordResetSchema.safeParse(req.body);
+      const parsedInput = passwordResetStartSchema.safeParse(req.body);
       if (!parsedInput.success) {
         return res.status(400).json({ message: getValidationMessage(parsedInput.error) });
       }
+
       const identifier = parsedInput.data.identifier.trim();
-      const contactValue = parsedInput.data.contactValue.trim();
+      const attemptKey = getRateLimitKey(identifier, req.ip);
+      const rateLimit = consumePasswordResetAttempt(attemptKey);
+      res.setHeader("X-RateLimit-Remaining", rateLimit.remaining.toString());
+      if (!rateLimit.allowed) {
+        res.setHeader("Retry-After", rateLimit.retryAfterSec.toString());
+        return res.status(429).json({ message: "تم تجاوز عدد محاولات الاستعادة، حاول مرة أخرى لاحقًا" });
+      }
+
       const user = await findUserByIdentifier(identifier);
       if (!user || !user.isActive) {
-        return res.status(400).json({ message: "تعذر التحقق من بيانات الاستعادة" });
+        return res.json({
+          message: "إذا كانت البيانات صحيحة فسيتم إرسال رمز التحقق إلى وسيلة التواصل المسجلة أو يمكنك المتابعة مع الإدارة",
+          deliveryMethod: null,
+          maskedContact: null,
+          fallbackToAdmin: true,
+        });
       }
-      const matchesContact = user.email === contactValue || user.phone === contactValue;
-      if (!matchesContact) {
-        return res.status(400).json({ message: "تعذر التحقق من بيانات الاستعادة" });
+
+      const contactValue = (user.email || user.phone || "").trim();
+      if (!contactValue) {
+        return res.json({
+          message: "لا توجد وسيلة تواصل صالحة لهذا الحساب، يمكنك المتابعة مع الإدارة",
+          deliveryMethod: null,
+          maskedContact: null,
+          fallbackToAdmin: true,
+        });
       }
+
+      const resetToken = buildPasswordResetToken();
+      const resetTokenExpiresAt = Math.floor(Date.now() / 1000) + passwordResetTokenTtlSec;
+      const deliveryMethod: "email" | "phone" = user.email ? "email" : "phone";
+
+      await storage.createPasswordResetRequest({
+        userId: user.id,
+        status: "pending",
+        verificationMethod: "self_service",
+        requestedByIdentifier: identifier,
+        contactValue,
+        resetToken,
+        resetTokenExpiresAt,
+        adminUserId: null,
+        createdAt: Math.floor(Date.now() / 1000),
+        resolvedAt: null,
+      });
+
+      await writeAuditEvent({
+        action: "auth.password_reset.self_service_requested",
+        actorRole: null,
+        targetUserId: user.id,
+        ipAddress: req.ip,
+        metadata: { identifier, deliveryMethod },
+      });
+
+      return res.json({
+        message: "تم إنشاء رمز استعادة مؤقت. استخدمه لإكمال تعيين كلمة المرور أو تواصل مع الإدارة إذا تعذر ذلك",
+        deliveryMethod,
+        maskedContact: maskContactValue(contactValue),
+        fallbackToAdmin: true,
+        debugCode: isProduction ? undefined : resetToken,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/password-reset/complete", async (req, res, next) => {
+    try {
+      const parsedInput = passwordResetCompleteSchema.safeParse(req.body);
+      if (!parsedInput.success) {
+        return res.status(400).json({ message: getValidationMessage(parsedInput.error) });
+      }
+
+      const token = parsedInput.data.token.trim();
+      const resetRequest = await storage.getPasswordResetRequestByToken(token);
+      if (!resetRequest || resetRequest.verificationMethod !== "self_service" || resetRequest.status !== "pending") {
+        return res.status(400).json({ message: "رمز الاستعادة غير صالح" });
+      }
+
+      const now = Math.floor(Date.now() / 1000);
+      if (!resetRequest.resetTokenExpiresAt || resetRequest.resetTokenExpiresAt < now) {
+        await storage.updatePasswordResetRequest(resetRequest.id, {
+          status: "expired",
+          resolvedAt: now,
+          resetToken: null,
+        });
+        return res.status(400).json({ message: "انتهت صلاحية رمز الاستعادة" });
+      }
+
+      const user = await storage.getUser(resetRequest.userId);
+      if (!user || !user.isActive) {
+        return res.status(400).json({ message: "تعذر إكمال استعادة كلمة المرور" });
+      }
+
       const hashed = await hashPassword(parsedInput.data.newPassword);
       await storage.updateUser(user.id, { password: hashed });
-      await writeAuditEvent({ action: "auth.password_reset.self_service_completed", actorRole: null, targetUserId: user.id, ipAddress: req.ip, metadata: { identifier } });
+      await storage.updatePasswordResetRequest(resetRequest.id, {
+        status: "approved",
+        resolvedAt: now,
+        resetToken: null,
+      });
+      clearPasswordResetAttempts(getRateLimitKey(resetRequest.requestedByIdentifier, req.ip));
+      await writeAuditEvent({
+        action: "auth.password_reset.self_service_completed",
+        actorRole: null,
+        targetUserId: user.id,
+        ipAddress: req.ip,
+        metadata: { requestId: resetRequest.id },
+      });
       return res.json({ message: "تمت إعادة تعيين كلمة المرور بنجاح" });
     } catch (error) {
       next(error);

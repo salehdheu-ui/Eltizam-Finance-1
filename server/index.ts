@@ -3,6 +3,7 @@ import { ensurePasswordResetRequestsTable, ensureUserAdminColumns, ensureUserEma
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { ZodError } from "zod";
 
 const app = express();
 const httpServer = createServer(app);
@@ -149,10 +150,13 @@ app.use((req, res, next) => {
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
+    const status = err.status || err.statusCode || (err instanceof ZodError ? 400 : 500);
+    const validationMessage = err instanceof ZodError
+      ? err.issues[0]?.message || "البيانات المرسلة غير صالحة"
+      : undefined;
     const message = isProduction && status >= 500
       ? "حدث خطأ داخلي غير متوقع"
-      : err.message || "Internal Server Error";
+      : validationMessage || err.message || "Internal Server Error";
 
     console.error("Internal Server Error:", err);
 

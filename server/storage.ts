@@ -1,4 +1,4 @@
-﻿import { eq, and, desc } from "drizzle-orm";
+﻿import { eq, and, desc, like } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, wallets, categories, transactions, recurringIncomes, obligations, variableObligationMonthStatuses, passwordResetRequests,
@@ -65,6 +65,7 @@ export interface IStorage {
   getTransactions(userId: number): Promise<(Transaction & { categoryName?: string | null; categoryIcon?: string | null; walletName?: string | null })[]>;
   getTransactionsByType(userId: number, type: string): Promise<Transaction[]>;
   createTransaction(userId: number, transaction: InsertTransaction): Promise<Transaction>;
+  createTransfer(userId: number, transfer: { sourceWalletId: number; targetWalletId: number; amount: number; note?: string | null }): Promise<Transaction>;
   deleteTransaction(id: number, userId: number): Promise<void>;
 
   getRecurringIncomes(userId: number): Promise<RecurringIncome[]>;
@@ -85,6 +86,28 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  private isTransferNote(note: string | null | undefined) {
+    return typeof note === "string" && note.startsWith("__transfer__:");
+  }
+
+  private parseTransferNote(note: string | null | undefined) {
+    if (!this.isTransferNote(note)) {
+      return null;
+    }
+
+    const [prefix, pairId, direction, walletId, ...rest] = (note ?? "").split(":");
+    if (prefix !== "__transfer__" || !pairId || !direction || !walletId) {
+      return null;
+    }
+
+    return {
+      pairId,
+      direction,
+      relatedWalletId: Number(walletId),
+      label: rest.join(":"),
+    };
+  }
+
   private async normalizeObligationStatus(obligation: Obligation | undefined, userId: number): Promise<Obligation | undefined> {
     if (!obligation) {
       return obligation;
@@ -260,21 +283,92 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createTransaction(userId: number, transaction: InsertTransaction): Promise<Transaction> {
-    const [created] = await db.insert(transactions).values({ ...transaction, userId }).returning();
-
     if (transaction.walletId) {
       const wallet = await this.getWallet(transaction.walletId, userId);
       if (wallet) {
+        if ((transaction.type === "expense" || transaction.type === "debt") && transaction.amount > wallet.balance) {
+          throw new Error("المبلغ أكبر من الرصيد المتاح في المحفظة");
+        }
+
+        const [created] = await db.insert(transactions).values({ ...transaction, userId }).returning();
         const delta = transaction.type === "income" ? transaction.amount : -transaction.amount;
         await this.updateWallet(wallet.id, userId, { balance: wallet.balance + delta });
+        return created;
       }
     }
 
+    const [created] = await db.insert(transactions).values({ ...transaction, userId }).returning();
     return created;
+  }
+
+  async createTransfer(userId: number, transfer: { sourceWalletId: number; targetWalletId: number; amount: number; note?: string | null }): Promise<Transaction> {
+    if (transfer.sourceWalletId === transfer.targetWalletId) {
+      throw new Error("يجب اختيار محفظتين مختلفتين للتحويل");
+    }
+
+    const sourceWallet = await this.getWallet(transfer.sourceWalletId, userId);
+    const targetWallet = await this.getWallet(transfer.targetWalletId, userId);
+
+    if (!sourceWallet || !targetWallet) {
+      throw new Error("تعذر العثور على إحدى المحافظ المحددة");
+    }
+
+    if (transfer.amount > sourceWallet.balance) {
+      throw new Error("المبلغ أكبر من الرصيد المتاح في المحفظة");
+    }
+
+    const pairId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const label = (transfer.note?.trim() || "تحويل بين المحافظ").replace(/:/g, " - ");
+    const outNote = `__transfer__:${pairId}:out:${transfer.targetWalletId}:${label}`;
+    const inNote = `__transfer__:${pairId}:in:${transfer.sourceWalletId}:${label}`;
+
+    const [outgoing] = await db.insert(transactions).values({
+      userId,
+      walletId: transfer.sourceWalletId,
+      categoryId: null,
+      type: "expense",
+      amount: transfer.amount,
+      note: outNote,
+    }).returning();
+
+    await db.insert(transactions).values({
+      userId,
+      walletId: transfer.targetWalletId,
+      categoryId: null,
+      type: "income",
+      amount: transfer.amount,
+      note: inNote,
+    });
+
+    await this.updateWallet(sourceWallet.id, userId, { balance: sourceWallet.balance - transfer.amount });
+    await this.updateWallet(targetWallet.id, userId, { balance: targetWallet.balance + transfer.amount });
+
+    return outgoing;
   }
 
   async deleteTransaction(id: number, userId: number): Promise<void> {
     const [tx] = await db.select().from(transactions).where(and(eq(transactions.id, id), eq(transactions.userId, userId)));
+    const transferMeta = this.parseTransferNote(tx?.note);
+    if (tx && transferMeta) {
+      const pairTransactions = await db
+        .select()
+        .from(transactions)
+        .where(and(eq(transactions.userId, userId), like(transactions.note, `__transfer__:${transferMeta.pairId}:%`)));
+
+      for (const pairTx of pairTransactions) {
+        if (pairTx.walletId) {
+          const wallet = await this.getWallet(pairTx.walletId, userId);
+          if (wallet) {
+            const delta = pairTx.type === "income" ? -pairTx.amount : pairTx.amount;
+            await this.updateWallet(wallet.id, userId, { balance: wallet.balance + delta });
+          }
+        }
+      }
+
+      await db.delete(transactions).where(and(eq(transactions.userId, userId), like(transactions.note, `__transfer__:${transferMeta.pairId}:%`)));
+      return;
+    }
+
     if (tx && tx.walletId) {
       const wallet = await this.getWallet(tx.walletId, userId);
       if (wallet) {

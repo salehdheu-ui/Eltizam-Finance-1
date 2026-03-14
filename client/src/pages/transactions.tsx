@@ -7,6 +7,20 @@ import { useMemo, useState } from "react";
 import { useTransactions, useDeleteTransaction, useWallets, useCategories } from "@/lib/hooks";
 import { useToast } from "@/hooks/use-toast";
 
+function isTransferTransaction(note?: string | null) {
+  return typeof note === "string" && note.startsWith("__transfer__:");
+}
+
+function getTransferLabel(note?: string | null) {
+  if (!isTransferTransaction(note)) {
+    return note || "";
+  }
+
+  const [, , direction, , ...rest] = note!.split(":");
+  const label = rest.join(":");
+  return direction === "out" ? `تحويل صادر - ${label}` : `تحويل وارد - ${label}`;
+}
+
 function isWithinRange(dateInput: string | Date | number, range: "all" | "7days" | "30days" | "90days") {
   if (range === "all") return true;
 
@@ -65,8 +79,12 @@ export default function Transactions() {
       .sort((a, b) => toDate(b.date).getTime() - toDate(a.date).getTime());
   }, [transactions, activeTab, walletFilter, categoryFilter, rangeFilter, searchQuery]);
 
-  const totalIncome = filteredTransactions.filter((tx) => tx.type === "income").reduce((sum, tx) => sum + tx.amount, 0);
-  const totalOutflow = filteredTransactions.filter((tx) => tx.type === "expense" || tx.type === "debt").reduce((sum, tx) => sum + tx.amount, 0);
+  const totalIncome = filteredTransactions
+    .filter((tx) => tx.type === "income" && !isTransferTransaction(tx.note))
+    .reduce((sum, tx) => sum + tx.amount, 0);
+  const totalOutflow = filteredTransactions
+    .filter((tx) => (tx.type === "expense" || tx.type === "debt") && !isTransferTransaction(tx.note))
+    .reduce((sum, tx) => sum + tx.amount, 0);
 
   const handleDelete = async (id: number) => {
     if (deleteTransaction.isPending) {
@@ -174,7 +192,8 @@ export default function Transactions() {
             <div className="flex flex-col gap-3">
               {filteredTransactions.length > 0 ? (
                 filteredTransactions.map((tx) => {
-                  const catName = tx.categoryName || "أخرى";
+                  const isTransfer = isTransferTransaction(tx.note);
+                  const catName = isTransfer ? "تحويل" : tx.categoryName || "أخرى";
                   const icon = tx.categoryIcon || defaultIcons[catName] || "📝";
                   const bg = defaultBgs[catName] || "bg-muted";
                   return (
@@ -185,7 +204,7 @@ export default function Transactions() {
                         </div>
                         <div>
                           <h4 className="font-bold text-sm">{catName}</h4>
-                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{tx.note}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{getTransferLabel(tx.note)}</p>
                           <div className="flex flex-wrap items-center gap-2 mt-1 text-[10px] text-muted-foreground">
                             {tx.walletName ? <span className="inline-flex items-center gap-1"><Wallet className="h-3 w-3" />{tx.walletName}</span> : null}
                             {tx.categoryName ? <span className="inline-flex items-center gap-1"><PieChart className="h-3 w-3" />{tx.categoryName}</span> : null}
