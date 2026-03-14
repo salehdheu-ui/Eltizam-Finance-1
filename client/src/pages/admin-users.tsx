@@ -1,8 +1,9 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { DatabaseBackup, Loader2, Shield, Trash2, UserCheck, UserX, Users } from "lucide-react";
-import { useAdminBackups, useAdminCreateManualBackup, useAdminDeleteUser, useAdminStats, useAdminUpdateUser, useAdminUsers, useUser } from "@/lib/hooks";
+import { useAdminApprovePasswordReset, useAdminBackups, useAdminCreateManualBackup, useAdminDeleteUser, useAdminPasswordResetRequests, useAdminRejectPasswordReset, useAdminStats, useAdminUpdateUser, useAdminUsers, useUser } from "@/lib/hooks";
 import { formatDate } from "@/lib/utils";
 import { useState } from "react";
 
@@ -12,10 +13,15 @@ export default function AdminUsers() {
   const { data: stats, isLoading: isLoadingStats } = useAdminStats();
   const { data: users = [], isLoading: isLoadingUsers } = useAdminUsers();
   const { data: backups, isLoading: isLoadingBackups } = useAdminBackups();
+  const { data: passwordResetRequests = [], isLoading: isLoadingPasswordResetRequests } = useAdminPasswordResetRequests();
   const updateUserMutation = useAdminUpdateUser();
   const deleteUserMutation = useAdminDeleteUser();
   const createManualBackupMutation = useAdminCreateManualBackup();
+  const approvePasswordResetMutation = useAdminApprovePasswordReset();
+  const rejectPasswordResetMutation = useAdminRejectPasswordReset();
   const [pendingUserId, setPendingUserId] = useState<number | null>(null);
+  const [pendingResetRequestId, setPendingResetRequestId] = useState<number | null>(null);
+  const [temporaryPasswords, setTemporaryPasswords] = useState<Record<number, string>>({});
 
   const visibleUsers = users.filter((user) => user.role !== "system_admin");
   const backupGroups = [
@@ -95,6 +101,57 @@ export default function AdminUsers() {
         description: message,
         variant: "destructive",
       });
+    }
+  };
+
+  const handleApproveResetRequest = async (requestId: number) => {
+    const temporaryPassword = temporaryPasswords[requestId]?.trim() || "";
+    if (temporaryPassword.length < 8) {
+      toast({
+        title: "تنبيه",
+        description: "أدخل كلمة مرور مؤقتة لا تقل عن 8 أحرف",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setPendingResetRequestId(requestId);
+    try {
+      await approvePasswordResetMutation.mutateAsync({ id: requestId, temporaryPassword });
+      setTemporaryPasswords((current) => ({ ...current, [requestId]: "" }));
+      toast({
+        title: "تمت الموافقة",
+        description: "تمت الموافقة على الطلب وتعيين كلمة مرور مؤقتة للمستخدم",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "تعذر الموافقة على الطلب";
+      toast({
+        title: "خطأ",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setPendingResetRequestId(null);
+    }
+  };
+
+  const handleRejectResetRequest = async (requestId: number) => {
+    setPendingResetRequestId(requestId);
+    try {
+      await rejectPasswordResetMutation.mutateAsync(requestId);
+      toast({
+        title: "تم الرفض",
+        description: "تم رفض طلب إعادة التعيين",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "تعذر رفض الطلب";
+      toast({
+        title: "خطأ",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setPendingResetRequestId(null);
     }
   };
 
@@ -181,6 +238,80 @@ export default function AdminUsers() {
             </CardContent>
           </Card>
         ))}
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold">طلبات إعادة التعيين</h2>
+          <span className="text-sm text-muted-foreground">{passwordResetRequests.length} طلب</span>
+        </div>
+
+        {isLoadingPasswordResetRequests ? (
+          <div className="flex justify-center py-10">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : passwordResetRequests.length === 0 ? (
+          <Card className="border-dashed border-border/50">
+            <CardContent className="p-6 text-center text-muted-foreground">
+              لا توجد طلبات إعادة تعيين حالياً.
+            </CardContent>
+          </Card>
+        ) : (
+          passwordResetRequests.map((request) => (
+            <Card key={request.id} className="shadow-sm border-border/50">
+              <CardContent className="p-4 space-y-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="font-bold">{request.user?.name || "مستخدم غير متاح"}</h3>
+                    <p className="text-sm text-muted-foreground">@{request.user?.username || request.requestedByIdentifier}</p>
+                    <p className="text-xs text-muted-foreground mt-1" dir="ltr">{request.contactValue || request.user?.email || request.user?.phone || "-"}</p>
+                  </div>
+                  <span className={`text-xs px-2.5 py-1 rounded-full ${request.status === "pending" ? "bg-amber-100 text-amber-700" : request.status === "approved" ? "bg-emerald-100 text-emerald-700" : request.status === "rejected" ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-700"}`}>
+                    {request.status}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="rounded-xl bg-muted/40 p-3">
+                    <p className="text-muted-foreground mb-1">تاريخ الطلب</p>
+                    <p className="font-medium">{formatDate(request.createdAt)}</p>
+                  </div>
+                  <div className="rounded-xl bg-muted/40 p-3">
+                    <p className="text-muted-foreground mb-1">طريقة التحقق</p>
+                    <p className="font-medium">{request.verificationMethod === "admin" ? "موافقة الأدمن" : "اعتماد ذاتي"}</p>
+                  </div>
+                </div>
+
+                {request.status === "pending" ? (
+                  <div className="space-y-3">
+                    <Input
+                      value={temporaryPasswords[request.id] || ""}
+                      onChange={(e) => setTemporaryPasswords((current) => ({ ...current, [request.id]: e.target.value }))}
+                      placeholder="أدخل كلمة مرور مؤقتة للموافقة"
+                      type="password"
+                      dir="ltr"
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        onClick={() => handleApproveResetRequest(request.id)}
+                        disabled={approvePasswordResetMutation.isPending || rejectPasswordResetMutation.isPending}
+                      >
+                        {approvePasswordResetMutation.isPending && pendingResetRequestId === request.id ? <Loader2 className="h-4 w-4 animate-spin" /> : "موافقة"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => handleRejectResetRequest(request.id)}
+                        disabled={approvePasswordResetMutation.isPending || rejectPasswordResetMutation.isPending}
+                      >
+                        {rejectPasswordResetMutation.isPending && pendingResetRequestId === request.id ? <Loader2 className="h-4 w-4 animate-spin" /> : "رفض"}
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+          ))
+        )}
       </div>
 
       <div className="space-y-3">

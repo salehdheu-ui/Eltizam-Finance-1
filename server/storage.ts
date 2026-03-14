@@ -1,7 +1,7 @@
-import { eq, and, desc } from "drizzle-orm";
+﻿import { eq, and, desc } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, wallets, categories, transactions, recurringIncomes, obligations, variableObligationMonthStatuses,
+  users, wallets, categories, transactions, recurringIncomes, obligations, variableObligationMonthStatuses, passwordResetRequests,
   type User, type InsertUser,
   type Wallet, type InsertWallet,
   type Category, type InsertCategory,
@@ -9,6 +9,7 @@ import {
   type RecurringIncome, type InsertRecurringIncome,
   type Obligation, type InsertObligation,
   type VariableObligationMonthStatus, type InsertVariableObligationMonthStatus,
+  type PasswordResetRequest, type InsertPasswordResetRequest,
 } from "@shared/schema";
 
 function isObligationEnded(obligation: Pick<Obligation, "endDate">) {
@@ -155,10 +156,35 @@ export class DatabaseStorage implements IStorage {
     await db.delete(transactions).where(eq(transactions.userId, id));
     await db.delete(recurringIncomes).where(eq(recurringIncomes.userId, id));
     await db.delete(variableObligationMonthStatuses).where(eq(variableObligationMonthStatuses.userId, id));
+    await db.delete(passwordResetRequests).where(eq(passwordResetRequests.userId, id));
     await db.delete(obligations).where(eq(obligations.userId, id));
     await db.delete(categories).where(eq(categories.userId, id));
     await db.delete(wallets).where(eq(wallets.userId, id));
     await db.delete(users).where(eq(users.id, id));
+  }
+
+  async createPasswordResetRequest(data: InsertPasswordResetRequest): Promise<PasswordResetRequest> {
+    const [created] = await db.insert(passwordResetRequests).values(data).returning();
+    return created;
+  }
+
+  async getPasswordResetRequests(): Promise<PasswordResetRequest[]> {
+    return db.select().from(passwordResetRequests).orderBy(desc(passwordResetRequests.createdAt));
+  }
+
+  async getPasswordResetRequestById(id: number): Promise<PasswordResetRequest | undefined> {
+    const [request] = await db.select().from(passwordResetRequests).where(eq(passwordResetRequests.id, id));
+    return request;
+  }
+
+  async getPasswordResetRequestByToken(token: string): Promise<PasswordResetRequest | undefined> {
+    const [request] = await db.select().from(passwordResetRequests).where(eq(passwordResetRequests.resetToken, token));
+    return request;
+  }
+
+  async updatePasswordResetRequest(id: number, data: Partial<PasswordResetRequest>): Promise<PasswordResetRequest> {
+    const [updated] = await db.update(passwordResetRequests).set(data).where(eq(passwordResetRequests.id, id)).returning();
+    return updated;
   }
 
   async getWallets(userId: number): Promise<Wallet[]> {
@@ -309,7 +335,7 @@ export class DatabaseStorage implements IStorage {
       await this.createTransaction(userId, {
         type: "income",
         amount: income.amount,
-        note: income.note?.trim() ? income.note : `${income.incomeType === "salary" ? "راتب شهري" : "دخل متكرر"} - ${income.title}`,
+        note: income.note?.trim() ? income.note : `${income.incomeType === "salary" ? "Ø±Ø§ØªØ¨ Ø´Ù‡Ø±ÙŠ" : "Ø¯Ø®Ù„ Ù…ØªÙƒØ±Ø±"} - ${income.title}`,
         categoryId: income.categoryId ?? null,
         walletId: income.walletId,
       });
@@ -375,7 +401,7 @@ export class DatabaseStorage implements IStorage {
   async toggleObligation(id: number, userId: number): Promise<Obligation> {
     const obligation = await this.getObligationById(id, userId);
     if (!obligation) {
-      throw new Error("الالتزام غير موجود");
+      throw new Error("Ø§Ù„Ø§Ù„ØªØ²Ø§Ù… ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯");
     }
     return this.updateObligation(id, userId, { isActive: !obligation.isActive });
   }
@@ -383,11 +409,11 @@ export class DatabaseStorage implements IStorage {
   async getVariableObligationMonthStatuses(obligationId: number, userId: number): Promise<VariableObligationMonthStatus[]> {
     const obligation = await this.getObligationById(obligationId, userId);
     if (!obligation) {
-      throw new Error("الالتزام غير موجود");
+      throw new Error("Ø§Ù„Ø§Ù„ØªØ²Ø§Ù… ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯");
     }
 
     if (obligation.scheduleType !== "variable") {
-      throw new Error("هذه الصفحة مخصصة للالتزامات المتغيرة فقط");
+      throw new Error("Ù‡Ø°Ù‡ Ø§Ù„ØµÙØ­Ø© Ù…Ø®ØµØµØ© Ù„Ù„Ø§Ù„ØªØ²Ø§Ù…Ø§Øª Ø§Ù„Ù…ØªØºÙŠØ±Ø© ÙÙ‚Ø·");
     }
 
     return db
@@ -400,11 +426,11 @@ export class DatabaseStorage implements IStorage {
   async upsertVariableObligationMonthStatus(obligationId: number, userId: number, data: InsertVariableObligationMonthStatus): Promise<VariableObligationMonthStatus> {
     const obligation = await this.getObligationById(obligationId, userId);
     if (!obligation) {
-      throw new Error("الالتزام غير موجود");
+      throw new Error("Ø§Ù„Ø§Ù„ØªØ²Ø§Ù… ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯");
     }
 
     if (obligation.scheduleType !== "variable") {
-      throw new Error("يمكن تحديث حالات الأشهر للالتزام المتغير فقط");
+      throw new Error("ÙŠÙ…ÙƒÙ† ØªØ­Ø¯ÙŠØ« Ø­Ø§Ù„Ø§Øª Ø§Ù„Ø£Ø´Ù‡Ø± Ù„Ù„Ø§Ù„ØªØ²Ø§Ù… Ø§Ù„Ù…ØªØºÙŠØ± ÙÙ‚Ø·");
     }
 
     const [existing] = await db
@@ -453,11 +479,11 @@ export class DatabaseStorage implements IStorage {
   async applyVariableObligationPayment(obligationId: number, userId: number, amount: number): Promise<{ allocatedMonths: number; monthKeys: string[] }> {
     const obligation = await this.getObligationById(obligationId, userId);
     if (!obligation) {
-      throw new Error("الالتزام غير موجود");
+      throw new Error("Ø§Ù„Ø§Ù„ØªØ²Ø§Ù… ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯");
     }
 
     if (obligation.scheduleType !== "variable") {
-      throw new Error("هذا الإجراء متاح للالتزامات المتغيرة فقط");
+      throw new Error("Ù‡Ø°Ø§ Ø§Ù„Ø¥Ø¬Ø±Ø§Ø¡ Ù…ØªØ§Ø­ Ù„Ù„Ø§Ù„ØªØ²Ø§Ù…Ø§Øª Ø§Ù„Ù…ØªØºÙŠØ±Ø© ÙÙ‚Ø·");
     }
 
     if (amount <= 0 || obligation.amount <= 0) {
@@ -508,3 +534,4 @@ export class DatabaseStorage implements IStorage {
 }
 
 export const storage = new DatabaseStorage();
+

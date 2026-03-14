@@ -1,7 +1,7 @@
-import type { Express, Request, Response, NextFunction } from "express";
+﻿import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth } from "./auth";
+import { hashPlainPassword, setupAuth } from "./auth";
 import { writeAuditEvent } from "./audit";
 import { createManualBackup, listAllBackups } from "./backup";
 import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema } from "@shared/schema";
@@ -10,18 +10,18 @@ import { z } from "zod";
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.isAuthenticated()) {
-    return res.status(401).json({ message: "غير مسجل الدخول" });
+    return res.status(401).json({ message: "ØºÙŠØ± Ù…Ø³Ø¬Ù„ Ø§Ù„Ø¯Ø®ÙˆÙ„" });
   }
   next();
 }
 
 function requireSystemAdmin(req: Request, res: Response, next: NextFunction) {
   if (!req.isAuthenticated()) {
-    return res.status(401).json({ message: "غير مسجل الدخول" });
+    return res.status(401).json({ message: "ØºÙŠØ± Ù…Ø³Ø¬Ù„ Ø§Ù„Ø¯Ø®ÙˆÙ„" });
   }
 
   if (req.user?.role !== "system_admin") {
-    return res.status(404).json({ message: "غير موجود" });
+    return res.status(404).json({ message: "ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯" });
   }
 
   next();
@@ -71,11 +71,15 @@ async function runQueuedWrite<T>(res: Response, key: string, task: () => Promise
 }
 
 const applyVariableObligationPaymentSchema = z.object({
-  amount: z.number().positive("المبلغ يجب أن يكون أكبر من صفر"),
+  amount: z.number().positive("Ø§Ù„Ù…Ø¨Ù„Øº ÙŠØ¬Ø¨ Ø£Ù† ÙŠÙƒÙˆÙ† Ø£ÙƒØ¨Ø± Ù…Ù† ØµÙØ±"),
 });
 
 const adminUserUpdateSchema = z.object({
   isActive: z.boolean(),
+});
+
+const adminApprovePasswordResetSchema = z.object({
+  temporaryPassword: z.string().min(8).max(128),
 });
 
 const walletUpdateSchema = insertWalletSchema.partial().extend({
@@ -176,11 +180,74 @@ export async function registerRoutes(
     } catch (e) { next(e); }
   });
 
+  app.get("/api/admin/password-reset-requests", requireSystemAdmin, async (_req, res, next) => {
+    try {
+      const requests = await storage.getPasswordResetRequests();
+      const users = await storage.getAllUsers();
+      const userMap = new Map(users.map((user) => [user.id, user]));
+      res.json(requests.map((request) => {
+        const user = userMap.get(request.userId);
+        return {
+          id: request.id,
+          userId: request.userId,
+          status: request.status,
+          verificationMethod: request.verificationMethod,
+          requestedByIdentifier: request.requestedByIdentifier,
+          contactValue: request.contactValue,
+          adminUserId: request.adminUserId,
+          createdAt: request.createdAt,
+          resolvedAt: request.resolvedAt,
+          user: user ? { id: user.id, name: user.name, username: user.username, email: user.email, phone: user.phone, isActive: user.isActive } : null,
+        };
+      }));
+    } catch (e) { next(e); }
+  });
+
+  app.post("/api/admin/password-reset-requests/:id/approve", requireSystemAdmin, async (req, res, next) => {
+    try {
+      const requestId = parseRouteId(req.params.id);
+      const resetRequest = await storage.getPasswordResetRequestById(requestId);
+      if (!resetRequest) {
+        return res.status(404).json({ message: "طلب إعادة التعيين غير موجود" });
+      }
+      if (resetRequest.status !== "pending") {
+        return res.status(400).json({ message: "تمت معالجة هذا الطلب مسبقًا" });
+      }
+      const parsed = adminApprovePasswordResetSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "كلمة المرور المؤقتة غير صالحة" });
+      }
+      const hashed = await hashPlainPassword(parsed.data.temporaryPassword);
+      await runQueuedWrite(res, buildWriteQueueKey("admin-password-reset", requestId), async () => {
+        await storage.updateUser(resetRequest.userId, { password: hashed });
+        return storage.updatePasswordResetRequest(requestId, { status: "approved", adminUserId: req.user!.id, resolvedAt: Math.floor(Date.now() / 1000) });
+      });
+      await writeAuditEvent({ action: "admin.password_reset.approved", actorUserId: req.user?.id, actorRole: req.user?.role, targetUserId: resetRequest.userId, ipAddress: req.ip, metadata: { requestId } });
+      res.json({ message: "تمت الموافقة على إعادة التعيين وتحديث كلمة المرور المؤقتة" });
+    } catch (e) { next(e); }
+  });
+
+  app.post("/api/admin/password-reset-requests/:id/reject", requireSystemAdmin, async (req, res, next) => {
+    try {
+      const requestId = parseRouteId(req.params.id);
+      const resetRequest = await storage.getPasswordResetRequestById(requestId);
+      if (!resetRequest) {
+        return res.status(404).json({ message: "طلب إعادة التعيين غير موجود" });
+      }
+      if (resetRequest.status !== "pending") {
+        return res.status(400).json({ message: "تمت معالجة هذا الطلب مسبقًا" });
+      }
+      await runQueuedWrite(res, buildWriteQueueKey("admin-password-reset", requestId), () => storage.updatePasswordResetRequest(requestId, { status: "rejected", adminUserId: req.user!.id, resolvedAt: Math.floor(Date.now() / 1000) }));
+      await writeAuditEvent({ action: "admin.password_reset.rejected", actorUserId: req.user?.id, actorRole: req.user?.role, targetUserId: resetRequest.userId, ipAddress: req.ip, metadata: { requestId } });
+      res.json({ message: "تم رفض طلب إعادة التعيين" });
+    } catch (e) { next(e); }
+  });
+
   app.patch("/api/admin/users/:id", requireSystemAdmin, async (req, res, next) => {
     try {
       const userId = parseRouteId(req.params.id);
       if (req.user!.id === userId) {
-        return res.status(400).json({ message: "لا يمكنك تعديل حسابك الإداري من هذه الصفحة" });
+        return res.status(400).json({ message: "Ù„Ø§ ÙŠÙ…ÙƒÙ†Ùƒ ØªØ¹Ø¯ÙŠÙ„ Ø­Ø³Ø§Ø¨Ùƒ Ø§Ù„Ø¥Ø¯Ø§Ø±ÙŠ Ù…Ù† Ù‡Ø°Ù‡ Ø§Ù„ØµÙØ­Ø©" });
       }
 
       const { isActive } = adminUserUpdateSchema.parse(req.body);
@@ -205,7 +272,7 @@ export async function registerRoutes(
     try {
       const userId = parseRouteId(req.params.id);
       if (req.user!.id === userId) {
-        return res.status(400).json({ message: "لا يمكنك حذف حسابك الإداري الحالي" });
+        return res.status(400).json({ message: "Ù„Ø§ ÙŠÙ…ÙƒÙ†Ùƒ Ø­Ø°Ù Ø­Ø³Ø§Ø¨Ùƒ Ø§Ù„Ø¥Ø¯Ø§Ø±ÙŠ Ø§Ù„Ø­Ø§Ù„ÙŠ" });
       }
 
       await runQueuedWrite(
@@ -220,7 +287,7 @@ export async function registerRoutes(
         targetUserId: userId,
         ipAddress: req.ip,
       });
-      res.json({ message: "تم حذف المستخدم بنجاح" });
+      res.json({ message: "ØªÙ… Ø­Ø°Ù Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… Ø¨Ù†Ø¬Ø§Ø­" });
     } catch (e) { next(e); }
   });
 
@@ -268,7 +335,7 @@ export async function registerRoutes(
         buildWriteQueueKey("user", req.user!.id, "wallet", walletId),
         () => storage.deleteWallet(walletId, req.user!.id),
       );
-      res.json({ message: "تم الحذف بنجاح" });
+      res.json({ message: "ØªÙ… Ø§Ù„Ø­Ø°Ù Ø¨Ù†Ø¬Ø§Ø­" });
     } catch (e) { next(e); }
   });
 
@@ -316,7 +383,7 @@ export async function registerRoutes(
         buildWriteQueueKey("user", req.user!.id, "category", categoryId),
         () => storage.deleteCategory(categoryId, req.user!.id),
       );
-      res.json({ message: "تم الحذف بنجاح" });
+      res.json({ message: "ØªÙ… Ø§Ù„Ø­Ø°Ù Ø¨Ù†Ø¬Ø§Ø­" });
     } catch (e) { next(e); }
   });
 
@@ -382,7 +449,7 @@ export async function registerRoutes(
         buildWriteQueueKey("user", req.user!.id, "recurring-income", recurringIncomeId),
         () => storage.deleteRecurringIncome(recurringIncomeId, req.user!.id),
       );
-      res.json({ message: "تم حذف الدخل المتكرر بنجاح" });
+      res.json({ message: "ØªÙ… Ø­Ø°Ù Ø§Ù„Ø¯Ø®Ù„ Ø§Ù„Ù…ØªÙƒØ±Ø± Ø¨Ù†Ø¬Ø§Ø­" });
     } catch (e) { next(e); }
   });
 
@@ -413,7 +480,7 @@ export async function registerRoutes(
         buildWriteQueueKey("user", req.user!.id, "transactions"),
         () => storage.deleteTransaction(transactionId, req.user!.id),
       );
-      res.json({ message: "تم الحذف بنجاح" });
+      res.json({ message: "ØªÙ… Ø§Ù„Ø­Ø°Ù Ø¨Ù†Ø¬Ø§Ø­" });
     } catch (e) { next(e); }
   });
 
@@ -464,7 +531,7 @@ export async function registerRoutes(
       const expensesByCategoryMap = new Map<string, { categoryName: string; total: number; count: number }>();
       for (const tx of outflowTransactions) {
         const key = String(tx.categoryId ?? "uncategorized");
-        const current = expensesByCategoryMap.get(key) ?? { categoryName: tx.categoryName || "غير مصنف", total: 0, count: 0 };
+        const current = expensesByCategoryMap.get(key) ?? { categoryName: tx.categoryName || "ØºÙŠØ± Ù…ØµÙ†Ù", total: 0, count: 0 };
         current.total += tx.amount;
         current.count += 1;
         expensesByCategoryMap.set(key, current);
@@ -518,10 +585,10 @@ export async function registerRoutes(
         }));
 
       const insights = [
-        topExpenseCategory ? `أعلى بند صرف لديك خلال الفترة هو ${topExpenseCategory.categoryName} بقيمة ${topExpenseCategory.total.toFixed(2)} ر.ع` : null,
-        mostUsedWallet ? `أكثر محفظة استخدامًا هي ${mostUsedWallet.name} بعدد ${mostUsedWallet.transactionCount} حركة` : null,
-        salarySourceCount > 0 ? `لديك ${salarySourceCount} مصدر راتب نشط بإجمالي دوري ${recurringConfiguredTotal.toFixed(2)} ر.ع` : "يمكنك إضافة راتب شهري لتتبّع دخلك الثابت تلقائيًا",
-        netFlow >= 0 ? `صافي التدفق المالي موجب بمقدار ${netFlow.toFixed(2)} ر.ع` : `هناك عجز مالي بمقدار ${Math.abs(netFlow).toFixed(2)} ر.ع`,
+        topExpenseCategory ? `Ø£Ø¹Ù„Ù‰ Ø¨Ù†Ø¯ ØµØ±Ù Ù„Ø¯ÙŠÙƒ Ø®Ù„Ø§Ù„ Ø§Ù„ÙØªØ±Ø© Ù‡Ùˆ ${topExpenseCategory.categoryName} Ø¨Ù‚ÙŠÙ…Ø© ${topExpenseCategory.total.toFixed(2)} Ø±.Ø¹` : null,
+        mostUsedWallet ? `Ø£ÙƒØ«Ø± Ù…Ø­ÙØ¸Ø© Ø§Ø³ØªØ®Ø¯Ø§Ù…Ù‹Ø§ Ù‡ÙŠ ${mostUsedWallet.name} Ø¨Ø¹Ø¯Ø¯ ${mostUsedWallet.transactionCount} Ø­Ø±ÙƒØ©` : null,
+        salarySourceCount > 0 ? `Ù„Ø¯ÙŠÙƒ ${salarySourceCount} Ù…ØµØ¯Ø± Ø±Ø§ØªØ¨ Ù†Ø´Ø· Ø¨Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø¯ÙˆØ±ÙŠ ${recurringConfiguredTotal.toFixed(2)} Ø±.Ø¹` : "ÙŠÙ…ÙƒÙ†Ùƒ Ø¥Ø¶Ø§ÙØ© Ø±Ø§ØªØ¨ Ø´Ù‡Ø±ÙŠ Ù„ØªØªØ¨Ù‘Ø¹ Ø¯Ø®Ù„Ùƒ Ø§Ù„Ø«Ø§Ø¨Øª ØªÙ„Ù‚Ø§Ø¦ÙŠÙ‹Ø§",
+        netFlow >= 0 ? `ØµØ§ÙÙŠ Ø§Ù„ØªØ¯ÙÙ‚ Ø§Ù„Ù…Ø§Ù„ÙŠ Ù…ÙˆØ¬Ø¨ Ø¨Ù…Ù‚Ø¯Ø§Ø± ${netFlow.toFixed(2)} Ø±.Ø¹` : `Ù‡Ù†Ø§Ùƒ Ø¹Ø¬Ø² Ù…Ø§Ù„ÙŠ Ø¨Ù…Ù‚Ø¯Ø§Ø± ${Math.abs(netFlow).toFixed(2)} Ø±.Ø¹`,
       ].filter(Boolean);
 
       res.json({
@@ -556,7 +623,7 @@ export async function registerRoutes(
     try {
       const obligation = await storage.getObligationById(parseRouteId(req.params.id), req.user!.id);
       if (!obligation) {
-        return res.status(404).json({ message: "الالتزام غير موجود" });
+        return res.status(404).json({ message: "Ø§Ù„Ø§Ù„ØªØ²Ø§Ù… ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯" });
       }
       res.json(obligation);
     } catch (e) { next(e); }
@@ -708,7 +775,7 @@ export async function registerRoutes(
         buildWriteQueueKey("user", req.user!.id, "obligation", obligationId),
         () => storage.deleteObligation(obligationId, req.user!.id),
       );
-      res.json({ message: "تم حذف الالتزام بنجاح" });
+      res.json({ message: "ØªÙ… Ø­Ø°Ù Ø§Ù„Ø§Ù„ØªØ²Ø§Ù… Ø¨Ù†Ø¬Ø§Ø­" });
     } catch (e) { next(e); }
   });
 
@@ -726,3 +793,7 @@ export async function registerRoutes(
 
   return httpServer;
 }
+
+
+
+

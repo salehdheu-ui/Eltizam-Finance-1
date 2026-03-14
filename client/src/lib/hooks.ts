@@ -1,4 +1,4 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
+﻿import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "./queryClient";
 import { queryClient } from "./queryClient";
 import type { User, Wallet, Category, Transaction, RecurringIncome, Obligation, VariableObligationMonthStatus } from "@shared/schema";
@@ -331,7 +331,7 @@ export function useReportsSummary(period: "all" | "1month" | "3months" | "6month
       });
 
       if (!response.ok) {
-        const message = (await response.text()) || "فشل تحميل التقارير";
+        const message = (await response.text()) || "ÙØ´Ù„ ØªØ­Ù…ÙŠÙ„ Ø§Ù„ØªÙ‚Ø§Ø±ÙŠØ±";
         throw new Error(message);
       }
 
@@ -405,6 +405,63 @@ export function useUpdateVariableObligationMonthStatus(id: number | undefined) {
       await queryClient.invalidateQueries({ queryKey: ["/api/obligations"] });
       await queryClient.invalidateQueries({ queryKey: ["/api/obligations", id] });
       await queryClient.invalidateQueries({ queryKey: ["/api/obligations", id, "variable-statuses"] });
+    },
+  });
+}
+
+
+export type AdminPasswordResetRequest = {
+  id: number;
+  userId: number;
+  status: string;
+  verificationMethod: string;
+  requestedByIdentifier: string;
+  contactValue: string | null;
+  adminUserId: number | null;
+  createdAt: number;
+  resolvedAt: number | null;
+  user: {
+    id: number;
+    name: string;
+    username: string;
+    email: string;
+    phone: string | null;
+    isActive: boolean;
+  } | null;
+};
+
+export function useForgotPasswordRequest() {
+  return useMutation({
+    mutationFn: (data: { identifier: string }) => apiRequest("POST", "/api/password-reset/request", data),
+  });
+}
+
+export function useSelfServicePasswordReset() {
+  return useMutation({
+    mutationFn: (data: { identifier: string; contactValue: string; newPassword: string }) => apiRequest("POST", "/api/password-reset/self-service", data),
+  });
+}
+
+export function useAdminPasswordResetRequests() {
+  return useQuery<AdminPasswordResetRequest[]>({
+    queryKey: ["/api/admin/password-reset-requests"],
+  });
+}
+
+export function useAdminApprovePasswordReset() {
+  return useMutation({
+    mutationFn: ({ id, temporaryPassword }: { id: number; temporaryPassword: string }) => apiRequest("POST", `/api/admin/password-reset-requests/${id}/approve`, { temporaryPassword }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/password-reset-requests"] });
+    },
+  });
+}
+
+export function useAdminRejectPasswordReset() {
+  return useMutation({
+    mutationFn: (id: number) => apiRequest("POST", `/api/admin/password-reset-requests/${id}/reject`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/password-reset-requests"] });
     },
   });
 }

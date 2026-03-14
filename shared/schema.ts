@@ -16,6 +16,20 @@ export const users = sqliteTable("users", {
   createdAt: integer("created_at").notNull().default(sql`(unixepoch())`),
 });
 
+export const passwordResetRequests = sqliteTable("password_reset_requests", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().references(() => users.id),
+  status: text("status").notNull().default("pending"),
+  verificationMethod: text("verification_method").notNull().default("admin"),
+  requestedByIdentifier: text("requested_by_identifier").notNull(),
+  contactValue: text("contact_value"),
+  resetToken: text("reset_token"),
+  resetTokenExpiresAt: integer("reset_token_expires_at"),
+  adminUserId: integer("admin_user_id").references(() => users.id),
+  createdAt: integer("created_at").notNull().default(sql`(unixepoch())`),
+  resolvedAt: integer("resolved_at"),
+});
+
 export const wallets = sqliteTable("wallets", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull().references(() => users.id),
@@ -199,6 +213,19 @@ export const insertVariableObligationMonthStatusSchema = createInsertSchema(vari
   note: z.string().max(500).nullable().optional(),
 });
 
+export const insertPasswordResetRequestSchema = createInsertSchema(passwordResetRequests).pick({
+  userId: true,
+  status: true,
+  verificationMethod: true,
+  requestedByIdentifier: true,
+  contactValue: true,
+  resetToken: true,
+  resetTokenExpiresAt: true,
+  adminUserId: true,
+  createdAt: true,
+  resolvedAt: true,
+});
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type InsertWallet = z.infer<typeof insertWalletSchema>;
@@ -213,3 +240,5 @@ export type InsertObligation = z.infer<typeof insertObligationSchema>;
 export type Obligation = typeof obligations.$inferSelect;
 export type InsertVariableObligationMonthStatus = z.infer<typeof insertVariableObligationMonthStatusSchema>;
 export type VariableObligationMonthStatus = typeof variableObligationMonthStatuses.$inferSelect;
+export type InsertPasswordResetRequest = z.infer<typeof insertPasswordResetRequestSchema>;
+export type PasswordResetRequest = typeof passwordResetRequests.$inferSelect;

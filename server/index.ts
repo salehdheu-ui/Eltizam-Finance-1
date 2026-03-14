@@ -1,5 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
-import { ensureUserAdminColumns, ensureUserEmailUniqueIndex, ensureUserPhoneColumns, ensureUserPhoneUniqueIndex, ensureVariableObligationMonthStatusesTable, initializeDatabase } from "./db";
+import { ensurePasswordResetRequestsTable, ensureUserAdminColumns, ensureUserEmailUniqueIndex, ensureUserPhoneColumns, ensureUserPhoneUniqueIndex, ensureVariableObligationMonthStatusesTable, initializeDatabase } from "./db";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
@@ -145,6 +145,7 @@ app.use((req, res, next) => {
   ensureUserEmailUniqueIndex();
   ensureUserPhoneUniqueIndex();
   ensureVariableObligationMonthStatusesTable();
+  ensurePasswordResetRequestsTable();
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

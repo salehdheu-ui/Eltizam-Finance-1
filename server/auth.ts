@@ -1,4 +1,4 @@
-import passport from "passport";
+﻿import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import { Express } from "express";
 import session from "express-session";
@@ -76,6 +76,16 @@ const updateUserSchema = z.object({
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1).max(128),
+  newPassword: passwordSchema,
+});
+
+const forgotPasswordRequestSchema = z.object({
+  identifier: z.string().trim().min(1).max(120),
+});
+
+const selfServicePasswordResetSchema = z.object({
+  identifier: z.string().trim().min(1).max(120),
+  contactValue: z.string().trim().min(1).max(120),
   newPassword: passwordSchema,
 });
 
@@ -191,6 +201,17 @@ function getValidationMessage(error: z.ZodError) {
   return error.issues[0]?.message || "البيانات المدخلة غير صالحة";
 }
 
+async function findUserByIdentifier(identifier: string) {
+  const normalized = identifier.trim();
+  return (await storage.getUserByUsername(normalized))
+    || (await storage.getUserByEmail(normalized))
+    || (await storage.getUserByPhone(normalized));
+}
+
+export async function hashPlainPassword(password: string) {
+  return hashPassword(password);
+}
+
 export function setupAuth(app: Express) {
   if (!derivedSessionSecret) {
     throw new Error("SESSION_SECRET must be set in production");
@@ -261,27 +282,22 @@ export function setupAuth(app: Express) {
       if (existing) {
         return res.status(400).json({ message: "اسم المستخدم مستخدم بالفعل" });
       }
-
       const normalizedEmail = input.email?.trim() || "";
       const normalizedPhone = input.phone?.trim() || "";
-
       if (normalizedEmail) {
         const existingEmail = await storage.getUserByEmail(normalizedEmail);
         if (existingEmail) {
           return res.status(400).json({ message: "البريد الإلكتروني مستخدم بالفعل" });
         }
       }
-
       if (normalizedPhone) {
         const existingPhone = await storage.getUserByPhone(normalizedPhone);
         if (existingPhone) {
           return res.status(400).json({ message: "رقم الهاتف مستخدم بالفعل" });
         }
       }
-
       const existingUsers = await storage.getAllUsers();
       const assignedRole = existingUsers.length === 0 ? "system_admin" : "user";
-
       const user = await storage.createUser({
         username: input.username,
         password: await hashPassword(input.password),
@@ -293,17 +309,10 @@ export function setupAuth(app: Express) {
         lastLoginAt: Math.floor(Date.now() / 1000),
         createdAt: Math.floor(Date.now() / 1000),
       });
-      
       await regenerateSession(req);
       await loginUser(req, user);
       await saveSession(req);
-      await writeAuditEvent({
-        action: "user.registered",
-        actorUserId: user.id,
-        actorRole: user.role,
-        targetUserId: user.id,
-        ipAddress: req.ip,
-      });
+      await writeAuditEvent({ action: "user.registered", actorUserId: user.id, actorRole: user.role, targetUserId: user.id, ipAddress: req.ip });
       return res.status(201).json(toSafeUser(user));
     } catch (error) {
       next(error);
@@ -315,42 +324,23 @@ export function setupAuth(app: Express) {
     if (!parsedInput.success) {
       return res.status(400).json({ message: "بيانات تسجيل الدخول غير صالحة" });
     }
-
     req.body = parsedInput.data;
     const attemptKey = getRateLimitKey(parsedInput.data.username, req.ip);
     const rateLimit = consumeAuthAttempt(attemptKey);
     res.setHeader("X-RateLimit-Remaining", rateLimit.remaining.toString());
-
     if (!rateLimit.allowed) {
       res.setHeader("Retry-After", rateLimit.retryAfterSec.toString());
-      void writeAuditEvent({
-        action: "auth.login.rate_limited",
-        actorRole: null,
-        ipAddress: req.ip,
-        metadata: { username: parsedInput.data.username },
-      });
+      void writeAuditEvent({ action: "auth.login.rate_limited", actorRole: null, ipAddress: req.ip, metadata: { username: parsedInput.data.username } });
       return res.status(429).json({ message: "تم تجاوز عدد المحاولات، حاول مرة أخرى لاحقًا" });
     }
-
     passport.authenticate("local", async (err: any, user: SelectUser | false, info: any) => {
       if (err) return next(err);
       if (!user) {
-        void writeAuditEvent({
-          action: "auth.login.failed",
-          actorRole: null,
-          ipAddress: req.ip,
-          metadata: { username: parsedInput.data.username, reason: info?.message || "invalid_credentials" },
-        });
+        void writeAuditEvent({ action: "auth.login.failed", actorRole: null, ipAddress: req.ip, metadata: { username: parsedInput.data.username, reason: info?.message || "invalid_credentials" } });
         return res.status(401).json({ message: info?.message || "فشل تسجيل الدخول" });
       }
       if (!user.isActive) {
-        void writeAuditEvent({
-          action: "auth.login.blocked_inactive",
-          actorUserId: user.id,
-          actorRole: user.role,
-          targetUserId: user.id,
-          ipAddress: req.ip,
-        });
+        void writeAuditEvent({ action: "auth.login.blocked_inactive", actorUserId: user.id, actorRole: user.role, targetUserId: user.id, ipAddress: req.ip });
         return res.status(401).json({ message: "تم إيقاف هذا الحساب" });
       }
       const updatedUser = await storage.updateUser(user.id, { lastLoginAt: Math.floor(Date.now() / 1000) });
@@ -358,15 +348,52 @@ export function setupAuth(app: Express) {
       await loginUser(req, updatedUser);
       await saveSession(req);
       clearAuthAttempts(attemptKey);
-      await writeAuditEvent({
-        action: "auth.login.success",
-        actorUserId: updatedUser.id,
-        actorRole: updatedUser.role,
-        targetUserId: updatedUser.id,
-        ipAddress: req.ip,
-      });
+      await writeAuditEvent({ action: "auth.login.success", actorUserId: updatedUser.id, actorRole: updatedUser.role, targetUserId: updatedUser.id, ipAddress: req.ip });
       return res.json(toSafeUser(updatedUser));
     })(req, res, next);
+  });
+
+  app.post("/api/password-reset/request", async (req, res, next) => {
+    try {
+      const parsedInput = forgotPasswordRequestSchema.safeParse(req.body);
+      if (!parsedInput.success) {
+        return res.status(400).json({ message: getValidationMessage(parsedInput.error) });
+      }
+      const identifier = parsedInput.data.identifier.trim();
+      const user = await findUserByIdentifier(identifier);
+      if (user && user.isActive) {
+        await storage.createPasswordResetRequest({ userId: user.id, status: "pending", verificationMethod: "admin", requestedByIdentifier: identifier, contactValue: user.email || user.phone || null, resetToken: null, resetTokenExpiresAt: null, adminUserId: null, createdAt: Math.floor(Date.now() / 1000), resolvedAt: null });
+        await writeAuditEvent({ action: "auth.password_reset.requested", actorRole: null, targetUserId: user.id, ipAddress: req.ip, metadata: { identifier } });
+      }
+      return res.json({ message: "إذا كانت البيانات صحيحة فسيتم إرسال طلب إعادة التعيين للإدارة" });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/password-reset/self-service", async (req, res, next) => {
+    try {
+      const parsedInput = selfServicePasswordResetSchema.safeParse(req.body);
+      if (!parsedInput.success) {
+        return res.status(400).json({ message: getValidationMessage(parsedInput.error) });
+      }
+      const identifier = parsedInput.data.identifier.trim();
+      const contactValue = parsedInput.data.contactValue.trim();
+      const user = await findUserByIdentifier(identifier);
+      if (!user || !user.isActive) {
+        return res.status(400).json({ message: "تعذر التحقق من بيانات الاستعادة" });
+      }
+      const matchesContact = user.email === contactValue || user.phone === contactValue;
+      if (!matchesContact) {
+        return res.status(400).json({ message: "تعذر التحقق من بيانات الاستعادة" });
+      }
+      const hashed = await hashPassword(parsedInput.data.newPassword);
+      await storage.updateUser(user.id, { password: hashed });
+      await writeAuditEvent({ action: "auth.password_reset.self_service_completed", actorRole: null, targetUserId: user.id, ipAddress: req.ip, metadata: { identifier } });
+      return res.json({ message: "تمت إعادة تعيين كلمة المرور بنجاح" });
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.post("/api/logout", async (req, res, next) => {
@@ -376,13 +403,7 @@ export function setupAuth(app: Express) {
       await logoutUser(req);
       await destroySession(req);
       res.clearCookie(sessionCookieName);
-      await writeAuditEvent({
-        action: "auth.logout",
-        actorUserId,
-        actorRole,
-        targetUserId: actorUserId,
-        ipAddress: req.ip,
-      });
+      await writeAuditEvent({ action: "auth.logout", actorUserId, actorRole, targetUserId: actorUserId, ipAddress: req.ip });
       res.json({ message: "تم تسجيل الخروج بنجاح" });
     } catch (error) {
       next(error);
@@ -425,13 +446,7 @@ export function setupAuth(app: Express) {
       }
       const hashed = await hashPassword(newPassword);
       await storage.updateUser(user.id, { password: hashed });
-      await writeAuditEvent({
-        action: "user.password_changed",
-        actorUserId: user.id,
-        actorRole: user.role,
-        targetUserId: user.id,
-        ipAddress: req.ip,
-      });
+      await writeAuditEvent({ action: "user.password_changed", actorUserId: user.id, actorRole: user.role, targetUserId: user.id, ipAddress: req.ip });
       res.json({ message: "تم تغيير كلمة المرور بنجاح" });
     } catch (error) {
       next(error);

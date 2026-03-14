@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useLocation } from "wouter";
 import { useState } from "react";
-import { useLogin, useRegister } from "@/lib/hooks";
+import { useForgotPasswordRequest, useLogin, useRegister, useSelfServicePasswordReset } from "@/lib/hooks";
 import { useToast } from "@/hooks/use-toast";
 
 const passwordGuidanceMessage = "استخدم 8 أحرف على الأقل مع حرف كبير وحرف صغير ورقم واحد على الأقل";
@@ -29,10 +29,15 @@ export default function Login() {
   const [phone, setPhone] = useState("");
   const [phoneCountryCode, setPhoneCountryCode] = useState(phoneCountryOptions[0].code);
   const [passwordGuidance, setPasswordGuidance] = useState("");
+  const [resetIdentifier, setResetIdentifier] = useState("");
+  const [resetContactValue, setResetContactValue] = useState("");
+  const [resetNewPassword, setResetNewPassword] = useState("");
   const { toast } = useToast();
   
   const loginMutation = useLogin();
   const registerMutation = useRegister();
+  const forgotPasswordRequestMutation = useForgotPasswordRequest();
+  const selfServicePasswordResetMutation = useSelfServicePasswordReset();
   const isLoading = loginMutation.isPending || registerMutation.isPending;
   const isLoginMode = mode === "login";
 
@@ -128,6 +133,39 @@ export default function Login() {
         setPasswordGuidance(passwordGuidanceMessage);
       }
       toast({ title: "خطأ", description: msg, variant: "destructive" });
+    }
+  };
+
+  const handleAdminResetRequest = async () => {
+    if (!resetIdentifier.trim()) {
+      toast({ title: "تنبيه", description: "أدخل اسم المستخدم أو البريد أو الهاتف", variant: "destructive" });
+      return;
+    }
+
+    try {
+      await forgotPasswordRequestMutation.mutateAsync({ identifier: resetIdentifier.trim() });
+      toast({ title: "تم إرسال الطلب", description: "إذا كانت البيانات صحيحة فسيصل الطلب إلى الإدارة" });
+    } catch (error: any) {
+      toast({ title: "خطأ", description: error?.message || "تعذر إرسال طلب إعادة التعيين", variant: "destructive" });
+    }
+  };
+
+  const handleSelfServiceReset = async () => {
+    if (!resetIdentifier.trim() || !resetContactValue.trim() || !resetNewPassword.trim()) {
+      toast({ title: "تنبيه", description: "أكمل بيانات إعادة التعيين الذاتية", variant: "destructive" });
+      return;
+    }
+
+    try {
+      await selfServicePasswordResetMutation.mutateAsync({
+        identifier: resetIdentifier.trim(),
+        contactValue: resetContactValue.trim(),
+        newPassword: resetNewPassword,
+      });
+      setResetNewPassword("");
+      toast({ title: "تم بنجاح", description: "تمت إعادة تعيين كلمة المرور بنجاح" });
+    } catch (error: any) {
+      toast({ title: "خطأ", description: error?.message || "تعذر تنفيذ إعادة التعيين الذاتية", variant: "destructive" });
     }
   };
 
@@ -317,6 +355,68 @@ export default function Login() {
                 <ShieldCheck className="h-4 w-4 text-emerald-500" />
                 <span>بياناتك مشفرة ومحمية بالكامل</span>
               </div>
+
+              {isLoginMode ? (
+                <div className="w-full rounded-2xl border border-border/60 bg-muted/20 p-4 space-y-4">
+                  <div className="space-y-1 text-right">
+                    <h3 className="font-bold text-sm">نسيت كلمة المرور؟</h3>
+                    <p className="text-xs text-muted-foreground">يمكنك التغيير ذاتيًا عند مطابقة وسيلة التواصل، أو إرسال طلب موافقة للإدارة.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="reset-identifier" className="text-sm font-semibold">اسم المستخدم أو البريد أو الهاتف</Label>
+                    <Input
+                      id="reset-identifier"
+                      value={resetIdentifier}
+                      onChange={(e) => setResetIdentifier(e.target.value)}
+                      placeholder="أدخل اسم المستخدم أو البريد أو الهاتف"
+                      className="h-11 rounded-xl"
+                      dir="ltr"
+                    />
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="reset-contact" className="text-sm font-semibold">البريد أو الهاتف المسجل</Label>
+                      <Input
+                        id="reset-contact"
+                        value={resetContactValue}
+                        onChange={(e) => setResetContactValue(e.target.value)}
+                        placeholder="example@mail.com أو +968..."
+                        className="h-11 rounded-xl text-left"
+                        dir="ltr"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="reset-new-password" className="text-sm font-semibold">كلمة المرور الجديدة</Label>
+                      <Input
+                        id="reset-new-password"
+                        type="password"
+                        value={resetNewPassword}
+                        onChange={(e) => setResetNewPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="h-11 rounded-xl text-left"
+                        dir="ltr"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleAdminResetRequest}
+                      disabled={forgotPasswordRequestMutation.isPending}
+                    >
+                      {forgotPasswordRequestMutation.isPending ? "جاري الإرسال..." : "إرسال طلب للإدارة"}
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={handleSelfServiceReset}
+                      disabled={selfServicePasswordResetMutation.isPending}
+                    >
+                      {selfServicePasswordResetMutation.isPending ? "جاري التنفيذ..." : "إعادة تعيين ذاتية"}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
             </CardFooter>
           </form>
         </Card>

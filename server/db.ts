@@ -188,3 +188,28 @@ export function ensureVariableObligationMonthStatusesTable() {
   sqliteDb.exec("CREATE UNIQUE INDEX IF NOT EXISTS variable_obligation_month_statuses_unique_month ON variable_obligation_month_statuses (user_id, obligation_id, month_key)");
   sqliteDb.exec("CREATE INDEX IF NOT EXISTS variable_obligation_month_statuses_obligation_idx ON variable_obligation_month_statuses (obligation_id, month_key)");
 }
+
+
+export function ensurePasswordResetRequestsTable() {
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS password_reset_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      verification_method TEXT NOT NULL DEFAULT 'admin',
+      requested_by_identifier TEXT NOT NULL,
+      contact_value TEXT,
+      reset_token TEXT,
+      reset_token_expires_at INTEGER,
+      admin_user_id INTEGER,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      resolved_at INTEGER,
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (admin_user_id) REFERENCES users(id)
+    )
+  `);
+
+  sqliteDb.exec("CREATE INDEX IF NOT EXISTS password_reset_requests_user_idx ON password_reset_requests (user_id, created_at DESC)");
+  sqliteDb.exec("CREATE INDEX IF NOT EXISTS password_reset_requests_status_idx ON password_reset_requests (status, created_at DESC)");
+  sqliteDb.exec("CREATE UNIQUE INDEX IF NOT EXISTS password_reset_requests_token_unique ON password_reset_requests (reset_token) WHERE reset_token IS NOT NULL");
+}
