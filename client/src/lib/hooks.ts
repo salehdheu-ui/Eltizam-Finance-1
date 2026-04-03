@@ -270,10 +270,14 @@ export function useTransactions() {
 export function useCreateTransaction() {
   return useMutation({
     mutationFn: (data: TransactionPayload) => apiRequest("POST", "/api/transactions", data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/wallets"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/wallets"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/reports/summary"] });
+      await queryClient.refetchQueries({ queryKey: ["/api/dashboard"], type: "active" });
+      await queryClient.refetchQueries({ queryKey: ["/api/transactions"], type: "active" });
+      await queryClient.refetchQueries({ queryKey: ["/api/reports/summary"], type: "active" });
     },
   });
 }
@@ -281,10 +285,14 @@ export function useCreateTransaction() {
 export function useDeleteTransaction() {
   return useMutation({
     mutationFn: (id: number) => apiRequest("DELETE", `/api/transactions/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/wallets"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/wallets"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/reports/summary"] });
+      await queryClient.refetchQueries({ queryKey: ["/api/dashboard"], type: "active" });
+      await queryClient.refetchQueries({ queryKey: ["/api/transactions"], type: "active" });
+      await queryClient.refetchQueries({ queryKey: ["/api/reports/summary"], type: "active" });
     },
   });
 }
@@ -338,7 +346,7 @@ export function useReportsSummary(period: "all" | "1month" | "3months" | "6month
       });
 
       if (!response.ok) {
-        const message = (await response.text()) || "ÙØ´Ù„ ØªØ­Ù…ÙŠÙ„ Ø§Ù„ØªÙ‚Ø§Ø±ÙŠØ±";
+        const message = (await response.text()) || "فشل تحميل التقارير";
         throw new Error(message);
       }
 

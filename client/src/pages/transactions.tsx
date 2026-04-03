@@ -1,7 +1,7 @@
 import { Filter, Search, Calendar, Loader2, Trash2, Wallet, PieChart, ArrowLeftRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { cn, formatCurrency, formatRelativeArabicDate, formatTime, toDate } from "@/lib/utils";
+import { cn, formatCurrency, formatRelativeArabicDate, formatTime, normalizeArabicText, toDate } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useMemo, useState } from "react";
 import { useTransactions, useDeleteTransaction, useWallets, useCategories } from "@/lib/hooks";
@@ -13,12 +13,12 @@ function isTransferTransaction(note?: string | null) {
 
 function getTransferLabel(note?: string | null) {
   if (!isTransferTransaction(note)) {
-    return note || "";
+    return normalizeArabicText(note);
   }
 
   const [, , direction, , ...rest] = note!.split(":");
   const label = rest.join(":");
-  return direction === "out" ? `تحويل صادر - ${label}` : `تحويل وارد - ${label}`;
+  return direction === "out" ? `تحويل صادر - ${normalizeArabicText(label)}` : `تحويل وارد - ${normalizeArabicText(label)}`;
 }
 
 function isWithinRange(dateInput: string | Date | number, range: "all" | "7days" | "30days" | "90days") {
@@ -70,7 +70,7 @@ export default function Transactions() {
           return (
             (tx.categoryName || "").toLowerCase().includes(q) ||
             (tx.walletName || "").toLowerCase().includes(q) ||
-            (tx.note || "").toLowerCase().includes(q) ||
+            normalizeArabicText(tx.note).toLowerCase().includes(q) ||
             tx.amount.toString().includes(q)
           );
         }

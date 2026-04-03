@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { cn, formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency, formatMonthKeyLabel } from "@/lib/utils";
 import { useCategories, useCreateRecurringIncome, useCreateTransaction, useDeleteRecurringIncome, useRecurringIncomes, useUpdateRecurringIncome, useWallets } from "@/lib/hooks";
 import type { RecurringIncome } from "@shared/schema";
 
@@ -249,7 +249,7 @@ export default function Income() {
                     </div>
                     <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                       <span className="inline-flex items-center gap-1"><Wallet className="h-3 w-3" />{walletName}</span>
-                      <span>آخر تطبيق: {income.lastAppliedMonth || "لم يطبق بعد"}</span>
+                      <span>آخر تطبيق: {formatMonthKeyLabel(income.lastAppliedMonth)}</span>
                     </div>
                     {income.note ? <p className="text-sm text-muted-foreground">{income.note}</p> : null}
                     <div className="flex gap-2">

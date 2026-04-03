@@ -5,6 +5,7 @@ import type { Obligation } from "@shared/schema"
 const obligationMonths = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"]
 const englishNumberLocale = "en-US"
 const englishDateLocale = "en-GB"
+const likelyMojibakePattern = /[ØÙÂ][\x80-\xFF]?/
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -91,6 +92,49 @@ export function formatTime(dateInput: string | Date | number, options?: Intl.Dat
     minute: "2-digit",
     ...options,
   })
+}
+
+export function formatMonthKeyLabel(monthKey: string | null | undefined) {
+  if (!monthKey) {
+    return "لم يطبق بعد"
+  }
+
+  const match = /^(\d{4})-(\d{2})$/.exec(monthKey)
+  if (!match) {
+    return monthKey
+  }
+
+  const [, yearText, monthText] = match
+  const year = Number(yearText)
+  const month = Number(monthText)
+
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+    return monthKey
+  }
+
+  return `${obligationMonths[month - 1]} ${formatNumber(year)}`
+}
+
+export function normalizeArabicText(text: string | null | undefined) {
+  if (!text) {
+    return ""
+  }
+
+  if (!likelyMojibakePattern.test(text)) {
+    return text
+  }
+
+  try {
+    const decoded = decodeURIComponent(escape(text))
+
+    if (/[\u0600-\u06FF]/.test(decoded)) {
+      return decoded
+    }
+  } catch {
+    return text
+  }
+
+  return text
 }
 
 export type UpcomingObligation = Obligation & { daysLeft: number }

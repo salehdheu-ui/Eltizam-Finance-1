@@ -274,12 +274,16 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(categories, eq(transactions.categoryId, categories.id))
       .leftJoin(wallets, eq(transactions.walletId, wallets.id))
       .where(eq(transactions.userId, userId))
-      .orderBy(desc(transactions.date));
+      .orderBy(desc(transactions.date), desc(transactions.id));
     return result;
   }
 
   async getTransactionsByType(userId: number, type: string): Promise<Transaction[]> {
-    return db.select().from(transactions).where(and(eq(transactions.userId, userId), eq(transactions.type, type))).orderBy(desc(transactions.date));
+    return db
+      .select()
+      .from(transactions)
+      .where(and(eq(transactions.userId, userId), eq(transactions.type, type)))
+      .orderBy(desc(transactions.date), desc(transactions.id));
   }
 
   async createTransaction(userId: number, transaction: InsertTransaction): Promise<Transaction> {
@@ -429,7 +433,7 @@ export class DatabaseStorage implements IStorage {
       await this.createTransaction(userId, {
         type: "income",
         amount: income.amount,
-        note: income.note?.trim() ? income.note : `${income.incomeType === "salary" ? "Ø±Ø§ØªØ¨ Ø´Ù‡Ø±ÙŠ" : "Ø¯Ø®Ù„ Ù…ØªÙƒØ±Ø±"} - ${income.title}`,
+        note: income.note?.trim() ? income.note : `${income.incomeType === "salary" ? "راتب شهري" : "دخل متكرر"} - ${income.title}`,
         categoryId: income.categoryId ?? null,
         walletId: income.walletId,
       });
@@ -495,7 +499,7 @@ export class DatabaseStorage implements IStorage {
   async toggleObligation(id: number, userId: number): Promise<Obligation> {
     const obligation = await this.getObligationById(id, userId);
     if (!obligation) {
-      throw new Error("Ø§Ù„Ø§Ù„ØªØ²Ø§Ù… ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯");
+      throw new Error("الالتزام غير موجود");
     }
     return this.updateObligation(id, userId, { isActive: !obligation.isActive });
   }
@@ -503,11 +507,11 @@ export class DatabaseStorage implements IStorage {
   async getVariableObligationMonthStatuses(obligationId: number, userId: number): Promise<VariableObligationMonthStatus[]> {
     const obligation = await this.getObligationById(obligationId, userId);
     if (!obligation) {
-      throw new Error("Ø§Ù„Ø§Ù„ØªØ²Ø§Ù… ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯");
+      throw new Error("الالتزام غير موجود");
     }
 
     if (obligation.scheduleType !== "variable") {
-      throw new Error("Ù‡Ø°Ù‡ Ø§Ù„ØµÙØ­Ø© Ù…Ø®ØµØµØ© Ù„Ù„Ø§Ù„ØªØ²Ø§Ù…Ø§Øª Ø§Ù„Ù…ØªØºÙŠØ±Ø© ÙÙ‚Ø·");
+      throw new Error("هذه الصفحة مخصصة للالتزامات المتغيرة فقط");
     }
 
     return db
@@ -520,11 +524,11 @@ export class DatabaseStorage implements IStorage {
   async upsertVariableObligationMonthStatus(obligationId: number, userId: number, data: InsertVariableObligationMonthStatus): Promise<VariableObligationMonthStatus> {
     const obligation = await this.getObligationById(obligationId, userId);
     if (!obligation) {
-      throw new Error("Ø§Ù„Ø§Ù„ØªØ²Ø§Ù… ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯");
+      throw new Error("الالتزام غير موجود");
     }
 
     if (obligation.scheduleType !== "variable") {
-      throw new Error("ÙŠÙ…ÙƒÙ† ØªØ­Ø¯ÙŠØ« Ø­Ø§Ù„Ø§Øª Ø§Ù„Ø£Ø´Ù‡Ø± Ù„Ù„Ø§Ù„ØªØ²Ø§Ù… Ø§Ù„Ù…ØªØºÙŠØ± ÙÙ‚Ø·");
+      throw new Error("يمكن تحديث حالات الأشهر للالتزام المتغير فقط");
     }
 
     const [existing] = await db
@@ -573,11 +577,11 @@ export class DatabaseStorage implements IStorage {
   async applyVariableObligationPayment(obligationId: number, userId: number, amount: number): Promise<{ allocatedMonths: number; monthKeys: string[] }> {
     const obligation = await this.getObligationById(obligationId, userId);
     if (!obligation) {
-      throw new Error("Ø§Ù„Ø§Ù„ØªØ²Ø§Ù… ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯");
+      throw new Error("الالتزام غير موجود");
     }
 
     if (obligation.scheduleType !== "variable") {
-      throw new Error("Ù‡Ø°Ø§ Ø§Ù„Ø¥Ø¬Ø±Ø§Ø¡ Ù…ØªØ§Ø­ Ù„Ù„Ø§Ù„ØªØ²Ø§Ù…Ø§Øª Ø§Ù„Ù…ØªØºÙŠØ±Ø© ÙÙ‚Ø·");
+      throw new Error("هذا الإجراء متاح للالتزامات المتغيرة فقط");
     }
 
     if (amount <= 0 || obligation.amount <= 0) {

@@ -53,6 +53,17 @@ type AddTransactionDetail = {
   obligationScheduleType?: string;
 };
 
+function blurActiveElement() {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  const activeElement = document.activeElement;
+  if (activeElement instanceof HTMLElement) {
+    activeElement.blur();
+  }
+}
+
 export default function Layout({ children }: LayoutProps) {
   const [location, setLocation] = useLocation();
   const { toast } = useToast();
@@ -159,6 +170,35 @@ export default function Layout({ children }: LayoutProps) {
     }
   }, [isVariableObligationQuickPay, quickPayAmountOptions, txAmount]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const updateViewportHeight = () => {
+      const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+      document.documentElement.style.setProperty("--app-viewport-height", `${viewportHeight}px`);
+    };
+
+    updateViewportHeight();
+    window.addEventListener("resize", updateViewportHeight);
+    window.visualViewport?.addEventListener("resize", updateViewportHeight);
+    window.visualViewport?.addEventListener("scroll", updateViewportHeight);
+
+    return () => {
+      window.removeEventListener("resize", updateViewportHeight);
+      window.visualViewport?.removeEventListener("resize", updateViewportHeight);
+      window.visualViewport?.removeEventListener("scroll", updateViewportHeight);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isAddTxOpen) {
+      blurActiveElement();
+      requestAnimationFrame(() => window.scrollTo({ top: window.scrollY, behavior: "instant" as ScrollBehavior }));
+    }
+  }, [isAddTxOpen]);
+
   // Main bottom navigation (most important)
   const mainNavItems = [
     { href: "/", icon: Home, label: "الرئيسية" },
@@ -248,6 +288,8 @@ export default function Layout({ children }: LayoutProps) {
           ? `تم تحويل ${txAmount} ر.ع بنجاح بين المحافظ`
           : `تم تسجيل ${txType === 'expense' ? 'مصروف' : txType === 'income' ? 'دخل' : 'دين'} بقيمة ${txAmount} ر.ع${allocationDescription}`,
       });
+
+      blurActiveElement();
       
       setIsAddTxOpen(false);
       setTxAmount("");
@@ -416,7 +458,12 @@ export default function Layout({ children }: LayoutProps) {
         </div>
       </div>
 
-      <Drawer open={isAddTxOpen} onOpenChange={setIsAddTxOpen}>
+      <Drawer open={isAddTxOpen} onOpenChange={(open) => {
+        if (!open) {
+          blurActiveElement();
+        }
+        setIsAddTxOpen(open);
+      }}>
         <DrawerContent dir="rtl">
           <div className="mx-auto flex w-full max-w-sm min-h-0 flex-1 flex-col">
             <DrawerHeader className="shrink-0 pb-3">

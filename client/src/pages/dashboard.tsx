@@ -2,7 +2,7 @@ import { ArrowDownLeft, ArrowUpRight, Eye, EyeOff, Settings, Loader2, Receipt, C
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
-import { cn, formatCurrency, formatObligationDueDate, formatRelativeArabicDate, getUpcomingObligations } from "@/lib/utils";
+import { cn, formatCurrency, formatObligationDueDate, formatRelativeArabicDate, getUpcomingObligations, normalizeArabicText } from "@/lib/utils";
 import { Link } from "wouter";
 import { useCategories, useDashboard, useUser, useObligations, useWallets } from "@/lib/hooks";
 
@@ -292,7 +292,7 @@ export default function Dashboard() {
                     </div>
                     <div>
                       <h4 className="font-bold">{catName}</h4>
-                      <p className="text-xs text-muted-foreground mt-0.5">{tx.note} {tx.date && `• ${formatRelativeArabicDate(tx.date)}`}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{normalizeArabicText(tx.note)} {tx.date && `• ${formatRelativeArabicDate(tx.date)}`}</p>
                     </div>
                   </div>
                   <div className={cn(

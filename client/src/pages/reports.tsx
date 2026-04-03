@@ -5,7 +5,7 @@ import { ArrowDownLeft, ArrowUpRight, BarChart3, Landmark, Loader2, Receipt, Spa
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { cn, formatCurrency, formatPercentage } from "@/lib/utils";
+import { cn, formatCurrency, formatPercentage, normalizeArabicText } from "@/lib/utils";
 import { useReportsSummary } from "@/lib/hooks";
 
 function getPeriodName(period: string) {
@@ -33,17 +33,31 @@ const walletChartConfig = {
   expenses: { label: "الصرف", color: "#f97316" },
 };
 
+const expenseCategoryColors = [
+  "#234F8D",
+  "#3F93A8",
+  "#4FC3A1",
+  "#F59E0B",
+  "#EF4444",
+  "#8B5CF6",
+  "#EC4899",
+  "#06B6D4",
+  "#84CC16",
+  "#F97316",
+];
+
 export default function Reports() {
   const [period, setPeriod] = useState<"all" | "1month" | "3months" | "6months" | "1year">("1month");
+  const [showAllRecentTransactions, setShowAllRecentTransactions] = useState(false);
   const { data, isLoading } = useReportsSummary(period);
 
   const pieData = useMemo(() => {
-    const expenses = (data?.expensesByCategory ?? []).slice(0, 3);
+    const expenses = data?.expensesByCategory ?? [];
     const total = expenses.reduce((sum, item) => sum + item.total, 0);
 
     return expenses.map((item, index) => ({
       ...item,
-      fill: ["#234F8D", "#3F93A8", "#4FC3A1"][index % 3],
+      fill: expenseCategoryColors[index % expenseCategoryColors.length],
       percentValue: total > 0 ? Math.round((item.total / total) * 100) : 0,
     }));
   }, [data]);
@@ -59,6 +73,9 @@ export default function Reports() {
   }
 
   const hasData = data.summary.transactionCount > 0 || data.summary.salarySourceCount > 0;
+  const visibleRecentTransactions = showAllRecentTransactions
+    ? data.recentTransactions
+    : data.recentTransactions.slice(0, 4);
 
   return (
     <div className="p-4 pb-24 space-y-4" dir="rtl">
@@ -373,16 +390,28 @@ export default function Reports() {
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <ArrowDownLeft className="h-5 w-5 text-primary" />
-            آخر المعاملات في الفترة
-          </CardTitle>
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <ArrowDownLeft className="h-5 w-5 text-primary" />
+              آخر المعاملات في الفترة
+            </CardTitle>
+            {data.recentTransactions.length > 4 ? (
+              <Button
+                type="button"
+                variant="link"
+                className="h-auto p-0 text-primary"
+                onClick={() => setShowAllRecentTransactions((current) => !current)}
+              >
+                {showAllRecentTransactions ? "عرض أقل" : "عرض المزيد"}
+              </Button>
+            ) : null}
+          </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          {data.recentTransactions.length > 0 ? data.recentTransactions.map((tx) => (
+          {data.recentTransactions.length > 0 ? visibleRecentTransactions.map((tx) => (
             <div key={tx.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-xl border border-border/50">
               <div>
-                <p className="font-medium text-sm">{tx.note || tx.categoryName || "معاملة"}</p>
+                <p className="font-medium text-sm">{normalizeArabicText(tx.note) || tx.categoryName || "معاملة"}</p>
                 <p className="text-xs text-muted-foreground mt-1">{tx.walletName || "بدون محفظة"}</p>
               </div>
               <span className={cn("font-bold", tx.type === "income" ? "text-emerald-600" : "text-red-600")}>
