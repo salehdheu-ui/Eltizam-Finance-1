@@ -41,6 +41,7 @@ function Router() {
   const [location] = useLocation();
   const { data: user, isLoading } = useUser();
   const isSystemAdmin = user?.role === "system_admin";
+  const isPublicAuthRoute = location === "/login" || location === "/forgot-password" || location === "/reset-password";
 
   if (isLoading) {
     return (
@@ -50,11 +51,17 @@ function Router() {
     );
   }
 
-  if (location === "/login") {
+  if (isPublicAuthRoute) {
     if (user) {
       return <Redirect to="/" />;
     }
-    return <Route path="/login" component={Login} />;
+    return (
+      <Switch>
+        <Route path="/login" component={Login} />
+        <Route path="/forgot-password" component={Login} />
+        <Route path="/reset-password" component={Login} />
+      </Switch>
+    );
   }
 
   if (!user) {

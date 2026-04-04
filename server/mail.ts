@@ -57,7 +57,8 @@ export async function sendPasswordResetEmail(input: PasswordResetEmailInput) {
   const transporter = await getTransporter();
   const appName = input.appName || "التزام";
   const subject = `رمز إعادة تعيين كلمة المرور - ${appName}`;
-  const resetPageHint = appBaseUrl ? `${appBaseUrl.replace(/\/$/, "")}/login` : "صفحة تسجيل الدخول";
+  const resetUrl = appBaseUrl ? `${appBaseUrl.replace(/\/$/, "")}/reset-password?token=${encodeURIComponent(input.code)}` : "";
+  const resetPageHint = resetUrl || "صفحة إعادة تعيين كلمة المرور";
 
   const text = [
     `مرحباً،`,
@@ -66,7 +67,7 @@ export async function sendPasswordResetEmail(input: PasswordResetEmailInput) {
     `مدة صلاحية الرمز: ${input.expiresInMinutes} دقيقة.`,
     ``,
     `إذا لم تطلب إعادة تعيين كلمة المرور، يمكنك تجاهل هذه الرسالة.`,
-    `أكمل الاستعادة من: ${resetPageHint}`,
+    resetUrl ? `رابط إعادة التعيين: ${resetUrl}` : `أكمل الاستعادة من: ${resetPageHint}`,
   ].join("\n");
 
   const html = `
@@ -77,7 +78,7 @@ export async function sendPasswordResetEmail(input: PasswordResetEmailInput) {
       <div style="font-size: 32px; font-weight: 700; letter-spacing: 6px; padding: 16px 20px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; display: inline-block; margin: 8px 0 16px;">${input.code}</div>
       <p>مدة صلاحية الرمز: <strong>${input.expiresInMinutes} دقيقة</strong>.</p>
       <p>إذا لم تطلب إعادة تعيين كلمة المرور، يمكنك تجاهل هذه الرسالة.</p>
-      <p>أكمل الاستعادة من: <strong>${resetPageHint}</strong></p>
+      ${resetUrl ? `<p><a href="${resetUrl}" style="display:inline-block;padding:12px 18px;background:#2563eb;color:#fff;text-decoration:none;border-radius:10px;font-weight:700;">فتح صفحة إعادة التعيين</a></p><p style="word-break:break-all;color:#475569;">${resetUrl}</p>` : `<p>أكمل الاستعادة من: <strong>${resetPageHint}</strong></p>`}
     </div>
   `;
 

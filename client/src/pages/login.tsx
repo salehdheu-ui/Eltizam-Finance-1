@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useLocation } from "wouter";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForgotPasswordRequest, useLogin, usePasswordResetSelfServiceComplete, usePasswordResetSelfServiceStart, useRegister } from "@/lib/hooks";
 import { useToast } from "@/hooks/use-toast";
 
@@ -20,7 +20,7 @@ const phoneCountryOptions = [
 ];
 
 export default function Login() {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const [mode, setMode] = useState<"login" | "register" | "forgotPassword">("login");
   const [forgotPasswordStep, setForgotPasswordStep] = useState<"request" | "verify">("request");
   const [contactMethod, setContactMethod] = useState<"email" | "phone">("email");
@@ -59,12 +59,39 @@ export default function Login() {
   const switchToLoginMode = () => {
     resetForgotPasswordFlow();
     setMode("login");
+    setLocation("/login");
   };
 
   const switchToForgotPasswordMode = () => {
     resetForgotPasswordFlow();
     setMode("forgotPassword");
+    setLocation("/forgot-password");
   };
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const tokenFromUrl = searchParams.get("token")?.trim() || "";
+
+    if (location === "/forgot-password") {
+      setMode("forgotPassword");
+      setForgotPasswordStep("request");
+      if (tokenFromUrl) {
+        setResetToken(tokenFromUrl);
+      }
+      return;
+    }
+
+    if (location === "/reset-password") {
+      setMode("forgotPassword");
+      setForgotPasswordStep("verify");
+      if (tokenFromUrl) {
+        setResetToken(tokenFromUrl);
+      }
+      return;
+    }
+
+    setMode("login");
+  }, [location]);
 
   const buildPhoneWithCountryCode = () => {
     const trimmedPhone = phone.trim();
@@ -181,6 +208,7 @@ export default function Login() {
       setResetMaskedContact(result.maskedContact);
       setResetDeliveryMethod(result.deliveryMethod);
       setForgotPasswordStep("verify");
+      setLocation(result.debugCode ? `/reset-password?token=${encodeURIComponent(result.debugCode)}` : "/reset-password");
       if (result.debugCode) {
         toast({ title: "رمز التحقق التجريبي", description: result.debugCode });
       }
@@ -228,6 +256,7 @@ export default function Login() {
       setResetDeliveryMethod(null);
       setForgotPasswordStep("request");
       setMode("login");
+      setLocation("/login");
       toast({ title: "تم بنجاح", description: "تمت إعادة تعيين كلمة المرور بنجاح" });
     } catch (error: any) {
       toast({ title: "خطأ", description: error?.message || "تعذر إكمال إعادة تعيين كلمة المرور", variant: "destructive" });
@@ -381,6 +410,7 @@ export default function Login() {
                       onClick={() => {
                         if (resetMaskedContact) {
                           setForgotPasswordStep("verify");
+                          setLocation("/reset-password");
                         }
                       }}
                       className={`py-3 px-4 rounded-xl text-sm font-semibold transition-all ${forgotPasswordStep === "verify" ? "bg-background text-primary shadow-sm border border-primary/15" : "text-muted-foreground hover:bg-background/70"}`}
@@ -551,6 +581,7 @@ export default function Login() {
                         setForgotPasswordStep("request");
                         setResetToken("");
                         setResetNewPassword("");
+                        setLocation("/forgot-password");
                       }}
                       className="w-full text-center text-sm font-semibold text-primary hover:text-primary/80 transition-colors rounded-xl py-2 hover:bg-primary/5"
                     >
