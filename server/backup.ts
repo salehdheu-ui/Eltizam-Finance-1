@@ -1,9 +1,8 @@
 import Database from "better-sqlite3";
 import path from "path";
 import { mkdir, readdir, rm } from "fs/promises";
+import { backupRootPath, databasePath } from "../db-path";
 
-const databasePath = path.resolve("./eltizam.db");
-const backupRootPath = path.resolve("./backups/eltizam-db");
 const dailyDirectoryPath = path.join(backupRootPath, "daily");
 const weeklyDirectoryPath = path.join(backupRootPath, "weekly");
 const annualDirectoryPath = path.join(backupRootPath, "annual");

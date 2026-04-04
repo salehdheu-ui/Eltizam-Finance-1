@@ -11,7 +11,7 @@
     "check": "tsc",
     "backup:db": "tsx script/backup-db.ts",
     "db:migrate": "tsx script/migrate-db.ts",
-    "db:push": "drizzle-kit push"
+    "db:push": "node -e \"throw new Error('db:push is disabled to protect existing data. Use npm run db:migrate instead.')\""
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

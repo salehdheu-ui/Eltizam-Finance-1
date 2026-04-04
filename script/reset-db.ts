@@ -1,10 +1,15 @@
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
+import { databasePath } from "../db-path";
 import * as schema from "../shared/schema";
+
+if (process.env.ALLOW_DB_RESET !== "true") {
+  throw new Error("Database reset is blocked to protect existing data. Set ALLOW_DB_RESET=true only when you explicitly want to destroy the database.");
+}
 
 console.log("Resetting database...");
 
-const sqliteDb = new Database("./eltizam.db");
+const sqliteDb = new Database(databasePath);
 
 // Drop existing tables
 sqliteDb.exec(`
