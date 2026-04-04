@@ -1,4 +1,4 @@
-import { ArrowRight, Mail, Phone, ShieldCheck, UserPlus, UserCircle } from "lucide-react";
+import { ArrowRight, Mail, ShieldCheck, UserPlus, UserCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,6 +9,7 @@ import { useForgotPasswordRequest, useLogin, usePasswordResetSelfServiceComplete
 import { useToast } from "@/hooks/use-toast";
 
 const passwordGuidanceMessage = "استخدم 8 أحرف على الأقل مع حرف كبير وحرف صغير ورقم واحد على الأقل";
+const forgotPasswordRequestHint = "أدخل اسم المستخدم أو البريد أو الهاتف للحصول على رمز مؤقت";
 const phoneCountryOptions = [
   { code: "+968", label: "عُمان (+968)" },
   { code: "+966", label: "السعودية (+966)" },
@@ -45,6 +46,25 @@ export default function Login() {
   const isLoading = loginMutation.isPending || registerMutation.isPending;
   const isLoginMode = mode === "login";
   const isForgotPasswordMode = mode === "forgotPassword";
+
+  const resetForgotPasswordFlow = () => {
+    setForgotPasswordStep("request");
+    setResetIdentifier("");
+    setResetToken("");
+    setResetNewPassword("");
+    setResetMaskedContact(null);
+    setResetDeliveryMethod(null);
+  };
+
+  const switchToLoginMode = () => {
+    resetForgotPasswordFlow();
+    setMode("login");
+  };
+
+  const switchToForgotPasswordMode = () => {
+    resetForgotPasswordFlow();
+    setMode("forgotPassword");
+  };
 
   const buildPhoneWithCountryCode = () => {
     const trimmedPhone = phone.trim();
@@ -238,7 +258,7 @@ export default function Login() {
               {isForgotPasswordMode ? "استعادة كلمة المرور" : isLoginMode ? "مرحباً بعودتك" : "إنشاء حساب جديد"}
             </CardTitle>
             <CardDescription className="text-sm leading-7 max-w-sm mx-auto">
-              {isForgotPasswordMode ? "ابدأ بالاسترجاع الذاتي عبر رمز مؤقت، وإن تعذر ذلك يمكنك المتابعة مع الإدارة أو الدعم الفني" : isLoginMode ? "قم بتسجيل الدخول للمتابعة" : "أدخل بياناتك لإنشاء حسابك"}
+              {isForgotPasswordMode ? (forgotPasswordStep === "request" ? forgotPasswordRequestHint : "أدخل الرمز المؤقت ثم عيّن كلمة مرور جديدة") : isLoginMode ? "قم بتسجيل الدخول للمتابعة" : "أدخل بياناتك لإنشاء حسابك"}
             </CardDescription>
           </CardHeader>
           <form onSubmit={isForgotPasswordMode ? (e) => {
@@ -348,6 +368,27 @@ export default function Login() {
               )}
               {isForgotPasswordMode ? (
                 <>
+                  <div className="grid grid-cols-2 gap-3 rounded-2xl bg-muted/40 p-2 border border-border/40">
+                    <button
+                      type="button"
+                      onClick={() => setForgotPasswordStep("request")}
+                      className={`py-3 px-4 rounded-xl text-sm font-semibold transition-all ${forgotPasswordStep === "request" ? "bg-background text-primary shadow-sm border border-primary/15" : "text-muted-foreground hover:bg-background/70"}`}
+                    >
+                      1. طلب الرمز
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (resetMaskedContact) {
+                          setForgotPasswordStep("verify");
+                        }
+                      }}
+                      className={`py-3 px-4 rounded-xl text-sm font-semibold transition-all ${forgotPasswordStep === "verify" ? "bg-background text-primary shadow-sm border border-primary/15" : "text-muted-foreground hover:bg-background/70"}`}
+                      disabled={!resetMaskedContact}
+                    >
+                      2. تعيين كلمة جديدة
+                    </button>
+                  </div>
                   <div className="space-y-2">
                     <Label htmlFor="reset-identifier" className="text-sm font-semibold">اسم المستخدم أو البريد أو الهاتف</Label>
                     <Input
@@ -363,11 +404,11 @@ export default function Login() {
                     <>
                       <div className="rounded-2xl border border-primary/20 bg-primary/5 px-4 py-4 text-sm leading-7 text-foreground">
                         <div>
-                          سيتم استخدام رمز التحقق المرسل إلى {resetDeliveryMethod === "email" ? "البريد الإلكتروني" : resetDeliveryMethod === "phone" ? "رقم الهاتف" : "وسيلة التواصل"} المسجلة
+                          أدخل الرمز المرسل إلى {resetDeliveryMethod === "email" ? "البريد الإلكتروني" : resetDeliveryMethod === "phone" ? "رقم الهاتف" : "وسيلة التواصل"} المسجلة
                           {resetMaskedContact ? ` (${resetMaskedContact})` : ""}.
                         </div>
                         <div className="text-muted-foreground mt-2">
-                          صلاحية الرمز قصيرة ومؤقتة. إذا لم يصلك الرمز أو فقدت الوصول لوسيلة التواصل، استخدم خيار الإدارة أو الدعم الفني.
+                          صلاحية الرمز قصيرة. إذا لم يصلك، يمكنك طلب رمز جديد أو طلب المساعدة من الإدارة.
                         </div>
                       </div>
                       <div className="space-y-2">
@@ -396,12 +437,12 @@ export default function Login() {
                     </>
                   ) : (
                     <div className="rounded-2xl border border-border/40 bg-muted/30 px-4 py-4 text-sm leading-7 text-muted-foreground">
-                      سيتم أولًا إنشاء رمز استعادة مؤقت للحساب. إذا تعذر عليك إكمال الاسترجاع الذاتي يمكنك رفع طلب إلى الإدارة أو التواصل مع الدعم الفني.
+                      سننشئ لك رمزاً مؤقتاً لإعادة تعيين كلمة المرور. بعد وصوله انتقل مباشرة للخطوة الثانية.
                     </div>
                   )}
                   <div className="rounded-2xl border border-border/40 bg-muted/20 px-4 py-4 text-sm leading-7">
-                    <div className="font-semibold text-foreground mb-2">بدائل المساعدة</div>
-                    <div className="flex flex-col gap-3">
+                    <div className="font-semibold text-foreground mb-2">تحتاج مساعدة؟</div>
+                    <div className="grid gap-3 sm:grid-cols-2">
                       <Button
                         type="button"
                         variant="outline"
@@ -412,23 +453,12 @@ export default function Login() {
                         طلب مساعدة من الإدارة
                       </Button>
                       <a
-                        href="mailto:saleh.dheu@gmail.com?subject=%D9%85%D8%B4%D9%83%D9%84%D8%A9%20%D9%81%D9%8A%20%D8%A7%D8%B3%D8%AA%D8%B9%D8%A7%D8%AF%D8%A9%20%D9%83%D9%84%D9%85%D8%A9%20%D8%A7%D9%84%D9%85%D8%B1%D9%88%D8%B1&body=%D9%8A%D8%B1%D8%AC%D9%89%20%D8%AA%D9%88%D8%B6%D9%8A%D8%AD%20%D8%A7%D9%84%D9%85%D8%B4%D9%83%D9%84%D8%A9%D8%8C%20%D9%88%D8%B0%D9%83%D8%B1%20%D8%A7%D8%B3%D9%85%20%D8%A7%D9%84%D9%85%D8%B3%D8%AA%D8%AE%D8%AF%D9%85%20%D9%88%D9%88%D8%B3%D9%8A%D9%84%D8%A9%20%D8%A7%D9%84%D8%AA%D9%88%D8%A7%D8%B5%D9%84%20%D8%A7%D9%84%D9%85%D8%B3%D8%AC%D9%84%D8%A9."
+                        href="mailto:saleh.dheu@gmail.com?subject=%D9%85%D8%B4%D9%83%D9%84%D8%A9%20%D9%81%D9%8A%20%D8%A7%D8%B3%D8%AA%D8%B9%D8%A7%D8%AF%D8%A9%20%D9%83%D9%84%D9%85%D8%A9%20%D8%A7%D9%84%D9%85%D8%B1%D9%88%D8%B1&body=%D8%A7%D8%B0%D9%83%D8%B1%20%D8%A7%D8%B3%D9%85%20%D8%A7%D9%84%D9%85%D8%B3%D8%AA%D8%AE%D8%AF%D9%85%20%D9%88%D9%88%D8%B3%D9%8A%D9%84%D8%A9%20%D8%A7%D9%84%D8%AA%D9%88%D8%A7%D8%B5%D9%84%20%D8%A7%D9%84%D9%85%D8%B3%D8%AC%D9%84%D8%A9%20%D9%88%D8%B5%D9%81%20%D8%A7%D9%84%D9%85%D8%B4%D9%83%D9%84%D8%A9."
                         className="flex items-center justify-center gap-2 rounded-xl border border-border bg-background px-4 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-muted/40"
                       >
                         <Mail className="h-4 w-4" />
-                        <span>الدعم الفني عبر البريد: saleh.dheu@gmail.com</span>
+                        <span>الدعم عبر البريد</span>
                       </a>
-                      <a
-                        href="tel:+96877379381"
-                        className="flex items-center justify-center gap-2 rounded-xl border border-border bg-background px-4 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-muted/40"
-                        dir="ltr"
-                      >
-                        <Phone className="h-4 w-4" />
-                        <span>الدعم الفني عبر الهاتف: +968 77379381</span>
-                      </a>
-                      <div className="text-muted-foreground">
-                        يرجى توضيح المشكلة عند التواصل مع الدعم الفني، مع ذكر اسم المستخدم ووسيلة التواصل المسجلة بالحساب.
-                      </div>
                     </div>
                   </div>
                 </>
@@ -504,15 +534,7 @@ export default function Login() {
                 <div className="w-full space-y-3">
                   <button
                     type="button"
-                    onClick={() => {
-                      setMode("forgotPassword");
-                      setForgotPasswordStep("request");
-                      setResetIdentifier("");
-                      setResetToken("");
-                      setResetNewPassword("");
-                      setResetMaskedContact(null);
-                      setResetDeliveryMethod(null);
-                    }}
+                    onClick={switchToForgotPasswordMode}
                     className="w-full text-center text-sm font-semibold text-primary hover:text-primary/80 transition-colors rounded-xl py-2 hover:bg-primary/5"
                   >
                     نسيت كلمة المرور؟
@@ -532,12 +554,12 @@ export default function Login() {
                       }}
                       className="w-full text-center text-sm font-semibold text-primary hover:text-primary/80 transition-colors rounded-xl py-2 hover:bg-primary/5"
                     >
-                      الرجوع إلى خطوة إرسال الرمز
+                      طلب رمز جديد
                     </button>
                   ) : null}
                   <button
                     type="button"
-                    onClick={() => setMode("login")}
+                    onClick={switchToLoginMode}
                     className="w-full text-center text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors rounded-xl py-2 hover:bg-muted/40"
                   >
                     العودة إلى تسجيل الدخول

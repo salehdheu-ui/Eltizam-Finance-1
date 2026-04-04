@@ -7,6 +7,7 @@ import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
 import { writeAuditEvent } from "./audit";
+import { canSendMail, sendPasswordResetEmail } from "./mail";
 import { User as SelectUser } from "@shared/schema";
 import { z } from "zod";
 
@@ -523,7 +524,20 @@ export function setupAuth(app: Express) {
       const resetTokenExpiresAt = Math.floor(Date.now() / 1000) + passwordResetTokenTtlSec;
       const deliveryMethod: "email" | "phone" = user.email ? "email" : "phone";
 
-      await storage.createPasswordResetRequest({
+      if (deliveryMethod !== "email" || !user.email?.trim()) {
+        return res.json({
+          message: "الاستعادة الذاتية عبر البريد الإلكتروني غير متاحة لهذا الحساب، يمكنك المتابعة مع الإدارة",
+          deliveryMethod: null,
+          maskedContact: null,
+          fallbackToAdmin: true,
+        });
+      }
+
+      if (!canSendMail()) {
+        return res.status(503).json({ message: "خدمة البريد غير مهيأة حالياً. يرجى ضبط إعدادات SMTP ثم إعادة المحاولة" });
+      }
+
+      const passwordResetRequest = await storage.createPasswordResetRequest({
         userId: user.id,
         status: "pending",
         verificationMethod: "self_service",
@@ -536,6 +550,21 @@ export function setupAuth(app: Express) {
         resolvedAt: null,
       });
 
+      try {
+        await sendPasswordResetEmail({
+          to: user.email.trim(),
+          code: resetToken,
+          expiresInMinutes: Math.floor(passwordResetTokenTtlSec / 60),
+        });
+      } catch (mailError) {
+        await storage.updatePasswordResetRequest(passwordResetRequest.id, {
+          status: "delivery_failed",
+          resolvedAt: Math.floor(Date.now() / 1000),
+          resetToken: null,
+        });
+        return res.status(502).json({ message: "تعذر إرسال رمز الاستعادة إلى البريد الإلكتروني. تحقق من إعدادات البريد ثم أعد المحاولة" });
+      }
+
       await writeAuditEvent({
         action: "auth.password_reset.self_service_requested",
         actorRole: null,
@@ -545,7 +574,7 @@ export function setupAuth(app: Express) {
       });
 
       return res.json({
-        message: "تم إنشاء رمز استعادة مؤقت. استخدمه لإكمال تعيين كلمة المرور أو تواصل مع الإدارة إذا تعذر ذلك",
+        message: "تم إرسال رمز الاستعادة إلى بريدك الإلكتروني المسجل",
         deliveryMethod,
         maskedContact: maskContactValue(contactValue),
         fallbackToAdmin: true,
