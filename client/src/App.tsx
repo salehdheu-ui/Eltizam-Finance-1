@@ -14,6 +14,7 @@ import Reports from "@/pages/reports";
 import Obligations from "@/pages/obligations";
 import VariableObligationDetails from "@/pages/variable-obligation-details";
 import Login from "@/pages/login";
+import SavingsPlans from "@/pages/savings-plans";
 import Settings from "@/pages/settings";
 import AdminUsers from "@/pages/admin-users";
 import { useUser } from "@/lib/hooks";
@@ -77,6 +78,7 @@ function Router() {
         <Route path="/wallets" component={Wallets} />
         <Route path="/categories" component={Categories} />
         <Route path="/reports" component={Reports} />
+        <Route path="/financial-plans" component={SavingsPlans} />
         <Route path="/obligations/:id" component={VariableObligationDetails} />
         <Route path="/obligations" component={Obligations} />
         <Route path="/settings" component={Settings} />
