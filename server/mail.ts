@@ -7,6 +7,16 @@ type PasswordResetEmailInput = {
   appName?: string;
 };
 
+type MailTransporter = {
+  sendMail(options: {
+    from?: string;
+    to?: string;
+    subject?: string;
+    text?: string;
+    html?: string;
+  }): Promise<unknown>;
+};
+
 const smtpHost = process.env.SMTP_HOST?.trim() || "";
 const smtpPort = Number(process.env.SMTP_PORT || 587);
 const smtpSecure = process.env.SMTP_SECURE === "true";
@@ -16,7 +26,7 @@ const smtpFrom = process.env.SMTP_FROM?.trim() || smtpUser;
 const smtpRequireAuth = process.env.SMTP_REQUIRE_AUTH !== "false";
 const appBaseUrl = process.env.APP_BASE_URL?.trim() || "";
 
-let transporterPromise: Promise<nodemailer.Transporter> | null = null;
+let transporterPromise: Promise<MailTransporter> | null = null;
 
 function isMailConfigured() {
   return Boolean(smtpHost && smtpPort && smtpFrom && (!smtpRequireAuth || (smtpUser && smtpPass)));

@@ -1,10 +1,132 @@
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "@shared/schema";
+import { createManualBackup } from "./backup";
 
 export const sqliteDb = new Database("./eltizam.db");
 
 export const db = drizzle(sqliteDb, { schema });
+
+type DatabaseMigration = {
+  version: number;
+  name: string;
+  up: () => void;
+};
+
+const databaseMigrations: DatabaseMigration[] = [
+  {
+    version: 1,
+    name: "initialize_core_tables",
+    up: () => {
+      initializeDatabase();
+    },
+  },
+  {
+    version: 2,
+    name: "ensure_user_phone_columns",
+    up: () => {
+      ensureUserPhoneColumns();
+    },
+  },
+  {
+    version: 3,
+    name: "ensure_user_admin_columns",
+    up: () => {
+      ensureUserAdminColumns();
+    },
+  },
+  {
+    version: 4,
+    name: "ensure_user_email_unique_index",
+    up: () => {
+      ensureUserEmailUniqueIndex();
+    },
+  },
+  {
+    version: 5,
+    name: "ensure_user_phone_unique_index",
+    up: () => {
+      ensureUserPhoneUniqueIndex();
+    },
+  },
+  {
+    version: 6,
+    name: "ensure_variable_obligation_month_statuses_table",
+    up: () => {
+      ensureVariableObligationMonthStatusesTable();
+    },
+  },
+  {
+    version: 7,
+    name: "ensure_password_reset_requests_table",
+    up: () => {
+      ensurePasswordResetRequestsTable();
+    },
+  },
+];
+
+function ensureSchemaMigrationsTable() {
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      version INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      applied_at INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `);
+}
+
+function getAppliedMigrationVersions() {
+  ensureSchemaMigrationsTable();
+  const rows = sqliteDb.prepare("SELECT version FROM schema_migrations ORDER BY version ASC").all() as Array<{ version: number }>;
+  return new Set(rows.map((row) => row.version));
+}
+
+function getPendingMigrations() {
+  const appliedVersions = getAppliedMigrationVersions();
+  return databaseMigrations.filter((migration) => !appliedVersions.has(migration.version));
+}
+
+function hasExistingUserTables() {
+  const rows = sqliteDb.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name <> 'schema_migrations'").all() as Array<{ name: string }>;
+  return rows.length > 0;
+}
+
+export function getCurrentDatabaseSchemaVersion() {
+  ensureSchemaMigrationsTable();
+  const row = sqliteDb.prepare("SELECT MAX(version) as version FROM schema_migrations").get() as { version: number | null } | undefined;
+  return row?.version ?? 0;
+}
+
+export async function migrateDatabase() {
+  sqliteDb.pragma("foreign_keys = ON");
+  ensureSchemaMigrationsTable();
+  const pendingMigrations = getPendingMigrations();
+
+  if (pendingMigrations.length === 0) {
+    return { appliedCount: 0, targetVersion: getCurrentDatabaseSchemaVersion(), backupCreated: false };
+  }
+
+  const shouldCreateBackup = hasExistingUserTables();
+  if (shouldCreateBackup) {
+    await createManualBackup();
+  }
+
+  const insertMigration = sqliteDb.prepare("INSERT INTO schema_migrations (version, name) VALUES (?, ?)");
+  const runMigration = sqliteDb.transaction((migration: DatabaseMigration) => {
+    migration.up();
+    insertMigration.run(migration.version, migration.name);
+  });
+
+  for (const migration of pendingMigrations) {
+    runMigration(migration);
+  }
+
+  return {
+    appliedCount: pendingMigrations.length,
+    targetVersion: pendingMigrations[pendingMigrations.length - 1]?.version ?? getCurrentDatabaseSchemaVersion(),
+    backupCreated: shouldCreateBackup,
+  };
+}
 
 export function initializeDatabase() {
   sqliteDb.pragma("foreign_keys = ON");

@@ -1,5 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
-import { ensurePasswordResetRequestsTable, ensureUserAdminColumns, ensureUserEmailUniqueIndex, ensureUserPhoneColumns, ensureUserPhoneUniqueIndex, ensureVariableObligationMonthStatusesTable, initializeDatabase } from "./db";
+import { migrateDatabase } from "./db";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
@@ -140,13 +140,12 @@ app.use((req, res, next) => {
 
 (async () => {
   app.set("trust proxy", 1);
-  initializeDatabase();
-  ensureUserPhoneColumns();
-  ensureUserAdminColumns();
-  ensureUserEmailUniqueIndex();
-  ensureUserPhoneUniqueIndex();
-  ensureVariableObligationMonthStatusesTable();
-  ensurePasswordResetRequestsTable();
+  const migrationResult = await migrateDatabase();
+  if (migrationResult.appliedCount > 0) {
+    log(`database migrated to schema v${migrationResult.targetVersion} (${migrationResult.appliedCount} step${migrationResult.appliedCount === 1 ? "" : "s"}${migrationResult.backupCreated ? ", backup created" : ""})`, "db");
+  } else {
+    log(`database schema already up to date at v${migrationResult.targetVersion}`, "db");
+  }
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
