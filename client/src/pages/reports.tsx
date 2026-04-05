@@ -94,13 +94,13 @@ export default function Reports() {
           <h1 className="text-xl font-bold sm:text-2xl">التقارير المالية</h1>
           <p className="mt-1 text-sm text-muted-foreground sm:text-base">لوحة تحليل احترافية توضّح أين يذهب دخلك وكيف يتحرك صرفك</p>
         </div>
-        <Button type="button" className="hide-on-print w-full sm:w-auto sm:self-start" onClick={() => setIsPrintPreviewOpen(true)}>
+        <Button type="button" className="hide-on-print h-11 w-full rounded-2xl sm:w-auto sm:self-start" onClick={() => setIsPrintPreviewOpen(true)}>
           <Printer className="h-4 w-4" />
           طباعة / PDF
         </Button>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-2">
+      <div className="flex gap-2 overflow-x-auto pb-2 sm:justify-center xl:justify-start">
         {[
           { key: "1month", label: "شهر" },
           { key: "3months", label: "3 أشهر" },
@@ -112,7 +112,7 @@ export default function Reports() {
             key={item.key}
             onClick={() => setPeriod(item.key as typeof period)}
             className={cn(
-              "px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all",
+              "min-h-10 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all",
               period === item.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80",
             )}
           >
@@ -144,68 +144,106 @@ export default function Reports() {
             </div>
           </CardContent>
         </Card>
-      ) : null}
-
-      <div className="grid grid-cols-2 gap-3 2xl:grid-cols-4">
-        <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200">
+      ) : (
+        <Card className="overflow-hidden border-0 bg-gradient-to-br from-[#2f63dd] via-[#4274e4] to-[#4a7be6] text-white shadow-xl shadow-blue-200/70 sm:hidden">
           <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="p-2 bg-emerald-500/20 rounded-xl">
-                <ArrowDownLeft className="h-5 w-5 text-emerald-600" />
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/12">
+                <Wallet className="h-4 w-4 text-white" />
               </div>
-              <span className="text-xs font-medium text-emerald-700">{data.summary.transactionCount} حركة</span>
+              <div className="text-right">
+                <p className="text-sm font-medium text-white/80">الرصيد الإجمالي</p>
+                <p className="mt-2 text-3xl font-bold tracking-tight">{formatCurrency(data.summary.netFlow, 2)}</p>
+                <p className="mt-1 text-xs text-white/70">ملخص سريع متناسق لعرض الهاتف</p>
+              </div>
             </div>
-            <p className="text-xs text-emerald-700 font-medium">إجمالي الدخل</p>
-            <p className="break-words text-lg font-bold text-emerald-700 sm:text-xl">+{formatCurrency(data.summary.totalIncome, 2)}</p>
+
+            <div className="my-5 h-px bg-white/20" />
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-2xl border border-white/10 bg-white/8 p-3 backdrop-blur-sm">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/14">
+                    <ArrowUpRight className="h-4 w-4 text-[#ffd0d0]" />
+                  </div>
+                  <span className="text-xs text-white/75">المصروفات</span>
+                </div>
+                <p className="break-words text-base font-bold">-{formatCurrency(data.summary.totalExpenses, 2)}</p>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-white/8 p-3 backdrop-blur-sm">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/14">
+                    <ArrowDownLeft className="h-4 w-4 text-[#c7ffd8]" />
+                  </div>
+                  <span className="text-xs text-white/75">الدخل</span>
+                </div>
+                <p className="break-words text-base font-bold">+{formatCurrency(data.summary.totalIncome, 2)}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      <div className="hidden grid-cols-2 gap-3 md:gap-4 sm:grid 2xl:grid-cols-4">
+        <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200">
+          <CardContent className="flex min-h-[148px] flex-col p-3 sm:min-h-[156px] sm:p-4">
+            <div className="mb-3 flex items-start justify-between gap-2">
+              <div className="rounded-xl bg-emerald-500/20 p-2 sm:p-2.5">
+                <ArrowDownLeft className="h-4 w-4 text-emerald-600 sm:h-5 sm:w-5" />
+              </div>
+              <span className="text-[11px] font-medium text-emerald-700 sm:text-xs">{data.summary.transactionCount} حركة</span>
+            </div>
+            <p className="text-[11px] font-medium text-emerald-700 sm:text-xs">إجمالي الدخل</p>
+            <p className="mt-2 break-words text-base font-bold leading-6 text-emerald-700 sm:text-xl">+{formatCurrency(data.summary.totalIncome, 2)}</p>
           </CardContent>
         </Card>
 
         <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="p-2 bg-red-500/20 rounded-xl">
-                <ArrowUpRight className="h-5 w-5 text-red-600" />
+          <CardContent className="flex min-h-[148px] flex-col p-3 sm:min-h-[156px] sm:p-4">
+            <div className="mb-3 flex items-start justify-between gap-2">
+              <div className="rounded-xl bg-red-500/20 p-2 sm:p-2.5">
+                <ArrowUpRight className="h-4 w-4 text-red-600 sm:h-5 sm:w-5" />
               </div>
-              <span className="text-xs font-medium text-red-700">{formatPercentage(data.summary.savingsRate)}</span>
+              <span className="text-[11px] font-medium text-red-700 sm:text-xs">{formatPercentage(data.summary.savingsRate)}</span>
             </div>
-            <p className="text-xs text-red-700 font-medium">إجمالي المصروفات</p>
-            <p className="break-words text-lg font-bold text-red-700 sm:text-xl">-{formatCurrency(data.summary.totalExpenses, 2)}</p>
+            <p className="text-[11px] font-medium text-red-700 sm:text-xs">إجمالي المصروفات</p>
+            <p className="mt-2 break-words text-base font-bold leading-6 text-red-700 sm:text-xl">-{formatCurrency(data.summary.totalExpenses, 2)}</p>
           </CardContent>
         </Card>
 
         <Card className={cn("border-2", data.summary.netFlow >= 0 ? "border-emerald-300 bg-emerald-50/70" : "border-red-300 bg-red-50/70")}>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className={cn("p-2 rounded-xl", data.summary.netFlow >= 0 ? "bg-emerald-500/20" : "bg-red-500/20")}>
-                <Wallet className={cn("h-5 w-5", data.summary.netFlow >= 0 ? "text-emerald-600" : "text-red-600")} />
+          <CardContent className="flex min-h-[148px] flex-col p-3 sm:min-h-[156px] sm:p-4">
+            <div className="mb-3 flex items-start justify-between gap-2">
+              <div className={cn("rounded-xl p-2 sm:p-2.5", data.summary.netFlow >= 0 ? "bg-emerald-500/20" : "bg-red-500/20")}>
+                <Wallet className={cn("h-4 w-4 sm:h-5 sm:w-5", data.summary.netFlow >= 0 ? "text-emerald-600" : "text-red-600")} />
               </div>
-              <span className={cn("text-xs font-medium", data.summary.netFlow >= 0 ? "text-emerald-700" : "text-red-700")}>
+              <span className={cn("text-[11px] font-medium sm:text-xs", data.summary.netFlow >= 0 ? "text-emerald-700" : "text-red-700")}>
                 {data.summary.netFlow >= 0 ? "فائض" : "عجز"}
               </span>
             </div>
-            <p className="text-xs font-medium text-muted-foreground">صافي التدفق</p>
-            <p className={cn("break-words text-lg font-bold sm:text-xl", data.summary.netFlow >= 0 ? "text-emerald-700" : "text-red-700")}>
+            <p className="text-[11px] font-medium text-muted-foreground sm:text-xs">صافي التدفق</p>
+            <p className={cn("mt-2 break-words text-base font-bold leading-6 sm:text-xl", data.summary.netFlow >= 0 ? "text-emerald-700" : "text-red-700")}>
               {data.summary.netFlow >= 0 ? "+" : ""}{formatCurrency(data.summary.netFlow, 2)}
             </p>
           </CardContent>
         </Card>
 
         <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="p-2 bg-blue-500/20 rounded-xl">
-                <Landmark className="h-5 w-5 text-blue-600" />
+          <CardContent className="flex min-h-[148px] flex-col p-3 sm:min-h-[156px] sm:p-4">
+            <div className="mb-3 flex items-start justify-between gap-2">
+              <div className="rounded-xl bg-blue-500/20 p-2 sm:p-2.5">
+                <Landmark className="h-4 w-4 text-blue-600 sm:h-5 sm:w-5" />
               </div>
-              <span className="text-xs font-medium text-blue-700">{data.summary.salarySourceCount} راتب</span>
+              <span className="text-[11px] font-medium text-blue-700 sm:text-xs">{data.summary.salarySourceCount} راتب</span>
             </div>
-            <p className="text-xs text-blue-700 font-medium">الدخل الثابت المُعد</p>
-            <p className="break-words text-lg font-bold text-blue-700 sm:text-xl">{formatCurrency(data.summary.recurringConfiguredTotal, 2)}</p>
+            <p className="text-[11px] font-medium text-blue-700 sm:text-xs">الدخل الثابت المُعد</p>
+            <p className="mt-2 break-words text-base font-bold leading-6 text-blue-700 sm:text-xl">{formatCurrency(data.summary.recurringConfiguredTotal, 2)}</p>
           </CardContent>
         </Card>
       </div>
 
       <Card className="border-primary/20 bg-primary/5">
-        <CardContent className="p-4">
+        <CardContent className="p-4 sm:p-5">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
               <p className="text-sm text-primary font-semibold mb-1">نظرة تنفيذية سريعة</p>
