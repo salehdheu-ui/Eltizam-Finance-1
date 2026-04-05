@@ -1,23 +1,23 @@
 import { sql } from "drizzle-orm";
-import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
+import { pgTable, text, integer, serial, doublePrecision, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const users = sqliteTable("users", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
   name: text("name").notNull(),
   email: text("email").notNull(),
   phone: text("phone"),
   role: text("role").notNull().default("user"),
-  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  isActive: boolean("is_active").notNull().default(true),
   lastLoginAt: integer("last_login_at"),
-  createdAt: integer("created_at").notNull().default(sql`(unixepoch())`),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
 });
 
-export const passwordResetRequests = sqliteTable("password_reset_requests", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const passwordResetRequests = pgTable("password_reset_requests", {
+  id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id),
   status: text("status").notNull().default("pending"),
   verificationMethod: text("verification_method").notNull().default("admin"),
@@ -26,88 +26,88 @@ export const passwordResetRequests = sqliteTable("password_reset_requests", {
   resetToken: text("reset_token"),
   resetTokenExpiresAt: integer("reset_token_expires_at"),
   adminUserId: integer("admin_user_id").references(() => users.id),
-  createdAt: integer("created_at").notNull().default(sql`(unixepoch())`),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
   resolvedAt: integer("resolved_at"),
 });
 
-export const wallets = sqliteTable("wallets", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const wallets = pgTable("wallets", {
+  id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id),
   name: text("name").notNull(),
   type: text("type").notNull().default("cash"),
-  balance: real("balance").notNull().default(0),
+  balance: doublePrecision("balance").notNull().default(0),
   color: text("color").notNull().default("from-slate-600 to-slate-800"),
 });
 
-export const categories = sqliteTable("categories", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const categories = pgTable("categories", {
+  id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id),
   name: text("name").notNull(),
   type: text("type").notNull().default("expense"),
   icon: text("icon").notNull().default("📝"),
   color: text("color").notNull().default("bg-orange-100 text-orange-600"),
-  budget: real("budget").default(0),
+  budget: doublePrecision("budget").default(0),
 });
 
-export const transactions = sqliteTable("transactions", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const transactions = pgTable("transactions", {
+  id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id),
   walletId: integer("wallet_id").references(() => wallets.id),
   categoryId: integer("category_id").references(() => categories.id),
   type: text("type").notNull().default("expense"),
-  amount: real("amount").notNull(),
+  amount: doublePrecision("amount").notNull(),
   note: text("note").default(""),
-  date: integer("date").notNull().default(sql`(unixepoch())`),
+  date: integer("date").notNull().default(sql`extract(epoch from now())::integer`),
 });
 
-export const recurringIncomes = sqliteTable("recurring_incomes", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const recurringIncomes = pgTable("recurring_incomes", {
+  id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id),
   title: text("title").notNull(),
-  amount: real("amount").notNull(),
+  amount: doublePrecision("amount").notNull(),
   incomeType: text("income_type").notNull().default("salary"),
   dayOfMonth: integer("day_of_month").notNull(),
   walletId: integer("wallet_id").notNull().references(() => wallets.id),
   categoryId: integer("category_id").references(() => categories.id),
   note: text("note").default(""),
-  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  isActive: boolean("is_active").notNull().default(true),
   lastAppliedMonth: text("last_applied_month"),
-  createdAt: integer("created_at").notNull().default(sql`(unixepoch())`),
-  updatedAt: integer("updated_at").notNull().default(sql`(unixepoch())`),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+  updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
 });
 
-export const obligations = sqliteTable("obligations", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const obligations = pgTable("obligations", {
+  id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id),
   title: text("title").notNull(),
-  amount: real("amount").notNull(),
+  amount: doublePrecision("amount").notNull(),
   scheduleType: text("schedule_type").notNull().default("fixed"),
   obligationType: text("obligation_type").notNull().default("custom"),
   frequency: text("frequency").notNull().default("monthly"),
   dueDay: integer("due_day"), // للالتزامات الشهرية (1-31)
   dueMonth: integer("due_month"), // للالتزامات السنوية (1-12)
   dueDate: integer("due_date"), // للالتزامات لمرة واحدة (unixepoch)
-  startDate: integer("start_date").notNull().default(sql`(unixepoch())`),
+  startDate: integer("start_date").notNull().default(sql`extract(epoch from now())::integer`),
   endDate: integer("end_date"), // اختياري - تاريخ انتهاء الالتزام
   walletId: integer("wallet_id").references(() => wallets.id),
   categoryId: integer("category_id").references(() => categories.id),
   notes: text("notes").default(""),
-  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
-  autoCreateTransaction: integer("auto_create_transaction", { mode: "boolean" }).notNull().default(false),
-  createdAt: integer("created_at").notNull().default(sql`(unixepoch())`),
-  updatedAt: integer("updated_at").notNull().default(sql`(unixepoch())`),
+  isActive: boolean("is_active").notNull().default(true),
+  autoCreateTransaction: boolean("auto_create_transaction").notNull().default(false),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+  updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
 });
 
-export const variableObligationMonthStatuses = sqliteTable("variable_obligation_month_statuses", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const variableObligationMonthStatuses = pgTable("variable_obligation_month_statuses", {
+  id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id),
   obligationId: integer("obligation_id").notNull().references(() => obligations.id),
   monthKey: text("month_key").notNull(),
   status: text("status").notNull().default("unpaid"),
   paidAt: integer("paid_at"),
   note: text("note").default(""),
-  createdAt: integer("created_at").notNull().default(sql`(unixepoch())`),
-  updatedAt: integer("updated_at").notNull().default(sql`(unixepoch())`),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+  updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({

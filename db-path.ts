@@ -1,45 +1,25 @@
-import { existsSync } from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
+import { existsSync } from "fs";
 
-const sourceFileDirectoryPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
-const entryFilePath = process.argv[1] ? path.resolve(process.argv[1]) : sourceFileDirectoryPath;
-const entryFileDirectoryPath = path.dirname(entryFilePath);
-const workingDirectoryPath = path.resolve(process.cwd());
-const explicitDatabasePath = process.env.DATABASE_PATH?.trim();
+const sourceFileDirectoryPath = path.resolve(process.env.PROJECT_ROOT?.trim() || process.cwd());
 
-function collectParentDirectories(startPath: string) {
-  const directories: string[] = [];
+function findProjectRoot(startPath: string) {
   let currentPath = path.resolve(startPath);
-
   for (;;) {
-    directories.push(currentPath);
-    const parentPath = path.dirname(currentPath);
-    if (parentPath === currentPath) {
-      break;
+    if (existsSync(path.join(currentPath, "package.json")) && existsSync(path.join(currentPath, "client"))) {
+      return currentPath;
     }
+    const parentPath = path.dirname(currentPath);
+    if (parentPath === currentPath) break;
     currentPath = parentPath;
   }
-
-  return directories;
+  return startPath;
 }
 
-function isProjectRoot(directoryPath: string) {
-  return existsSync(path.join(directoryPath, "package.json")) && existsSync(path.join(directoryPath, "client"));
-}
+export const resolvedProjectRootPath = findProjectRoot(sourceFileDirectoryPath);
 
-const searchableDirectories = Array.from(new Set([
-  ...collectParentDirectories(workingDirectoryPath),
-  ...collectParentDirectories(entryFileDirectoryPath),
-  ...collectParentDirectories(sourceFileDirectoryPath),
-]));
+export const databaseUrl =
+  process.env.DATABASE_URL?.trim() ||
+  (() => { throw new Error("DATABASE_URL environment variable is required for PostgreSQL connection"); })();
 
-const detectedProjectRootPath = searchableDirectories.find((directoryPath) => isProjectRoot(directoryPath)) || sourceFileDirectoryPath;
-const existingDatabasePath = searchableDirectories
-  .map((directoryPath) => path.join(directoryPath, "eltizam.db"))
-  .find((candidatePath) => existsSync(candidatePath));
-const defaultDatabasePath = path.join(detectedProjectRootPath, "eltizam.db");
-
-export const resolvedProjectRootPath = detectedProjectRootPath;
-export const databasePath = explicitDatabasePath || existingDatabasePath || defaultDatabasePath;
 export const backupRootPath = path.join(resolvedProjectRootPath, "backups", "eltizam-db");

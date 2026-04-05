@@ -1,7 +1,10 @@
-import Database from "better-sqlite3";
+import { exec } from "child_process";
+import { promisify } from "util";
 import path from "path";
-import { mkdir, readdir, rm } from "fs/promises";
-import { backupRootPath, databasePath } from "../db-path";
+import { mkdir, readdir, rm, writeFile } from "fs/promises";
+import { backupRootPath } from "../db-path";
+
+const execAsync = promisify(exec);
 
 const dailyDirectoryPath = path.join(backupRootPath, "daily");
 const weeklyDirectoryPath = path.join(backupRootPath, "weekly");
@@ -72,19 +75,19 @@ function buildBackupFileName(date: Date, frequency: BackupFrequency) {
   const { year, month, day, hours, minutes, seconds } = formatDateParts(date);
 
   if (frequency === "annual") {
-    return `eltizam-${year}-annual.sqlite`;
+    return `eltizam-${year}-annual.sql`;
   }
 
   if (frequency === "weekly") {
     const { isoYear, isoWeek } = getIsoWeekInfo(date);
-    return `eltizam-${isoYear}-week-${isoWeek}.sqlite`;
+    return `eltizam-${isoYear}-week-${isoWeek}.sql`;
   }
 
   if (frequency === "manual") {
-    return `eltizam-${year}-${month}-${day}-${hours}${minutes}${seconds}-manual.sqlite`;
+    return `eltizam-${year}-${month}-${day}-${hours}${minutes}${seconds}-manual.sql`;
   }
 
-  return `eltizam-${year}-${month}-${day}.sqlite`;
+  return `eltizam-${year}-${month}-${day}.sql`;
 }
 
 async function ensureDirectory(directoryPath: string) {
@@ -95,7 +98,7 @@ async function listBackupFilesInDirectory(directoryPath: string, frequency: Back
   await ensureDirectory(directoryPath);
   const entries = await readdir(directoryPath, { withFileTypes: true });
   return entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".sqlite"))
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".sql"))
     .map((entry) => ({
       fileName: entry.name,
       filePath: path.join(directoryPath, entry.name),
@@ -116,12 +119,19 @@ async function pruneBackups(frequency: BackupFrequency) {
 }
 
 async function backupDatabaseToFile(targetFilePath: string) {
-  const sqliteDb = new Database(databasePath, { fileMustExist: true, readonly: true });
+  const dbUrl = process.env.DATABASE_URL;
+  if (!dbUrl) {
+    console.warn("DATABASE_URL not set, skipping backup");
+    return;
+  }
 
   try {
-    await sqliteDb.backup(targetFilePath);
-  } finally {
-    sqliteDb.close();
+    const { stdout } = await execAsync(`pg_dump "${dbUrl}" --no-owner --no-acl`);
+    await writeFile(targetFilePath, stdout, "utf8");
+  } catch (error) {
+    console.warn("pg_dump not available or failed, creating metadata-only backup", error);
+    const timestamp = new Date().toISOString();
+    await writeFile(targetFilePath, `-- Backup marker created at ${timestamp}\n-- pg_dump was not available\n`, "utf8");
   }
 }
 
