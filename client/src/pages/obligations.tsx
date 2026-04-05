@@ -196,29 +196,30 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
   return (
     <Drawer open={isOpen} onOpenChange={onClose}>
       <DrawerContent dir="rtl">
-        <div className="mx-auto w-full max-w-sm">
-          <DrawerHeader className="text-center">
-            <DrawerTitle className="text-center">{editingObligation ? "تعديل الالتزام" : "إضافة التزام جديد"}</DrawerTitle>
-            <DrawerDescription className="text-center">
+        <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col">
+          <DrawerHeader className="shrink-0 px-4 pb-3 text-center sm:px-6">
+            <DrawerTitle className="text-center text-xl">{editingObligation ? "تعديل الالتزام" : "إضافة التزام جديد"}</DrawerTitle>
+            <DrawerDescription className="text-center text-sm leading-6">
               {editingObligation ? "قم بتعديل بيانات الالتزام" : "أدخل بيانات الالتزام المالي الجديد"}
             </DrawerDescription>
           </DrawerHeader>
 
-          <form onSubmit={handleSubmit} className="p-4 pb-0 flex flex-col gap-4 max-h-[60vh] overflow-y-auto">
-            <div className="flex flex-col gap-2">
+          <form onSubmit={handleSubmit} className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+            <div className="flex flex-col gap-4 pb-2 sm:gap-5">
+            <div className="app-field">
               <Label htmlFor="title" className="text-right">عنوان الالتزام <span className="text-destructive">*</span></Label>
               <Input
                 id="title"
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                 placeholder="مثال: قسط السيارة، فاتورة الكهرباء"
-                className={cn("text-right", errors.title && "border-destructive")}
+                className={cn("app-input text-right", errors.title && "border-destructive")}
                 required
               />
               {errors.title && <p className="text-xs text-destructive">{errors.title}</p>}
             </div>
 
-            <div className="flex flex-col gap-2">
+            <div className="app-field">
               <Label htmlFor="amount" className="text-right">المبلغ (ر.ع) <span className="text-destructive">*</span></Label>
               <Input
                 id="amount"
@@ -227,7 +228,7 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
                 value={formData.amount}
                 onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
                 placeholder="0.000"
-                className={cn("text-right", errors.amount && "border-destructive")}
+                className={cn("app-input text-right", errors.amount && "border-destructive")}
               />
               {errors.amount && <p className="text-xs text-destructive">{errors.amount}</p>}
             </div>
@@ -241,7 +242,7 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
                     type="button"
                     onClick={() => setFormData({ ...formData, scheduleType: schedule.value, frequency: schedule.value === "variable" ? "one_time" : formData.frequency, dueDay: "", dueMonth: "", dueDate: formData.scheduleType === schedule.value ? formData.dueDate : "", endDate: schedule.value === "fixed" ? "" : formData.endDate })}
                     className={cn(
-                      "px-3 py-2 rounded-xl text-sm transition-all",
+                      "min-h-11 px-3 py-2 rounded-xl text-sm transition-all",
                       formData.scheduleType === schedule.value
                         ? "bg-primary/10 border-2 border-primary font-medium"
                         : "bg-muted/50 border border-transparent hover:bg-muted"
@@ -253,8 +254,8 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
               </div>
             </div>
 
-            <div className={cn("grid gap-3", formData.scheduleType === "variable" ? "grid-cols-2" : "grid-cols-1")}>
-              <div className="flex flex-col gap-2">
+            <div className={cn("grid gap-3", formData.scheduleType === "variable" ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1")}>
+              <div className="app-field">
                 <Label htmlFor="startDate" className="text-right">تاريخ البداية <span className="text-destructive">*</span></Label>
                 <div className="relative">
                   <Input
@@ -262,7 +263,7 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
                     readOnly
                     dir="ltr"
                     onClick={() => openDatePicker(startDateRef.current)}
-                    className={cn("text-left pl-12 pr-3 tracking-[0.02em] [font-variant-numeric:lining-nums] [font-family:Arial,Helvetica,sans-serif]", errors.startDate && "border-destructive")}
+                    className={cn("app-input text-left pl-12 pr-3 tracking-[0.02em] [font-variant-numeric:lining-nums] [font-family:Arial,Helvetica,sans-serif]", errors.startDate && "border-destructive")}
                   />
                   <Input
                     ref={startDateRef}
@@ -289,7 +290,7 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
                 {errors.startDate && <p className="text-xs text-destructive">{errors.startDate}</p>}
               </div>
               {formData.scheduleType === "variable" && (
-              <div className="flex flex-col gap-2">
+              <div className="app-field">
                 <Label htmlFor="endDate" className="text-right">تاريخ الانتهاء</Label>
                 <div className="relative">
                   <Input
@@ -297,7 +298,7 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
                     readOnly
                     dir="ltr"
                     onClick={() => openDatePicker(endDateRef.current)}
-                    className={cn("text-left pl-12 pr-3 tracking-[0.02em] [font-variant-numeric:lining-nums] [font-family:Arial,Helvetica,sans-serif]", errors.endDate && "border-destructive")}
+                    className={cn("app-input text-left pl-12 pr-3 tracking-[0.02em] [font-variant-numeric:lining-nums] [font-family:Arial,Helvetica,sans-serif]", errors.endDate && "border-destructive")}
                   />
                   <Input
                     ref={endDateRef}
@@ -328,14 +329,14 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
 
             <div className="flex flex-col gap-3">
               <Label className="text-right">نوع الالتزام</Label>
-              <div className="grid grid-cols-5 gap-2">
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
                 {[{ value: "bill", label: "فاتورة", icon: "📄" }, { value: "installment", label: "قسط", icon: "🏦" }, { value: "subscription", label: "اشتراك", icon: "🔄" }, { value: "association", label: "جمعية", icon: "👥" }, { value: "custom", label: "مخصص", icon: "📝" }].map((type) => (
                   <button
                     key={type.value}
                     type="button"
                     onClick={() => setFormData({ ...formData, obligationType: type.value })}
                     className={cn(
-                      "flex flex-col items-center gap-1 p-2 rounded-xl text-xs transition-all",
+                      "flex min-h-[84px] flex-col items-center justify-center gap-1 p-2 rounded-xl text-xs transition-all",
                       formData.obligationType === type.value
                         ? "bg-primary/10 border-2 border-primary"
                         : "bg-muted/50 border border-transparent hover:bg-muted"
@@ -358,7 +359,7 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
                       type="button"
                       onClick={() => setFormData({ ...formData, frequency: freq.value, dueDay: "", dueMonth: "", dueDate: "" })}
                       className={cn(
-                        "px-3 py-2 rounded-xl text-sm transition-all",
+                        "min-h-11 px-3 py-2 rounded-xl text-sm transition-all",
                         formData.frequency === freq.value
                           ? "bg-primary/10 border-2 border-primary font-medium"
                           : "bg-muted/50 border border-transparent hover:bg-muted"
@@ -372,7 +373,7 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
             )}
 
             {(formData.scheduleType === "variable" || formData.frequency === "one_time") && (
-              <div className="flex flex-col gap-2">
+              <div className="app-field">
                 <Label htmlFor="dueDate" className="text-right">تاريخ دفع الالتزام <span className="text-destructive">*</span></Label>
                 <div className="relative">
                   <Input
@@ -380,7 +381,7 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
                     readOnly
                     dir="ltr"
                     onClick={() => openDatePicker(dueDateRef.current)}
-                    className={cn("text-left pl-12 pr-3 tracking-[0.02em] [font-variant-numeric:lining-nums] [font-family:Arial,Helvetica,sans-serif]", errors.dueDate && "border-destructive")}
+                    className={cn("app-input text-left pl-12 pr-3 tracking-[0.02em] [font-variant-numeric:lining-nums] [font-family:Arial,Helvetica,sans-serif]", errors.dueDate && "border-destructive")}
                   />
                   <Input
                     ref={dueDateRef}
@@ -409,14 +410,14 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
             )}
 
             {formData.scheduleType === "fixed" && formData.frequency === "monthly" && (
-              <div className="flex flex-col gap-2">
+              <div className="app-field">
                 <Label htmlFor="dueDay" className="text-right">يوم الدفع <span className="text-destructive">*</span></Label>
                 <select
                   id="dueDay"
                   value={formData.dueDay}
                   onChange={(e) => setFormData({ ...formData, dueDay: e.target.value })}
                   className={cn(
-                    "w-full h-10 px-3 rounded-md border bg-background text-sm text-right",
+                    "app-select text-right",
                     errors.dueDay && "border-destructive"
                   )}
                 >
@@ -430,15 +431,15 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
             )}
 
             {formData.scheduleType === "fixed" && formData.frequency === "yearly" && (
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex flex-col gap-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="app-field">
                   <Label htmlFor="dueDay" className="text-right">يوم الدفع <span className="text-destructive">*</span></Label>
                   <select
                     id="dueDay"
                     value={formData.dueDay}
                     onChange={(e) => setFormData({ ...formData, dueDay: e.target.value })}
                     className={cn(
-                      "w-full h-10 px-3 rounded-md border bg-background text-sm text-right",
+                      "app-select text-right",
                       errors.dueDay && "border-destructive"
                     )}
                   >
@@ -449,14 +450,14 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
                   </select>
                   {errors.dueDay && <p className="text-xs text-destructive">{errors.dueDay}</p>}
                 </div>
-                <div className="flex flex-col gap-2">
+                <div className="app-field">
                   <Label htmlFor="dueMonth" className="text-right">الشهر <span className="text-destructive">*</span></Label>
                   <select
                     id="dueMonth"
                     value={formData.dueMonth}
                     onChange={(e) => setFormData({ ...formData, dueMonth: e.target.value })}
                     className={cn(
-                      "w-full h-10 px-3 rounded-md border bg-background text-sm",
+                      "app-select",
                       errors.dueMonth && "border-destructive"
                     )}
                   >
@@ -470,13 +471,13 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
               </div>
             )}
 
-            <div className="flex flex-col gap-2">
+            <div className="app-field">
               <Label htmlFor="walletId" className="text-right">المحفظة المرتبطة</Label>
               <select
                 id="walletId"
                 value={formData.walletId}
                 onChange={(e) => setFormData({ ...formData, walletId: e.target.value })}
-                className="w-full h-10 px-3 rounded-md border bg-background text-sm"
+                className="app-select"
               >
                 <option value="">بدون محفظة</option>
                 {wallets?.map((wallet) => (
@@ -485,13 +486,13 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
               </select>
             </div>
 
-            <div className="flex flex-col gap-2">
+            <div className="app-field">
               <Label htmlFor="categoryId" className="text-right">القسم</Label>
               <select
                 id="categoryId"
                 value={formData.categoryId}
                 onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
-                className="w-full h-10 px-3 rounded-md border bg-background text-sm"
+                className="app-select"
               >
                 <option value="">بدون قسم</option>
                 {categories?.map((category) => (
@@ -500,14 +501,14 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
               </select>
             </div>
 
-            <div className="flex flex-col gap-2">
+            <div className="app-field">
               <Label htmlFor="notes" className="text-right">ملاحظات</Label>
               <Input
                 id="notes"
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 placeholder="أي ملاحظات إضافية..."
-                className="text-right"
+                className="app-input text-right"
               />
             </div>
 
@@ -523,18 +524,19 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
                 إنشاء معاملة تلقائياً عند الاستحقاق
               </Label>
             </div>
+            </div>
           </form>
 
-          <DrawerFooter>
+          <DrawerFooter className="shrink-0 border-t border-border/50 bg-background/95 pt-4 pb-5 backdrop-blur">
             <Button 
               onClick={handleSubmit}
-              className="w-full"
+              className="h-12 w-full rounded-2xl text-base shadow-lg shadow-primary/20"
               disabled={isSubmitting}
             >
               {isSubmitting ? "جاري الحفظ..." : editingObligation ? "حفظ التغييرات" : "إضافة الالتزام"}
             </Button>
             <DrawerClose asChild>
-              <Button type="button" variant="outline" className="w-full" disabled={isSubmitting}>إلغاء</Button>
+              <Button type="button" variant="outline" className="h-12 w-full rounded-2xl" disabled={isSubmitting}>إلغاء</Button>
             </DrawerClose>
           </DrawerFooter>
         </div>
@@ -757,30 +759,32 @@ export default function Obligations() {
   }
 
   return (
-    <div className="flex flex-col h-full animate-in fade-in duration-300">
+    <div className="flex h-full flex-col animate-in fade-in duration-300">
       {/* Header */}
-      <header className="px-4 py-6 pb-2">
-        <div className="flex justify-between items-center mb-6 gap-3">
-          <h1 className="text-2xl font-bold">الالتزامات</h1>
-          <div className="flex items-center gap-2 hide-on-print">
-            <Button type="button" variant="outline" className="rounded-full" onClick={handleOpenGeneralReport}>
+      <header className="px-1 py-4 pb-2 sm:px-2 sm:py-6 xl:px-0">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold sm:text-2xl">الالتزامات</h1>
+            <p className="mt-1 text-sm text-muted-foreground sm:text-base">تابع ما يجب دفعه، وما هو قريب الاستحقاق، وسجّل الدفعات بسرعة من نفس الصفحة.</p>
+          </div>
+          <div className="flex flex-col gap-2 hide-on-print sm:flex-row sm:items-center">
+            <Button type="button" variant="outline" className="w-full rounded-full sm:w-auto" onClick={handleOpenGeneralReport}>
               <Printer className="h-4 w-4 ml-1" />
               طباعة / PDF
             </Button>
             <Button 
-              size="icon" 
-              className="rounded-full shadow-md bg-primary text-primary-foreground cursor-pointer"
+              className="w-full rounded-full shadow-md bg-primary text-primary-foreground cursor-pointer sm:w-auto"
               onClick={() => handleAdd()}
             >
               <Plus className="h-5 w-5" />
+              إضافة التزام
             </Button>
           </div>
         </div>
-        <p className="text-sm text-muted-foreground">تابع ما يجب دفعه، وما هو قريب الاستحقاق، وسجّل الدفعات بسرعة من نفس الصفحة.</p>
       </header>
 
       {/* محتوى الصفحة */}
-      <div className="flex-1 px-4 pb-24 overflow-auto">
+      <div className="flex-1 overflow-auto px-1 pb-24 sm:px-2 xl:px-0">
         {obligations?.length === 0 ? (
           // حالة الصفحة الفارغة
           <div className="text-center py-16">
@@ -808,7 +812,7 @@ export default function Obligations() {
           // لوحة التحكم
           <div className="flex flex-col gap-6">
             {/* بطاقات الإحصائيات */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
               <Card className="border-0 shadow-sm bg-emerald-50/50 dark:bg-emerald-950/20">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-1">

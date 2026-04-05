@@ -184,25 +184,25 @@ export default function VariableObligationDetails() {
   }
 
   return (
-    <div className="flex flex-col gap-6 p-4 pt-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
-      <div className="flex items-center justify-between gap-3">
-        <Button variant="ghost" className="rounded-full" onClick={() => setLocation("/obligations")}>
+    <div className="app-page animate-in fade-in slide-in-from-bottom-4 duration-300">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Button variant="ghost" className="w-fit rounded-full" onClick={() => setLocation("/obligations")}>
           <ArrowRight className="ml-2 h-4 w-4" />
           العودة
         </Button>
-        <Badge className="bg-primary/10 text-primary hover:bg-primary/10">التزام متغير</Badge>
+        <Badge className="w-fit bg-primary/10 text-primary hover:bg-primary/10">التزام متغير</Badge>
       </div>
 
       <Card className="border border-border/50 shadow-sm overflow-hidden">
-        <CardContent className="p-5 space-y-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h1 className="text-xl font-bold">{obligation.title}</h1>
+        <CardContent className="space-y-4 p-4 sm:p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <h1 className="text-xl font-bold sm:text-2xl">{obligation.title}</h1>
               <p className="mt-1 text-sm text-muted-foreground">صفحة متابعة الأشهر وحالة الدفع والتأخير وعدم الدفع.</p>
             </div>
-            <div className="text-left">
+            <div className="text-right sm:text-left">
               <p className="text-xs text-muted-foreground">المبلغ</p>
-              <p className="font-bold text-destructive">{formatCurrency(obligation.amount)} ر.ع</p>
+              <p className="break-words font-bold text-destructive">{formatCurrency(obligation.amount)} ر.ع</p>
             </div>
           </div>
 
@@ -261,13 +261,13 @@ export default function VariableObligationDetails() {
             const status = statusMeta[month.status];
             return (
               <Card key={month.monthKey} className="border border-border/50 shadow-sm">
-                <CardContent className="p-4 space-y-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
+                <CardContent className="space-y-4 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
                       <h3 className="font-semibold">{monthFormatter.format(month.date)}</h3>
                       <p className="mt-1 text-xs text-muted-foreground">رمز الشهر: {month.monthKey}</p>
                     </div>
-                    <Badge className={cn("hover:bg-transparent", status.className)}>{status.label}</Badge>
+                    <Badge className={cn("w-fit hover:bg-transparent", status.className)}>{status.label}</Badge>
                   </div>
 
                   <div className="flex flex-wrap gap-2">
@@ -306,7 +306,7 @@ export default function VariableObligationDetails() {
                     </Button>
                   </div>
 
-                  <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                  <div className="flex flex-wrap gap-3 text-xs text-muted-foreground sm:gap-4">
                     <span>الحالة الحالية: {status.label}</span>
                     {updateStatus.isPending && pendingMonthKey === month.monthKey ? <span>جاري حفظ التحديث...</span> : null}
                     {month.paidAt ? <span>تم السداد: {formatDate(month.paidAt)}</span> : null}

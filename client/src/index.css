@@ -136,6 +136,53 @@
   }
 }
 
+@layer utilities {
+  .app-page {
+    @apply space-y-4 px-1 py-4 pb-24 sm:px-2 sm:py-6 xl:px-0 xl:py-8;
+  }
+
+  .app-page-header {
+    @apply flex flex-col gap-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:py-4;
+  }
+
+  .app-page-title {
+    @apply text-xl font-bold sm:text-2xl;
+  }
+
+  .app-page-subtitle {
+    @apply mt-1 text-sm text-muted-foreground sm:text-base;
+  }
+
+  .app-panel {
+    @apply rounded-2xl border border-border/50 bg-card shadow-sm;
+  }
+
+  .app-form-grid {
+    @apply grid grid-cols-1 gap-3 sm:grid-cols-2;
+  }
+
+  .app-field {
+    @apply flex flex-col gap-2;
+  }
+
+  .app-input,
+  .app-select {
+    @apply h-11 rounded-xl border border-border bg-background px-3 text-sm shadow-sm outline-none transition-colors focus:border-primary;
+  }
+
+  .app-chip-group {
+    @apply flex flex-wrap gap-2;
+  }
+
+  .app-chip {
+    @apply rounded-full border border-border/50 px-3 py-2 text-sm shadow-sm transition-all hover:bg-muted/50;
+  }
+
+  .app-chip-active {
+    @apply border-primary bg-primary/10 font-medium text-primary;
+  }
+}
+
 .print-only {
   display: none;
 }

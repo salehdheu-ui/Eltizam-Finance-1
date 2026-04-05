@@ -106,8 +106,11 @@ export default function Transactions() {
 
   return (
     <div className="flex h-full flex-col bg-background animate-in fade-in duration-300" dir="rtl">
-      <header className="sticky top-0 z-10 bg-background px-4 py-6 pb-4 border-b border-border/50 sm:px-6 xl:px-8">
-        <h1 className="text-2xl font-bold mb-4">المعاملات</h1>
+      <header className="sticky top-0 z-10 border-b border-border/50 bg-background/95 px-3 py-4 pb-4 backdrop-blur sm:px-4 sm:py-6 xl:px-8">
+        <div className="mb-4 space-y-1">
+          <h1 className="text-xl font-bold sm:text-2xl">المعاملات</h1>
+          <p className="text-sm text-muted-foreground sm:text-base">ابحث بسرعة وفلتر المعاملات وسجّل كل حركة بشكل واضح ومريح على كل الأجهزة.</p>
+        </div>
         
         <div className="flex gap-2">
           <div className="relative flex-1">
@@ -132,19 +135,19 @@ export default function Transactions() {
         </Tabs>
 
         <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          <select value={walletFilter} onChange={(e) => setWalletFilter(e.target.value)} className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none">
+          <select value={walletFilter} onChange={(e) => setWalletFilter(e.target.value)} className="app-select">
             <option value="all">كل المحافظ</option>
             {wallets.map((wallet) => (
               <option key={wallet.id} value={wallet.id.toString()}>{wallet.name}</option>
             ))}
           </select>
-          <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none">
+          <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="app-select">
             <option value="all">كل الأقسام</option>
             {categories.map((category) => (
               <option key={category.id} value={category.id.toString()}>{category.name}</option>
             ))}
           </select>
-          <select value={rangeFilter} onChange={(e) => setRangeFilter(e.target.value as typeof rangeFilter)} className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none">
+          <select value={rangeFilter} onChange={(e) => setRangeFilter(e.target.value as typeof rangeFilter)} className="app-select">
             <option value="all">كل الفترات</option>
             <option value="7days">آخر 7 أيام</option>
             <option value="30days">آخر 30 يومًا</option>
@@ -153,21 +156,21 @@ export default function Transactions() {
         </div>
       </header>
 
-      <div className="flex-1 overflow-auto p-4 pb-24 sm:p-6 xl:p-8">
+      <div className="flex-1 overflow-auto px-1 py-4 pb-24 sm:px-2 sm:py-6 xl:px-0 xl:py-8">
         <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:max-w-3xl">
           <div className="bg-emerald-50 dark:bg-emerald-950/20 rounded-2xl p-4 border border-emerald-100 dark:border-emerald-900/50">
             <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 text-sm font-medium mb-1">
               <ArrowLeftRight className="h-4 w-4" />
               إجمالي الدخل
             </div>
-            <p className="text-xl font-bold text-emerald-700 dark:text-emerald-300">+{formatCurrency(totalIncome, 2)}</p>
+            <p className="break-words text-lg font-bold text-emerald-700 dark:text-emerald-300 sm:text-xl">+{formatCurrency(totalIncome, 2)}</p>
           </div>
           <div className="bg-red-50 dark:bg-red-950/20 rounded-2xl p-4 border border-red-100 dark:border-red-900/50">
             <div className="flex items-center gap-2 text-red-700 dark:text-red-400 text-sm font-medium mb-1">
               <Filter className="h-4 w-4" />
               إجمالي الخروج
             </div>
-            <p className="text-xl font-bold text-red-700 dark:text-red-300">-{formatCurrency(totalOutflow, 2)}</p>
+            <p className="break-words text-lg font-bold text-red-700 dark:text-red-300 sm:text-xl">-{formatCurrency(totalOutflow, 2)}</p>
           </div>
         </div>
 
@@ -197,7 +200,7 @@ export default function Transactions() {
                   const icon = tx.categoryIcon || defaultIcons[catName] || "📝";
                   const bg = defaultBgs[catName] || "bg-muted";
                   return (
-                    <div key={tx.id} className="bg-card flex items-center justify-between gap-3 rounded-2xl border border-border/50 p-3.5 shadow-sm transition-all active-elevate" data-testid={`card-transaction-${tx.id}`}>
+                    <div key={tx.id} className="bg-card flex flex-col gap-3 rounded-2xl border border-border/50 p-3.5 shadow-sm transition-all active-elevate sm:flex-row sm:items-center sm:justify-between" data-testid={`card-transaction-${tx.id}`}>
                       <div className="flex min-w-0 items-center gap-3">
                         <div className={cn("h-12 w-12 rounded-2xl flex items-center justify-center text-xl shrink-0", bg)}>
                           {icon}
@@ -211,17 +214,17 @@ export default function Transactions() {
                           </div>
                         </div>
                       </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        <div className="flex flex-col items-end">
+                      <div className="flex shrink-0 items-center justify-between gap-2 sm:justify-normal">
+                        <div className="flex min-w-0 flex-col items-start sm:items-end">
                           <span className={cn(
-                            "font-bold",
+                            "text-sm font-bold sm:text-base",
                             tx.type === 'income' ? "text-emerald-500" : 
                             tx.type === 'expense' ? "text-red-500" :
                             "text-gray-900 dark:text-gray-100"
                           )}>
                             {tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount, 2)}
                           </span>
-                          <span className="text-[10px] text-muted-foreground mt-1">
+                          <span className="mt-1 text-[10px] text-muted-foreground sm:text-right">
                             {tx.date && formatRelativeArabicDate(tx.date)} {tx.date && `• ${formatTime(tx.date)}`}
                           </span>
                         </div>

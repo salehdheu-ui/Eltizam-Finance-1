@@ -173,15 +173,15 @@ export default function SavingsPlans() {
   const improvementGap = Math.max((recommendedPlan.savingsRate * effectiveIncome) - Math.max(currentSavings, 0), 0);
 
   return (
-    <div className="p-4 pb-24 space-y-4" dir="rtl">
-      <div className="text-center py-4 space-y-1">
-        <h1 className="text-2xl font-bold">خطط الادخار</h1>
-        <p className="text-muted-foreground">4 خطط مشهورة مع قياس الخطة المناسبة لك تلقائياً</p>
+    <div className="app-page" dir="rtl">
+      <div className="text-center py-2 sm:py-4 space-y-1">
+        <h1 className="text-xl font-bold sm:text-2xl">خطط الادخار</h1>
+        <p className="text-sm text-muted-foreground sm:text-base">4 خطط مشهورة مع قياس الخطة المناسبة لك تلقائياً</p>
       </div>
 
       <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2">
+          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
             <Wallet className="h-5 w-5 text-primary" />
             وضعك المالي الحالي
           </CardTitle>
@@ -189,11 +189,11 @@ export default function SavingsPlans() {
         <CardContent className="grid grid-cols-2 gap-3">
           <div className="p-3 bg-white rounded-xl border">
             <p className="text-xs text-muted-foreground">الرصيد الحالي</p>
-            <p className="text-lg font-bold text-primary">{formatCurrency(totalBalance, 2)} ر.ع</p>
+            <p className="break-words text-base font-bold text-primary sm:text-lg">{formatCurrency(totalBalance, 2)} ر.ع</p>
           </div>
           <div className="p-3 bg-white rounded-xl border">
             <p className="text-xs text-muted-foreground">الدخل الشهري المرصود</p>
-            <p className="text-lg font-bold text-emerald-600">{formatCurrency(lastMonthIncome, 2)} ر.ع</p>
+            <p className="break-words text-base font-bold text-emerald-600 sm:text-lg">{formatCurrency(lastMonthIncome, 2)} ر.ع</p>
           </div>
           <div className="p-3 bg-white rounded-xl border col-span-2">
             <div className="flex justify-between items-center">
@@ -208,7 +208,7 @@ export default function SavingsPlans() {
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2">
+          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
             <Target className="h-5 w-5 text-primary" />
             قياس الخطة المناسبة
           </CardTitle>
@@ -217,23 +217,23 @@ export default function SavingsPlans() {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-2">
               <label className="text-sm font-medium">الدخل الشهري</label>
-              <Input type="text" inputMode="decimal" value={manualIncome} onChange={(e) => setManualIncome(e.target.value)} placeholder={lastMonthIncome ? `${formatCurrency(lastMonthIncome, 2)}` : "مثال: 1200"} dir="ltr" className="text-left" />
+              <Input type="text" inputMode="decimal" value={manualIncome} onChange={(e) => setManualIncome(e.target.value)} placeholder={lastMonthIncome ? `${formatCurrency(lastMonthIncome, 2)}` : "مثال: 1200"} dir="ltr" className="app-input text-left" />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">المصاريف الأساسية</label>
-              <Input type="text" inputMode="decimal" value={manualNeeds} onChange={(e) => setManualNeeds(e.target.value)} placeholder="مثال: 500" dir="ltr" className="text-left" />
+              <Input type="text" inputMode="decimal" value={manualNeeds} onChange={(e) => setManualNeeds(e.target.value)} placeholder="مثال: 500" dir="ltr" className="app-input text-left" />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">الرغبات والكماليات</label>
-              <Input type="text" inputMode="decimal" value={manualWants} onChange={(e) => setManualWants(e.target.value)} placeholder="مثال: 150" dir="ltr" className="text-left" />
+              <Input type="text" inputMode="decimal" value={manualWants} onChange={(e) => setManualWants(e.target.value)} placeholder="مثال: 150" dir="ltr" className="app-input text-left" />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">الالتزامات الشهرية الثابتة</label>
-              <Input type="text" inputMode="decimal" value={manualFixedObligations} onChange={(e) => setManualFixedObligations(e.target.value)} placeholder="مثال: 200" dir="ltr" className="text-left" />
+              <Input type="text" inputMode="decimal" value={manualFixedObligations} onChange={(e) => setManualFixedObligations(e.target.value)} placeholder="مثال: 200" dir="ltr" className="app-input text-left" />
             </div>
             <div className="space-y-2 sm:col-span-2">
               <label className="text-sm font-medium">الهدف الادخاري</label>
-              <Input type="text" inputMode="decimal" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} placeholder="مثال: 10000" dir="ltr" className="text-left" />
+              <Input type="text" inputMode="decimal" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} placeholder="مثال: 10000" dir="ltr" className="app-input text-left" />
             </div>
           </div>
 
@@ -256,19 +256,19 @@ export default function SavingsPlans() {
 
       <Card className="bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-200">
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2">
+          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-emerald-600" />
             الخطة الأنسب لك الآن
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="rounded-xl border bg-white p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
                 <p className="text-lg font-bold text-emerald-700">{recommendedPlan.title}</p>
                 <p className="text-sm text-muted-foreground">{recommendedPlan.subtitle}</p>
               </div>
-              <div className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">موصى بها</div>
+              <div className="w-fit rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">موصى بها</div>
             </div>
             <p className="mt-3 text-sm text-slate-700">{recommendedPlan.description}</p>
             <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
@@ -284,12 +284,12 @@ export default function SavingsPlans() {
         {planCards.map(({ plan, monthlySavingsAmount, monthlyNeedsAmount, monthlyWantsAmount, monthlyReserveAmount, projectedBalance, investmentProjection, monthsToGoal, isRecommended }) => (
           <Card key={plan.id} className={cn(isRecommended ? "border-emerald-400 shadow-lg" : "") }>
             <CardHeader className="pb-3">
-              <CardTitle className="flex items-center justify-between gap-3 text-lg">
-                <div>
+              <CardTitle className="flex flex-col gap-3 text-base sm:flex-row sm:items-center sm:justify-between sm:text-lg">
+                <div className="min-w-0">
                   <span>{plan.title}</span>
                   <p className="mt-1 text-sm font-normal text-muted-foreground">{plan.subtitle}</p>
                 </div>
-                {isRecommended ? <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">الأنسب لك</span> : null}
+                {isRecommended ? <span className="w-fit rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">الأنسب لك</span> : null}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -305,11 +305,11 @@ export default function SavingsPlans() {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="rounded-xl bg-slate-50 p-4 border">
                   <div className="flex items-center gap-2 mb-2"><PiggyBank className="h-4 w-4 text-primary" /><span className="font-medium">بعد {planYears} سنوات</span></div>
-                  <p className="text-2xl font-bold text-slate-800">{formatCurrency(projectedBalance, 2)} ر.ع</p>
+                  <p className="break-words text-xl font-bold text-slate-800 sm:text-2xl">{formatCurrency(projectedBalance, 2)} ر.ع</p>
                 </div>
                 <div className="rounded-xl bg-emerald-50 p-4 border border-emerald-200">
                   <div className="flex items-center gap-2 mb-2"><TrendingUp className="h-4 w-4 text-emerald-600" /><span className="font-medium">مع استثمار 8%</span></div>
-                  <p className="text-2xl font-bold text-emerald-700">{formatCurrency(investmentProjection, 2)} ر.ع</p>
+                  <p className="break-words text-xl font-bold text-emerald-700 sm:text-2xl">{formatCurrency(investmentProjection, 2)} ر.ع</p>
                 </div>
               </div>
 
