@@ -78,7 +78,7 @@ export default function Reports() {
     : data.recentTransactions.slice(0, 4);
 
   return (
-    <div className="p-4 pb-24 space-y-4" dir="rtl">
+    <div className="space-y-4 p-4 pb-24 sm:p-6 xl:p-8" dir="rtl">
       <div className="text-center py-4">
         <h1 className="text-2xl font-bold">التقارير المالية</h1>
         <p className="text-muted-foreground mt-1">لوحة تحليل احترافية توضّح أين يذهب دخلك وكيف يتحرك صرفك</p>
@@ -130,7 +130,7 @@ export default function Reports() {
         </Card>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-4">
         <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
@@ -207,6 +207,7 @@ export default function Reports() {
         </CardContent>
       </Card>
 
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.95fr)]">
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
@@ -321,7 +322,9 @@ export default function Reports() {
           )}
         </CardContent>
       </Card>
+      </div>
 
+      <div className="grid gap-4 xl:grid-cols-2">
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
@@ -342,7 +345,7 @@ export default function Reports() {
                   <Bar dataKey="expenses" fill="var(--color-expenses)" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ChartContainer>
-              <div className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
                 {data.walletBreakdown.slice(0, 4).map((wallet) => (
                   <div key={wallet.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-xl border border-border/50">
                     <div>
@@ -371,7 +374,7 @@ export default function Reports() {
         </CardHeader>
         <CardContent className="space-y-3">
           {data.upcomingObligations.length > 0 ? data.upcomingObligations.map((obligation) => (
-            <div key={obligation.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-xl border border-border/50">
+            <div key={obligation.id} className="flex flex-col gap-3 rounded-xl border border-border/50 bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="font-medium text-sm">{obligation.title}</p>
                 <p className="text-xs text-muted-foreground mt-1">
@@ -387,6 +390,7 @@ export default function Reports() {
           )) : <p className="text-center text-sm text-muted-foreground py-6">لا توجد التزامات قريبة في الوقت الحالي</p>}
         </CardContent>
       </Card>
+      </div>
 
       <Card>
         <CardHeader className="pb-3">
@@ -408,17 +412,21 @@ export default function Reports() {
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          {data.recentTransactions.length > 0 ? visibleRecentTransactions.map((tx) => (
-            <div key={tx.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-xl border border-border/50">
-              <div>
-                <p className="font-medium text-sm">{normalizeArabicText(tx.note) || tx.categoryName || "معاملة"}</p>
-                <p className="text-xs text-muted-foreground mt-1">{tx.walletName || "بدون محفظة"}</p>
-              </div>
-              <span className={cn("font-bold", tx.type === "income" ? "text-emerald-600" : "text-red-600")}>
-                {tx.type === "income" ? "+" : "-"}{formatCurrency(tx.amount, 2)}
-              </span>
+          {data.recentTransactions.length > 0 ? (
+            <div className="grid gap-3 lg:grid-cols-2">
+              {visibleRecentTransactions.map((tx) => (
+                <div key={tx.id} className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/30 p-3">
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm line-clamp-1">{normalizeArabicText(tx.note) || tx.categoryName || "معاملة"}</p>
+                    <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{tx.walletName || "بدون محفظة"}</p>
+                  </div>
+                  <span className={cn("shrink-0 font-bold", tx.type === "income" ? "text-emerald-600" : "text-red-600")}>
+                    {tx.type === "income" ? "+" : "-"}{formatCurrency(tx.amount, 2)}
+                  </span>
+                </div>
+              ))}
             </div>
-          )) : <p className="text-center text-sm text-muted-foreground py-6">لا توجد معاملات حديثة في هذه الفترة</p>}
+          ) : <p className="text-center text-sm text-muted-foreground py-6">لا توجد معاملات حديثة في هذه الفترة</p>}
         </CardContent>
       </Card>
     </div>

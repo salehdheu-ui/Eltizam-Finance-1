@@ -60,11 +60,11 @@ export default function Dashboard() {
   const nextStep = setupSteps.find((step) => !step.done);
 
   return (
-    <div className="flex flex-col gap-6 p-4 pt-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <header className="flex justify-between items-center mb-2">
+    <div className="animate-in fade-in slide-in-from-bottom-4 flex flex-col gap-6 p-4 pt-8 duration-500 sm:p-6 sm:pt-8 xl:p-8" dir="rtl">
+      <header className="mb-2 flex items-center justify-between gap-4">
         <div>
           <h1 className="text-sm font-medium text-muted-foreground" data-testid="text-greeting">مرحباً بعودتك،</h1>
-          <h2 className="text-xl font-bold" data-testid="text-username">{user?.name || "المستخدم"}</h2>
+          <h2 className="text-xl font-bold sm:text-2xl" data-testid="text-username">{user?.name || "المستخدم"}</h2>
         </div>
         <Link href="/settings">
           <div className="h-11 w-11 bg-primary/10 rounded-full flex items-center justify-center text-primary cursor-pointer hover:bg-primary/20 transition-colors" data-testid="link-settings">
@@ -86,7 +86,7 @@ export default function Dashboard() {
                 <nextStep.icon className="h-5 w-5" />
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-2 mt-4">
+            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
               {setupSteps.map((step) => (
                 <Link key={step.key} href={step.href}>
                   <div className={cn(
@@ -137,7 +137,7 @@ export default function Dashboard() {
             </h3>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 pt-4 border-t border-white/20">
+          <div className="grid grid-cols-1 gap-4 border-t border-white/20 pt-4 sm:grid-cols-2">
             <div className="flex items-center gap-3">
               <div className="bg-white/20 p-2 rounded-xl">
                 <ArrowDownLeft className="h-5 w-5 text-green-300" strokeWidth={3} />
@@ -186,7 +186,7 @@ export default function Dashboard() {
         </Card>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:max-w-4xl">
         <Link href="/wallets">
           <div className="bg-card border border-border/50 rounded-2xl p-4 shadow-sm hover:bg-muted/30 transition-colors cursor-pointer">
             <div className="flex items-center justify-between mb-2">
@@ -209,7 +209,7 @@ export default function Dashboard() {
         </Link>
       </div>
 
-      <div className="mt-4">
+      <div className="mt-4 xl:max-w-4xl">
         <div className="flex justify-between items-center mb-4">
           <h3 className="font-bold text-lg">الالتزامات القادمة</h3>
           <Link href="/obligations">
@@ -228,7 +228,7 @@ export default function Dashboard() {
                 {upcomingObligations.map((obligation) => (
                   <div 
                     key={obligation.id} 
-                    className="flex items-center justify-between p-3 bg-muted/30 rounded-xl hover:bg-muted/50 transition-colors"
+                    className="flex flex-col gap-3 rounded-xl bg-muted/30 p-3 transition-colors hover:bg-muted/50 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
@@ -245,7 +245,7 @@ export default function Dashboard() {
                         </p>
                       </div>
                     </div>
-                    <div className="text-left">
+                    <div className="text-right sm:text-left">
                       <span className="font-bold text-destructive text-sm">
                         {formatCurrency(obligation.amount)} ر.ع
                       </span>
@@ -267,7 +267,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      <div className="mt-6">
+      <div className="mt-6 xl:max-w-5xl">
         <div className="flex justify-between items-center mb-4">
           <h3 className="font-bold text-lg">أحدث المعاملات</h3>
           <Link href="/transactions">
@@ -280,23 +280,23 @@ export default function Dashboard() {
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         ) : dashboard?.recentTransactions && dashboard.recentTransactions.length > 0 ? (
-          <div className="flex flex-col gap-3">
+          <div className="grid gap-3 lg:grid-cols-2">
             {dashboard.recentTransactions.map((tx) => {
               const catName = tx.categoryName || "أخرى";
               const colors = categoryColors[catName] || { icon: tx.categoryIcon || "📝", bg: "bg-muted" };
               return (
-                <div key={tx.id} className="bg-card p-4 rounded-2xl border border-border/50 shadow-sm flex items-center justify-between hover-elevate transition-all cursor-pointer" data-testid={`card-transaction-${tx.id}`}>
-                  <div className="flex items-center gap-4">
+                <div key={tx.id} className="bg-card flex items-center justify-between gap-3 rounded-2xl border border-border/50 p-4 shadow-sm transition-all hover-elevate cursor-pointer" data-testid={`card-transaction-${tx.id}`}>
+                  <div className="flex min-w-0 items-center gap-4">
                     <div className={cn("h-12 w-12 rounded-2xl flex items-center justify-center text-xl", colors.bg)}>
                       {tx.categoryIcon || colors.icon}
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <h4 className="font-bold">{catName}</h4>
-                      <p className="text-xs text-muted-foreground mt-0.5">{normalizeArabicText(tx.note)} {tx.date && `• ${formatRelativeArabicDate(tx.date)}`}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">{normalizeArabicText(tx.note)} {tx.date && `• ${formatRelativeArabicDate(tx.date)}`}</p>
                     </div>
                   </div>
                   <div className={cn(
-                    "font-bold text-lg",
+                    "shrink-0 text-left font-bold text-lg",
                     tx.type === 'income' ? "text-emerald-500" : tx.type === 'expense' ? "text-red-500" : ""
                   )}>
                     {tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount, 2)}

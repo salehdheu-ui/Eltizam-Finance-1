@@ -105,8 +105,8 @@ export default function Transactions() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-background animate-in fade-in duration-300">
-      <header className="px-4 py-6 pb-4 bg-background sticky top-0 z-10 border-b border-border/50">
+    <div className="flex h-full flex-col bg-background animate-in fade-in duration-300" dir="rtl">
+      <header className="sticky top-0 z-10 bg-background px-4 py-6 pb-4 border-b border-border/50 sm:px-6 xl:px-8">
         <h1 className="text-2xl font-bold mb-4">المعاملات</h1>
         
         <div className="flex gap-2">
@@ -131,7 +131,7 @@ export default function Transactions() {
           </TabsList>
         </Tabs>
 
-        <div className="grid grid-cols-3 gap-2 mt-4">
+        <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
           <select value={walletFilter} onChange={(e) => setWalletFilter(e.target.value)} className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none">
             <option value="all">كل المحافظ</option>
             {wallets.map((wallet) => (
@@ -153,8 +153,8 @@ export default function Transactions() {
         </div>
       </header>
 
-      <div className="p-4 flex-1 overflow-auto pb-24">
-        <div className="grid grid-cols-2 gap-3 mb-6">
+      <div className="flex-1 overflow-auto p-4 pb-24 sm:p-6 xl:p-8">
+        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:max-w-3xl">
           <div className="bg-emerald-50 dark:bg-emerald-950/20 rounded-2xl p-4 border border-emerald-100 dark:border-emerald-900/50">
             <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 text-sm font-medium mb-1">
               <ArrowLeftRight className="h-4 w-4" />
@@ -189,7 +189,7 @@ export default function Transactions() {
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           ) : (
-            <div className="flex flex-col gap-3">
+            <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
               {filteredTransactions.length > 0 ? (
                 filteredTransactions.map((tx) => {
                   const isTransfer = isTransferTransaction(tx.note);
@@ -197,12 +197,12 @@ export default function Transactions() {
                   const icon = tx.categoryIcon || defaultIcons[catName] || "📝";
                   const bg = defaultBgs[catName] || "bg-muted";
                   return (
-                    <div key={tx.id} className="bg-card p-3.5 rounded-2xl border border-border/50 shadow-sm flex items-center justify-between active-elevate transition-all" data-testid={`card-transaction-${tx.id}`}>
-                      <div className="flex items-center gap-3">
+                    <div key={tx.id} className="bg-card flex items-center justify-between gap-3 rounded-2xl border border-border/50 p-3.5 shadow-sm transition-all active-elevate" data-testid={`card-transaction-${tx.id}`}>
+                      <div className="flex min-w-0 items-center gap-3">
                         <div className={cn("h-12 w-12 rounded-2xl flex items-center justify-center text-xl shrink-0", bg)}>
                           {icon}
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <h4 className="font-bold text-sm">{catName}</h4>
                           <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{getTransferLabel(tx.note)}</p>
                           <div className="flex flex-wrap items-center gap-2 mt-1 text-[10px] text-muted-foreground">
@@ -211,7 +211,7 @@ export default function Transactions() {
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex shrink-0 items-center gap-2">
                         <div className="flex flex-col items-end">
                           <span className={cn(
                             "font-bold",

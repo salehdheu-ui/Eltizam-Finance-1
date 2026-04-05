@@ -160,18 +160,18 @@ export default function Settings() {
   const initials = displayName.split(' ').map(n => n[0]).join(' ').substring(0, 3);
 
   return (
-    <div className="flex flex-col h-full bg-background animate-in fade-in duration-300">
-      <header className="px-4 py-6 pb-2">
+    <div className="flex flex-col h-full bg-background animate-in fade-in duration-300" dir="rtl">
+      <header className="px-4 py-6 pb-2 sm:px-6 xl:px-8">
         <h1 className="text-2xl font-bold mb-6">الإعدادات</h1>
       </header>
 
-      <div className="p-4 flex-1 overflow-auto pb-24 space-y-6">
+      <div className="p-4 flex-1 overflow-auto pb-24 space-y-6 sm:p-6 xl:p-8">
         <Card className="p-3 border border-primary/10 bg-primary/5 text-sm text-muted-foreground">
           يتم حفظ تفضيلات الواجهة مثل العملة والوضع الليلي والإشعارات على هذا الجهاز لتبقى التجربة سلسة.
         </Card>
         
         <Card className="p-4 border-none shadow-md bg-card/50">
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
             <div className="h-16 w-16 bg-primary/10 rounded-full flex items-center justify-center text-primary font-bold text-xl">
               {initials}
             </div>
@@ -179,12 +179,13 @@ export default function Settings() {
               <h2 className="font-bold text-lg" data-testid="text-profile-name">{displayName}</h2>
               <p className="text-sm text-muted-foreground" data-testid="text-profile-email">{user?.email}</p>
             </div>
-            <Button variant="outline" size="sm" onClick={openEditProfile} data-testid="button-edit-profile">
+            <Button variant="outline" size="sm" onClick={openEditProfile} data-testid="button-edit-profile" className="sm:w-auto w-full">
               تعديل
             </Button>
           </div>
         </Card>
 
+        <div className="grid gap-6 xl:grid-cols-2 xl:items-start">
         <div className="space-y-4">
           <h3 className="text-sm font-semibold text-muted-foreground px-2">عام</h3>
           <div className="bg-card rounded-2xl border border-border/50 shadow-sm overflow-hidden">
@@ -234,8 +235,9 @@ export default function Settings() {
             </div>
           </div>
         </div>
+        </div>
 
-        <div className="pt-4 pb-8">
+        <div className="pt-4 pb-8 xl:max-w-md">
           <Button variant="destructive" className="w-full py-6 rounded-xl font-bold text-lg shadow-sm cursor-pointer" onClick={handleLogout} disabled={logoutMutation.isPending} data-testid="button-logout">
             <LogOut className="mr-2 h-5 w-5 ml-2" />
             {logoutMutation.isPending ? "جاري الخروج..." : "تسجيل الخروج"}
@@ -245,7 +247,7 @@ export default function Settings() {
 
       <Drawer open={isEditProfileOpen} onOpenChange={setIsEditProfileOpen}>
         <DrawerContent dir="rtl">
-          <div className="mx-auto w-full max-w-sm">
+          <div className="mx-auto w-full max-w-lg">
             <DrawerHeader>
               <DrawerTitle>تعديل الملف الشخصي</DrawerTitle>
               <DrawerDescription>قم بتحديث بياناتك الشخصية هنا.</DrawerDescription>
@@ -272,7 +274,7 @@ export default function Settings() {
 
       <Drawer open={isPasswordOpen} onOpenChange={setIsPasswordOpen}>
         <DrawerContent dir="rtl">
-          <div className="mx-auto w-full max-w-sm">
+          <div className="mx-auto w-full max-w-lg">
             <DrawerHeader>
               <DrawerTitle>تغيير رمز المرور</DrawerTitle>
               <DrawerDescription>قم بإدخال الرمز القديم والجديد.</DrawerDescription>
@@ -303,7 +305,7 @@ export default function Settings() {
 
       <Drawer open={isCurrencyOpen} onOpenChange={setIsCurrencyOpen}>
         <DrawerContent dir="rtl">
-          <div className="mx-auto w-full max-w-sm">
+          <div className="mx-auto w-full max-w-lg">
             <DrawerHeader>
               <DrawerTitle>العملة الأساسية</DrawerTitle>
               <DrawerDescription>اختر العملة التي ترغب في استخدامها لعرض مبالغك.</DrawerDescription>

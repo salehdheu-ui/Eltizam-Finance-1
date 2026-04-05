@@ -314,10 +314,10 @@ export default function Layout({ children }: LayoutProps) {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-muted/30 pb-20">
+    <div className="flex min-h-screen flex-col bg-muted/30 pb-20 lg:pb-0">
       {/* Header with menu button */}
       <header className="fixed top-0 left-0 right-0 z-40 bg-background/80 backdrop-blur-md border-b border-border">
-        <div className="flex items-center h-14 px-4 w-full max-w-md mx-auto relative" dir="rtl">
+        <div className="relative mx-auto flex h-14 w-full max-w-7xl items-center px-4 sm:px-6 lg:px-8" dir="rtl">
           <Button 
             variant="ghost" 
             size="icon" 
@@ -326,7 +326,7 @@ export default function Layout({ children }: LayoutProps) {
           >
             <Menu className="h-5 w-5" />
           </Button>
-          <h1 className="text-lg font-bold absolute left-1/2 transform -translate-x-1/2">التزام</h1>
+          <h1 className="absolute left-1/2 -translate-x-1/2 text-lg font-bold">التزام</h1>
         </div>
       </header>
 
@@ -346,7 +346,7 @@ export default function Layout({ children }: LayoutProps) {
         
         {/* Sidebar Content */}
         <div className={cn(
-          "absolute top-0 right-0 h-full w-72 bg-background shadow-2xl transition-transform duration-300 ease-out",
+          "absolute top-0 right-0 h-full w-[min(22rem,calc(100vw-1.5rem))] bg-background shadow-2xl transition-transform duration-300 ease-out sm:w-80",
           isSidebarOpen ? "translate-x-0" : "translate-x-full"
         )} dir="rtl">
           <div className="flex flex-col h-full">
@@ -415,10 +415,12 @@ export default function Layout({ children }: LayoutProps) {
       </div>
 
       {/* Main Content */}
-      <main className="flex-1 w-full max-w-md mx-auto relative pt-14">
-        {children}
+      <main className="relative flex-1 pt-14">
+        <div className="mx-auto w-full max-w-7xl px-0 sm:px-4 lg:px-8">
+          {children}
+        </div>
         
-        <div className="fixed bottom-24 left-6 z-40">
+        <div className="fixed bottom-24 left-4 z-40 sm:left-6 lg:bottom-8 lg:left-8 xl:left-[max(2rem,calc((100vw-80rem)/2+2rem))]">
           <Button 
             size="icon" 
             className="h-14 w-14 rounded-full shadow-lg hover:shadow-xl transition-all shadow-primary/30 bg-primary text-primary-foreground cursor-pointer"
@@ -431,8 +433,8 @@ export default function Layout({ children }: LayoutProps) {
       </main>
 
       {/* Simplified Bottom Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 bg-background border-t border-border shadow-[0_-4px_20px_rgba(0,0,0,0.05)] pb-safe">
-        <div className="flex items-center justify-around h-16 w-full max-w-md mx-auto px-4 relative">
+      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-background shadow-[0_-4px_20px_rgba(0,0,0,0.05)] pb-safe lg:border-t-0 lg:bg-transparent lg:shadow-none">
+        <div className="relative mx-auto flex h-16 w-full max-w-7xl items-center justify-around px-4 sm:px-6 lg:max-w-fit lg:justify-center lg:gap-4 lg:rounded-2xl lg:border lg:border-border/70 lg:bg-background/95 lg:px-5 lg:shadow-lg lg:backdrop-blur xl:px-6">
           {mainNavItems.map((item) => {
             const isActive = location === item.href;
             const Icon = item.icon;
@@ -440,18 +442,18 @@ export default function Layout({ children }: LayoutProps) {
               <Link key={item.href} href={item.href}>
                 <div
                   className={cn(
-                    "flex flex-col items-center justify-center min-w-[70px] h-full gap-1.5 cursor-pointer transition-colors duration-200",
+                    "flex h-full min-w-[70px] cursor-pointer flex-col items-center justify-center gap-1.5 transition-colors duration-200 lg:min-w-[88px] lg:flex-row lg:gap-2 lg:px-3",
                     isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
                   )}
                   data-testid={`nav-${item.href === '/' ? 'home' : item.href.slice(1)}`}
                 >
                   <div className={cn(
-                    "flex items-center justify-center w-10 h-10 rounded-xl transition-all",
+                    "flex h-10 w-10 items-center justify-center rounded-xl transition-all",
                     isActive ? "bg-primary/10" : ""
                   )}>
                     <Icon className={cn("h-5 w-5", isActive && "stroke-[2.5]")} />
                   </div>
-                  <span className="text-[10px] font-medium whitespace-nowrap">{item.label}</span>
+                  <span className="whitespace-nowrap text-[10px] font-medium lg:text-xs">{item.label}</span>
                 </div>
               </Link>
             );
@@ -466,7 +468,7 @@ export default function Layout({ children }: LayoutProps) {
         setIsAddTxOpen(open);
       }}>
         <DrawerContent dir="rtl">
-          <div className="mx-auto flex w-full max-w-sm min-h-0 flex-1 flex-col">
+          <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col">
             <DrawerHeader className="shrink-0 pb-3">
               <DrawerTitle className="text-xl">إضافة معاملة جديدة</DrawerTitle>
               <DrawerDescription className="text-sm leading-6">سجل تفاصيل الدخل، المصروف، أو الدين بشكل واضح وسريع.</DrawerDescription>

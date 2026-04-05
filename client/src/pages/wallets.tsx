@@ -95,8 +95,8 @@ export default function Wallets() {
   };
 
   return (
-    <div className="flex flex-col h-full animate-in fade-in duration-300">
-      <header className="px-4 py-6 pb-2">
+    <div className="flex flex-col h-full animate-in fade-in duration-300" dir="rtl">
+      <header className="px-4 py-6 pb-2 sm:px-6 xl:px-8">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold">المحافظ والحسابات</h1>
           <Button 
@@ -123,13 +123,13 @@ export default function Wallets() {
         </div>
       </header>
 
-      <div className="p-4 flex-1 overflow-auto pb-24">
+      <div className="p-4 flex-1 overflow-auto pb-24 sm:p-6 xl:p-8">
         {isLoading ? (
           <div className="flex justify-center py-10">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <div className="grid gap-4">
+          <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
             {wallets.map((wallet) => (
               <div 
                 key={wallet.id} 
@@ -182,7 +182,7 @@ export default function Wallets() {
 
       <Drawer open={isAddDrawerOpen} onOpenChange={setIsAddDrawerOpen}>
         <DrawerContent dir="rtl">
-          <div className="mx-auto w-full max-w-sm">
+          <div className="mx-auto w-full max-w-lg">
             <DrawerHeader>
               <DrawerTitle>إضافة محفظة جديدة</DrawerTitle>
               <DrawerDescription>أدخل تفاصيل المحفظة أو الحساب البنكي الجديد.</DrawerDescription>
@@ -220,7 +220,7 @@ export default function Wallets() {
 
       <Drawer open={isEditDrawerOpen} onOpenChange={setIsEditDrawerOpen}>
         <DrawerContent dir="rtl">
-          <div className="mx-auto w-full max-w-sm">
+          <div className="mx-auto w-full max-w-lg">
             <DrawerHeader>
               <DrawerTitle>تعديل المحفظة</DrawerTitle>
               <DrawerDescription>تحديث بيانات المحفظة أو حذفها.</DrawerDescription>
