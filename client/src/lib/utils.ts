@@ -87,14 +87,25 @@ export function parseNumericInput(value: string | number | null | undefined) {
     return null
   }
 
-  const normalized = value
-    .trim()
-    .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 1632))
-    .replace(/[٫،]/g, ".")
+  const trimmed = value.trim()
 
-  if (!normalized) {
+  if (!trimmed) {
     return null
   }
+
+  const numeralNormalized = trimmed
+    .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 1632))
+    .replace(/[٫]/g, ".")
+    .replace(/[٬،]/g, ",")
+    .replace(/\s+/g, "")
+
+  const lastDotIndex = numeralNormalized.lastIndexOf(".")
+  const lastCommaIndex = numeralNormalized.lastIndexOf(",")
+  const decimalSeparatorIndex = Math.max(lastDotIndex, lastCommaIndex)
+
+  const normalized = decimalSeparatorIndex >= 0
+    ? `${numeralNormalized.slice(0, decimalSeparatorIndex).replace(/[.,]/g, "")}.${numeralNormalized.slice(decimalSeparatorIndex + 1).replace(/[.,]/g, "")}`
+    : numeralNormalized.replace(/[.,]/g, "")
 
   const parsed = Number(normalized)
   return Number.isFinite(parsed) ? parsed : null
