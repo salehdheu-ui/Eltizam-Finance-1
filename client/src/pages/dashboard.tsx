@@ -67,9 +67,9 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-4 flex flex-col gap-6 p-4 pt-8 duration-500 sm:p-6 sm:pt-8 xl:p-8" dir="rtl">
-      <header className="mb-2 flex items-center justify-between gap-4">
-        <div>
+    <div className="animate-in fade-in slide-in-from-bottom-4 flex flex-col gap-5 px-1 py-4 pb-24 duration-500 sm:gap-6 sm:px-2 sm:py-6 xl:px-0 xl:py-8" dir="rtl">
+      <header className="mb-1 flex items-center justify-between gap-4">
+        <div className="min-w-0">
           <h1 className="text-sm font-medium text-muted-foreground" data-testid="text-greeting">مرحباً بعودتك،</h1>
           <h2 className="text-xl font-bold sm:text-2xl" data-testid="text-username">{user?.name || "المستخدم"}</h2>
         </div>
@@ -116,24 +116,24 @@ export default function Dashboard() {
         </Card>
       ) : null}
 
-      <Card className="border-none shadow-xl bg-gradient-to-br from-primary to-primary/80 text-primary-foreground overflow-hidden relative">
+      <Card className="relative overflow-hidden border-none bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-xl">
         <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
         <div className="absolute bottom-0 left-0 w-24 h-24 bg-black/10 rounded-full blur-2xl -ml-5 -mb-5"></div>
         
-        <CardContent className="p-6 relative z-10">
-          <div className="flex justify-between items-start mb-6">
-            <span className="text-primary-foreground/80 font-medium">الرصيد الإجمالي</span>
+        <CardContent className="relative z-10 p-4 sm:p-6">
+          <div className="mb-5 flex items-start justify-between gap-3 sm:mb-6">
+            <span className="text-sm font-medium text-primary-foreground/80">الرصيد الإجمالي</span>
             <button 
               onClick={() => setShowBalance(!showBalance)}
-              className="text-primary-foreground/80 hover:text-white transition-colors"
+              className="rounded-full bg-white/10 p-2 text-primary-foreground/80 transition-colors hover:text-white"
               data-testid="button-toggle-balance"
             >
-              {showBalance ? <Eye className="h-5 w-5" /> : <EyeOff className="h-5 w-5" />}
+              {showBalance ? <Eye className="h-4 w-4 sm:h-5 sm:w-5" /> : <EyeOff className="h-4 w-4 sm:h-5 sm:w-5" />}
             </button>
           </div>
           
-          <div className="mb-8">
-            <h3 className="text-4xl font-black tracking-tight flex items-baseline gap-2" data-testid="text-total-balance">
+          <div className="mb-6 sm:mb-8">
+            <h3 className="flex items-baseline gap-2 text-3xl font-black tracking-tight sm:text-4xl" data-testid="text-total-balance">
               {isLoading ? (
                 <Loader2 className="h-8 w-8 animate-spin" />
               ) : showBalance ? (
@@ -147,28 +147,28 @@ export default function Dashboard() {
             </h3>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 border-t border-white/20 pt-4 sm:grid-cols-2">
-            <div className="flex items-center gap-3">
-              <div className="bg-white/20 p-2 rounded-xl">
-                <ArrowDownLeft className="h-5 w-5 text-green-300" strokeWidth={3} />
+          <div className="grid grid-cols-2 gap-3 border-t border-white/20 pt-4 sm:gap-4">
+            <div className="rounded-2xl bg-white/10 p-3 backdrop-blur-sm">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-xs text-primary-foreground/70">الدخل</span>
+                <div className="rounded-xl bg-white/15 p-2">
+                  <ArrowDownLeft className="h-4 w-4 text-green-300 sm:h-5 sm:w-5" strokeWidth={3} />
+                </div>
               </div>
-              <div>
-                <p className="text-xs text-primary-foreground/70 mb-0.5">الدخل</p>
-                <p className="font-semibold" data-testid="text-income">
-                  {showBalance ? `+${formatCurrency(dashboard?.totalIncome ?? 0, 2)}` : "••••"}
-                </p>
-              </div>
+              <p className="break-words text-sm font-semibold sm:text-base" data-testid="text-income">
+                {showBalance ? `+${formatCurrency(dashboard?.totalIncome ?? 0, 2)}` : "••••"}
+              </p>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="bg-white/20 p-2 rounded-xl">
-                <ArrowUpRight className="h-5 w-5 text-red-300" strokeWidth={3} />
+            <div className="rounded-2xl bg-white/10 p-3 backdrop-blur-sm">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-xs text-primary-foreground/70">المصروفات</span>
+                <div className="rounded-xl bg-white/15 p-2">
+                  <ArrowUpRight className="h-4 w-4 text-red-300 sm:h-5 sm:w-5" strokeWidth={3} />
+                </div>
               </div>
-              <div>
-                <p className="text-xs text-primary-foreground/70 mb-0.5">المصروفات</p>
-                <p className="font-semibold" data-testid="text-expenses">
-                  {showBalance ? `-${formatCurrency(dashboard?.totalExpenses ?? 0, 2)}` : "••••"}
-                </p>
-              </div>
+              <p className="break-words text-sm font-semibold sm:text-base" data-testid="text-expenses">
+                {showBalance ? `-${formatCurrency(dashboard?.totalExpenses ?? 0, 2)}` : "••••"}
+              </p>
             </div>
           </div>
         </CardContent>
@@ -196,25 +196,33 @@ export default function Dashboard() {
         </Card>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:max-w-4xl">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 xl:max-w-4xl">
         <Link href="/wallets">
-          <div className="bg-card border border-border/50 rounded-2xl p-4 shadow-sm hover:bg-muted/30 transition-colors cursor-pointer">
+          <div className="bg-card flex min-h-[128px] flex-col justify-between rounded-2xl border border-border/50 p-3 shadow-sm transition-colors hover:bg-muted/30 cursor-pointer sm:p-4">
             <div className="flex items-center justify-between mb-2">
-              <Wallet className="h-5 w-5 text-primary" />
+              <div className="rounded-xl bg-primary/10 p-2">
+                <Wallet className="h-4 w-4 text-primary sm:h-5 sm:w-5" />
+              </div>
               <ChevronLeft className="h-4 w-4 text-muted-foreground" />
             </div>
-            <h3 className="font-bold text-sm">المحافظ</h3>
-            <p className="text-xs text-muted-foreground mt-1">{hasWallets ? `${wallets.length} محفوظة` : "أضف محفظتك الأولى"}</p>
+            <div className="space-y-1 text-right">
+              <h3 className="font-bold text-sm">المحافظ</h3>
+              <p className="text-xs text-muted-foreground">{hasWallets ? `${wallets.length} محفوظة` : "أضف محفظتك الأولى"}</p>
+            </div>
           </div>
         </Link>
         <Link href="/categories">
-          <div className="bg-card border border-border/50 rounded-2xl p-4 shadow-sm hover:bg-muted/30 transition-colors cursor-pointer">
+          <div className="bg-card flex min-h-[128px] flex-col justify-between rounded-2xl border border-border/50 p-3 shadow-sm transition-colors hover:bg-muted/30 cursor-pointer sm:p-4">
             <div className="flex items-center justify-between mb-2">
-              <PieChart className="h-5 w-5 text-primary" />
+              <div className="rounded-xl bg-primary/10 p-2">
+                <PieChart className="h-4 w-4 text-primary sm:h-5 sm:w-5" />
+              </div>
               <ChevronLeft className="h-4 w-4 text-muted-foreground" />
             </div>
-            <h3 className="font-bold text-sm">الأقسام</h3>
-            <p className="text-xs text-muted-foreground mt-1">{hasCategories ? `${categories.length} قسمًا` : "أنشئ أقسامك الأساسية"}</p>
+            <div className="space-y-1 text-right">
+              <h3 className="font-bold text-sm">الأقسام</h3>
+              <p className="text-xs text-muted-foreground">{hasCategories ? `${categories.length} قسمًا` : "أنشئ أقسامك الأساسية"}</p>
+            </div>
           </div>
         </Link>
       </div>

@@ -144,76 +144,41 @@ export default function Reports() {
             </div>
           </CardContent>
         </Card>
-      ) : (
-        <Card className="overflow-hidden border-0 bg-gradient-to-br from-[#2f63dd] via-[#4274e4] to-[#4a7be6] text-white shadow-xl shadow-blue-200/70 sm:hidden">
-          <CardContent className="p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/12">
-                <Wallet className="h-4 w-4 text-white" />
-              </div>
-              <div className="text-right">
-                <p className="text-sm font-medium text-white/80">الرصيد الإجمالي</p>
-                <p className="mt-2 text-3xl font-bold tracking-tight">{formatCurrency(data.summary.netFlow, 2)}</p>
-                <p className="mt-1 text-xs text-white/70">ملخص سريع متناسق لعرض الهاتف</p>
-              </div>
-            </div>
-
-            <div className="my-5 h-px bg-white/20" />
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-2xl border border-white/10 bg-white/8 p-3 backdrop-blur-sm">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/14">
-                    <ArrowUpRight className="h-4 w-4 text-[#ffd0d0]" />
-                  </div>
-                  <span className="text-xs text-white/75">المصروفات</span>
-                </div>
-                <p className="break-words text-base font-bold">-{formatCurrency(data.summary.totalExpenses, 2)}</p>
-              </div>
-
-              <div className="rounded-2xl border border-white/10 bg-white/8 p-3 backdrop-blur-sm">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/14">
-                    <ArrowDownLeft className="h-4 w-4 text-[#c7ffd8]" />
-                  </div>
-                  <span className="text-xs text-white/75">الدخل</span>
-                </div>
-                <p className="break-words text-base font-bold">+{formatCurrency(data.summary.totalIncome, 2)}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-      <div className="hidden grid-cols-2 gap-3 md:gap-4 sm:grid 2xl:grid-cols-4">
+      ) : null}
+      <div className="grid grid-cols-2 gap-3 md:gap-4 2xl:grid-cols-4">
         <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200">
-          <CardContent className="flex min-h-[148px] flex-col p-3 sm:min-h-[156px] sm:p-4">
-            <div className="mb-3 flex items-start justify-between gap-2">
+          <CardContent className="flex min-h-[132px] flex-col justify-between p-3 sm:min-h-[156px] sm:p-4">
+            <div className="flex items-center justify-between gap-2">
               <div className="rounded-xl bg-emerald-500/20 p-2 sm:p-2.5">
                 <ArrowDownLeft className="h-4 w-4 text-emerald-600 sm:h-5 sm:w-5" />
               </div>
               <span className="text-[11px] font-medium text-emerald-700 sm:text-xs">{data.summary.transactionCount} حركة</span>
             </div>
-            <p className="text-[11px] font-medium text-emerald-700 sm:text-xs">إجمالي الدخل</p>
-            <p className="mt-2 break-words text-base font-bold leading-6 text-emerald-700 sm:text-xl">+{formatCurrency(data.summary.totalIncome, 2)}</p>
+            <div className="space-y-1 text-right">
+              <p className="text-[11px] font-medium text-emerald-700 sm:text-xs">إجمالي الدخل</p>
+              <p className="break-words text-sm font-bold leading-6 text-emerald-700 sm:text-xl">+{formatCurrency(data.summary.totalIncome, 2)}</p>
+            </div>
           </CardContent>
         </Card>
 
         <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200">
-          <CardContent className="flex min-h-[148px] flex-col p-3 sm:min-h-[156px] sm:p-4">
-            <div className="mb-3 flex items-start justify-between gap-2">
+          <CardContent className="flex min-h-[132px] flex-col justify-between p-3 sm:min-h-[156px] sm:p-4">
+            <div className="flex items-center justify-between gap-2">
               <div className="rounded-xl bg-red-500/20 p-2 sm:p-2.5">
                 <ArrowUpRight className="h-4 w-4 text-red-600 sm:h-5 sm:w-5" />
               </div>
               <span className="text-[11px] font-medium text-red-700 sm:text-xs">{formatPercentage(data.summary.savingsRate)}</span>
             </div>
-            <p className="text-[11px] font-medium text-red-700 sm:text-xs">إجمالي المصروفات</p>
-            <p className="mt-2 break-words text-base font-bold leading-6 text-red-700 sm:text-xl">-{formatCurrency(data.summary.totalExpenses, 2)}</p>
+            <div className="space-y-1 text-right">
+              <p className="text-[11px] font-medium text-red-700 sm:text-xs">إجمالي المصروفات</p>
+              <p className="break-words text-sm font-bold leading-6 text-red-700 sm:text-xl">-{formatCurrency(data.summary.totalExpenses, 2)}</p>
+            </div>
           </CardContent>
         </Card>
 
         <Card className={cn("border-2", data.summary.netFlow >= 0 ? "border-emerald-300 bg-emerald-50/70" : "border-red-300 bg-red-50/70")}>
-          <CardContent className="flex min-h-[148px] flex-col p-3 sm:min-h-[156px] sm:p-4">
-            <div className="mb-3 flex items-start justify-between gap-2">
+          <CardContent className="flex min-h-[132px] flex-col justify-between p-3 sm:min-h-[156px] sm:p-4">
+            <div className="flex items-center justify-between gap-2">
               <div className={cn("rounded-xl p-2 sm:p-2.5", data.summary.netFlow >= 0 ? "bg-emerald-500/20" : "bg-red-500/20")}>
                 <Wallet className={cn("h-4 w-4 sm:h-5 sm:w-5", data.summary.netFlow >= 0 ? "text-emerald-600" : "text-red-600")} />
               </div>
@@ -221,23 +186,27 @@ export default function Reports() {
                 {data.summary.netFlow >= 0 ? "فائض" : "عجز"}
               </span>
             </div>
-            <p className="text-[11px] font-medium text-muted-foreground sm:text-xs">صافي التدفق</p>
-            <p className={cn("mt-2 break-words text-base font-bold leading-6 sm:text-xl", data.summary.netFlow >= 0 ? "text-emerald-700" : "text-red-700")}>
-              {data.summary.netFlow >= 0 ? "+" : ""}{formatCurrency(data.summary.netFlow, 2)}
-            </p>
+            <div className="space-y-1 text-right">
+              <p className="text-[11px] font-medium text-muted-foreground sm:text-xs">صافي التدفق</p>
+              <p className={cn("break-words text-sm font-bold leading-6 sm:text-xl", data.summary.netFlow >= 0 ? "text-emerald-700" : "text-red-700")}>
+                {data.summary.netFlow >= 0 ? "+" : ""}{formatCurrency(data.summary.netFlow, 2)}
+              </p>
+            </div>
           </CardContent>
         </Card>
 
         <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-          <CardContent className="flex min-h-[148px] flex-col p-3 sm:min-h-[156px] sm:p-4">
-            <div className="mb-3 flex items-start justify-between gap-2">
+          <CardContent className="flex min-h-[132px] flex-col justify-between p-3 sm:min-h-[156px] sm:p-4">
+            <div className="flex items-center justify-between gap-2">
               <div className="rounded-xl bg-blue-500/20 p-2 sm:p-2.5">
                 <Landmark className="h-4 w-4 text-blue-600 sm:h-5 sm:w-5" />
               </div>
               <span className="text-[11px] font-medium text-blue-700 sm:text-xs">{data.summary.salarySourceCount} راتب</span>
             </div>
-            <p className="text-[11px] font-medium text-blue-700 sm:text-xs">الدخل الثابت المُعد</p>
-            <p className="mt-2 break-words text-base font-bold leading-6 text-blue-700 sm:text-xl">{formatCurrency(data.summary.recurringConfiguredTotal, 2)}</p>
+            <div className="space-y-1 text-right">
+              <p className="text-[11px] font-medium text-blue-700 sm:text-xs">الدخل الثابت المُعد</p>
+              <p className="break-words text-sm font-bold leading-6 text-blue-700 sm:text-xl">{formatCurrency(data.summary.recurringConfiguredTotal, 2)}</p>
+            </div>
           </CardContent>
         </Card>
       </div>
