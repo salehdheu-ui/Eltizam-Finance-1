@@ -1,7 +1,8 @@
 import path from "path";
+import { fileURLToPath } from "url";
 import { existsSync } from "fs";
 
-const sourceFileDirectoryPath = path.resolve(process.env.PROJECT_ROOT?.trim() || process.cwd());
+const sourceFileDirectoryPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 
 function findProjectRoot(startPath: string) {
   let currentPath = path.resolve(startPath);

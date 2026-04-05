@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useTransactions, useWallets } from "@/lib/hooks";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency, parseNumericInput } from "@/lib/utils";
 import { ArrowRight, PiggyBank, Sparkles, Target, TrendingUp, Wallet } from "lucide-react";
 
 type SavingsPlan = {
@@ -107,14 +107,22 @@ export default function SavingsPlans() {
     })
     .reduce((sum, transaction) => sum + transaction.amount, 0);
 
-  const effectiveIncome = parseFloat(manualIncome) || lastMonthIncome;
-  const effectiveNeeds = parseFloat(manualNeeds) || 0;
-  const effectiveWants = parseFloat(manualWants) || 0;
-  const fixedObligations = parseFloat(manualFixedObligations) || 0;
-  const fallbackSavings = lastMonthIncome - lastMonthExpenses;
-  const currentSavings = Math.max(effectiveIncome - effectiveNeeds - effectiveWants - fixedObligations, fallbackSavings);
+  const parsedManualIncome = parseNumericInput(manualIncome);
+  const parsedManualNeeds = parseNumericInput(manualNeeds);
+  const parsedManualWants = parseNumericInput(manualWants);
+  const parsedFixedObligations = parseNumericInput(manualFixedObligations);
+  const parsedTargetAmount = parseNumericInput(targetAmount);
+
+  const effectiveIncome = parsedManualIncome ?? lastMonthIncome;
+  const effectiveNeeds = parsedManualNeeds ?? 0;
+  const effectiveWants = parsedManualWants ?? 0;
+  const fixedObligations = parsedFixedObligations ?? 0;
+  const manuallyCalculatedSavings = effectiveIncome - effectiveNeeds - effectiveWants - fixedObligations;
+  const currentSavings = parsedManualIncome === null && parsedManualNeeds === null && parsedManualWants === null && parsedFixedObligations === null
+    ? lastMonthIncome - lastMonthExpenses
+    : manuallyCalculatedSavings;
   const currentSavingsRate = effectiveIncome > 0 ? currentSavings / effectiveIncome : 0;
-  const targetNum = parseFloat(targetAmount) || 0;
+  const targetNum = parsedTargetAmount ?? 0;
 
   const recommendedPlan = useMemo(() => {
     if (effectiveIncome <= 0) {
@@ -181,17 +189,17 @@ export default function SavingsPlans() {
         <CardContent className="grid grid-cols-2 gap-3">
           <div className="p-3 bg-white rounded-xl border">
             <p className="text-xs text-muted-foreground">الرصيد الحالي</p>
-            <p className="text-lg font-bold text-primary">{totalBalance.toFixed(2)} ر.ع</p>
+            <p className="text-lg font-bold text-primary">{formatCurrency(totalBalance, 2)} ر.ع</p>
           </div>
           <div className="p-3 bg-white rounded-xl border">
             <p className="text-xs text-muted-foreground">الدخل الشهري المرصود</p>
-            <p className="text-lg font-bold text-emerald-600">{lastMonthIncome.toFixed(2)} ر.ع</p>
+            <p className="text-lg font-bold text-emerald-600">{formatCurrency(lastMonthIncome, 2)} ر.ع</p>
           </div>
           <div className="p-3 bg-white rounded-xl border col-span-2">
             <div className="flex justify-between items-center">
               <span className="text-sm text-muted-foreground">الادخار الشهري الحالي</span>
               <span className={cn("font-bold", currentSavings >= 0 ? "text-emerald-600" : "text-red-600")}>
-                {currentSavings.toFixed(2)} ر.ع
+                {formatCurrency(currentSavings, 2)} ر.ع
               </span>
             </div>
           </div>
@@ -209,23 +217,23 @@ export default function SavingsPlans() {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-2">
               <label className="text-sm font-medium">الدخل الشهري</label>
-              <Input type="number" value={manualIncome} onChange={(e) => setManualIncome(e.target.value)} placeholder={lastMonthIncome ? `${lastMonthIncome.toFixed(2)}` : "مثال: 1200"} dir="ltr" className="text-left" />
+              <Input type="text" inputMode="decimal" value={manualIncome} onChange={(e) => setManualIncome(e.target.value)} placeholder={lastMonthIncome ? `${formatCurrency(lastMonthIncome, 2)}` : "مثال: 1200"} dir="ltr" className="text-left" />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">المصاريف الأساسية</label>
-              <Input type="number" value={manualNeeds} onChange={(e) => setManualNeeds(e.target.value)} placeholder="مثال: 500" dir="ltr" className="text-left" />
+              <Input type="text" inputMode="decimal" value={manualNeeds} onChange={(e) => setManualNeeds(e.target.value)} placeholder="مثال: 500" dir="ltr" className="text-left" />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">الرغبات والكماليات</label>
-              <Input type="number" value={manualWants} onChange={(e) => setManualWants(e.target.value)} placeholder="مثال: 150" dir="ltr" className="text-left" />
+              <Input type="text" inputMode="decimal" value={manualWants} onChange={(e) => setManualWants(e.target.value)} placeholder="مثال: 150" dir="ltr" className="text-left" />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">الالتزامات الشهرية الثابتة</label>
-              <Input type="number" value={manualFixedObligations} onChange={(e) => setManualFixedObligations(e.target.value)} placeholder="مثال: 200" dir="ltr" className="text-left" />
+              <Input type="text" inputMode="decimal" value={manualFixedObligations} onChange={(e) => setManualFixedObligations(e.target.value)} placeholder="مثال: 200" dir="ltr" className="text-left" />
             </div>
             <div className="space-y-2 sm:col-span-2">
               <label className="text-sm font-medium">الهدف الادخاري</label>
-              <Input type="number" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} placeholder="مثال: 10000" dir="ltr" className="text-left" />
+              <Input type="text" inputMode="decimal" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} placeholder="مثال: 10000" dir="ltr" className="text-left" />
             </div>
           </div>
 
@@ -264,8 +272,8 @@ export default function SavingsPlans() {
             </div>
             <p className="mt-3 text-sm text-slate-700">{recommendedPlan.description}</p>
             <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
-              <li className="flex items-start gap-2"><ArrowRight className="h-4 w-4 text-emerald-600 mt-0.5" /><span>الادخار المقترح شهرياً: {(effectiveIncome * recommendedPlan.savingsRate).toFixed(2)} ر.ع</span></li>
-              <li className="flex items-start gap-2"><ArrowRight className="h-4 w-4 text-emerald-600 mt-0.5" /><span>الزيادة المطلوبة عن وضعك الحالي: {improvementGap.toFixed(2)} ر.ع شهرياً</span></li>
+              <li className="flex items-start gap-2"><ArrowRight className="h-4 w-4 text-emerald-600 mt-0.5" /><span>الادخار المقترح شهرياً: {formatCurrency(effectiveIncome * recommendedPlan.savingsRate, 2)} ر.ع</span></li>
+              <li className="flex items-start gap-2"><ArrowRight className="h-4 w-4 text-emerald-600 mt-0.5" /><span>الزيادة المطلوبة عن وضعك الحالي: {formatCurrency(improvementGap, 2)} ر.ع شهرياً</span></li>
               <li className="flex items-start gap-2"><ArrowRight className="h-4 w-4 text-emerald-600 mt-0.5" /><span>تعتمد التوصية على توازن دخلك مع احتياجاتك والتزاماتك الحالية</span></li>
             </ul>
           </div>
@@ -288,20 +296,20 @@ export default function SavingsPlans() {
               <p className="text-sm text-slate-700">{plan.description}</p>
 
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">الادخار</p><p className="font-bold text-emerald-600">{monthlySavingsAmount.toFixed(2)} ر.ع</p></div>
-                <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">الاحتياجات</p><p className="font-bold text-blue-600">{monthlyNeedsAmount.toFixed(2)} ر.ع</p></div>
-                <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">الرغبات</p><p className="font-bold text-amber-600">{monthlyWantsAmount.toFixed(2)} ر.ع</p></div>
-                <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">الاحتياطي</p><p className="font-bold text-violet-600">{monthlyReserveAmount.toFixed(2)} ر.ع</p></div>
+                <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">الادخار</p><p className="font-bold text-emerald-600">{formatCurrency(monthlySavingsAmount, 2)} ر.ع</p></div>
+                <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">الاحتياجات</p><p className="font-bold text-blue-600">{formatCurrency(monthlyNeedsAmount, 2)} ر.ع</p></div>
+                <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">الرغبات</p><p className="font-bold text-amber-600">{formatCurrency(monthlyWantsAmount, 2)} ر.ع</p></div>
+                <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">الاحتياطي</p><p className="font-bold text-violet-600">{formatCurrency(monthlyReserveAmount, 2)} ر.ع</p></div>
               </div>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="rounded-xl bg-slate-50 p-4 border">
                   <div className="flex items-center gap-2 mb-2"><PiggyBank className="h-4 w-4 text-primary" /><span className="font-medium">بعد {planYears} سنوات</span></div>
-                  <p className="text-2xl font-bold text-slate-800">{projectedBalance.toFixed(2)} ر.ع</p>
+                  <p className="text-2xl font-bold text-slate-800">{formatCurrency(projectedBalance, 2)} ر.ع</p>
                 </div>
                 <div className="rounded-xl bg-emerald-50 p-4 border border-emerald-200">
                   <div className="flex items-center gap-2 mb-2"><TrendingUp className="h-4 w-4 text-emerald-600" /><span className="font-medium">مع استثمار 8%</span></div>
-                  <p className="text-2xl font-bold text-emerald-700">{investmentProjection.toFixed(2)} ر.ع</p>
+                  <p className="text-2xl font-bold text-emerald-700">{formatCurrency(investmentProjection, 2)} ر.ع</p>
                 </div>
               </div>
 

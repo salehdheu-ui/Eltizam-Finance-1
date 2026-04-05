@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useTransactions, useWallets } from "@/lib/hooks";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency, parseNumericInput } from "@/lib/utils";
 import { 
   Target, Calendar, TrendingUp, PiggyBank, Wallet, 
   ArrowRight, Sparkles, ChevronDown, ChevronUp 
@@ -46,16 +46,23 @@ export default function FinancialPlans() {
   const projectedSavings = monthlySavings * months;
   const futureBalance = totalBalance + projectedSavings;
   
-  const targetNum = parseFloat(targetAmount) || 0;
-  const monthlyGoalNum = parseFloat(monthlySavingsGoal) || 0;
+  const parsedTargetAmount = parseNumericInput(targetAmount);
+  const parsedMonthlySavingsGoal = parseNumericInput(monthlySavingsGoal);
+  const targetNum = parsedTargetAmount ?? 0;
+  const monthlyGoalNum = parsedMonthlySavingsGoal ?? 0;
   
   // Calculate when target will be reached
-  const monthsToTarget = targetNum > 0 && monthlySavings > 0 
+  const monthsToTarget = targetNum > totalBalance && monthlySavings > 0 
     ? Math.ceil((targetNum - totalBalance) / monthlySavings)
+    : null;
+
+  const monthsToTargetWithGoal = targetNum > totalBalance && monthlyGoalNum > 0
+    ? Math.ceil((targetNum - totalBalance) / monthlyGoalNum)
     : null;
   
   const yearsToTarget = monthsToTarget ? Math.floor(monthsToTarget / 12) : null;
   const remainingMonths = monthsToTarget ? monthsToTarget % 12 : null;
+  const goalProgress = targetNum > 0 ? Math.min((totalBalance / targetNum) * 100, 100) : 0;
 
   // Savings scenarios
   const scenarios = [
@@ -124,18 +131,18 @@ export default function FinancialPlans() {
           <div className="grid grid-cols-2 gap-3">
             <div className="p-3 bg-white rounded-xl border">
               <p className="text-xs text-muted-foreground">الرصيد الحالي</p>
-              <p className="text-lg font-bold text-primary">{totalBalance.toFixed(2)} ر.ع</p>
+              <p className="text-lg font-bold text-primary">{formatCurrency(totalBalance, 2)} ر.ع</p>
             </div>
             <div className="p-3 bg-white rounded-xl border">
               <p className="text-xs text-muted-foreground">دخل شهري متوسط</p>
-              <p className="text-lg font-bold text-emerald-600">+{avgMonthlyIncome.toFixed(2)}</p>
+              <p className="text-lg font-bold text-emerald-600">+{formatCurrency(avgMonthlyIncome, 2)} ر.ع</p>
             </div>
           </div>
           <div className="p-3 bg-white rounded-xl border">
             <div className="flex justify-between items-center">
               <span className="text-sm text-muted-foreground">ادخار شهري حالي</span>
               <span className={cn("font-bold", monthlySavings >= 0 ? "text-emerald-600" : "text-red-600")}>
-                {monthlySavings >= 0 ? "+" : ""}{monthlySavings.toFixed(2)} ر.ع
+                {monthlySavings >= 0 ? "+" : ""}{formatCurrency(monthlySavings, 2)} ر.ع
               </span>
             </div>
           </div>
@@ -153,9 +160,9 @@ export default function FinancialPlans() {
         <CardContent className="space-y-4">
           <div className="text-center p-4 bg-white rounded-xl border">
             <p className="text-sm text-muted-foreground mb-1">الرصيد المتوقع</p>
-            <p className="text-3xl font-bold text-emerald-600">{futureBalance.toFixed(2)} ر.ع</p>
+            <p className="text-3xl font-bold text-emerald-600">{formatCurrency(futureBalance, 2)} ر.ع</p>
             <p className="text-xs text-muted-foreground mt-2">
-              بناءً على ادخارك الشهري الحالي ({monthlySavings.toFixed(2)} ر.ع)
+              بناءً على ادخارك الشهري الحالي ({formatCurrency(monthlySavings, 2)} ر.ع)
             </p>
           </div>
 
@@ -169,10 +176,10 @@ export default function FinancialPlans() {
                 <div key={scenario.rate} className="p-3 bg-white rounded-xl border">
                   <div className="flex justify-between items-center">
                     <span className="text-sm">{scenario.label}</span>
-                    <span className="font-bold text-emerald-600">{futureValue.toFixed(2)} ر.ع</span>
+                    <span className="font-bold text-emerald-600">{formatCurrency(futureValue, 2)} ر.ع</span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    أرباح إضافية: +{profit.toFixed(2)} ر.ع
+                    أرباح إضافية: +{formatCurrency(profit, 2)} ر.ع
                   </p>
                 </div>
               );
@@ -193,7 +200,8 @@ export default function FinancialPlans() {
           <div className="space-y-2">
             <label className="text-sm font-medium">المبلغ المستهدف (ر.ع)</label>
             <Input
-              type="number"
+              type="text"
+              inputMode="decimal"
               placeholder="مثال: 10000"
               value={targetAmount}
               onChange={(e) => setTargetAmount(e.target.value)}
@@ -205,7 +213,8 @@ export default function FinancialPlans() {
           <div className="space-y-2">
             <label className="text-sm font-medium">الادخار الشهري المستهدف (ر.ع)</label>
             <Input
-              type="number"
+              type="text"
+              inputMode="decimal"
               placeholder="مثال: 500"
               value={monthlySavingsGoal}
               onChange={(e) => setMonthlySavingsGoal(e.target.value)}
@@ -230,19 +239,19 @@ export default function FinancialPlans() {
                     {yearsToTarget} سنة {remainingMonths} شهر
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    (بناءً على ادخارك الحالي {monthlySavings.toFixed(2)} ر.ع/شهر)
+                    (بناءً على ادخارك الحالي {formatCurrency(monthlySavings, 2)} ر.ع/شهر)
                   </p>
                 </div>
-              ) : monthlyGoalNum > 0 ? (
+              ) : monthsToTargetWithGoal ? (
                 <div className="space-y-2">
                   <p className="text-sm">
-                    <span className="font-medium">بالادخار {monthlyGoalNum} ر.ع/شهر:</span>
+                    <span className="font-medium">بالادخار {formatCurrency(monthlyGoalNum, 2)} ر.ع/شهر:</span>
                   </p>
                   <p className="text-lg font-bold text-primary">
-                    {Math.ceil((targetNum - totalBalance) / monthlyGoalNum)} شهر
+                    {monthsToTargetWithGoal} شهر
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    ({Math.ceil(Math.ceil((targetNum - totalBalance) / monthlyGoalNum) / 12)} سنة تقريباً)
+                    ({Math.ceil(monthsToTargetWithGoal / 12)} سنة تقريباً)
                   </p>
                 </div>
               ) : (
@@ -255,12 +264,12 @@ export default function FinancialPlans() {
               <div className="mt-3">
                 <div className="flex justify-between text-sm mb-1">
                   <span>التقدم نحو الهدف</span>
-                  <span>{((totalBalance / targetNum) * 100).toFixed(1)}%</span>
+                  <span>{goalProgress.toFixed(1)}%</span>
                 </div>
                 <div className="h-3 bg-muted rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-primary rounded-full transition-all"
-                    style={{ width: `${Math.min((totalBalance / targetNum) * 100, 100)}%` }}
+                    style={{ width: `${goalProgress}%` }}
                   />
                 </div>
               </div>
@@ -284,7 +293,7 @@ export default function FinancialPlans() {
                 ⚠️ تنبيه: مصروفاتك أعلى من دخلك
               </p>
               <p className="text-xs text-red-600 mt-1">
-                يجب تقليل المصروفات بـ {Math.abs(monthlySavings).toFixed(2)} ر.ع/شهر على الأقل
+                يجب تقليل المصروفات بـ {formatCurrency(Math.abs(monthlySavings), 2)} ر.ع/شهر على الأقل
               </p>
             </div>
           ) : monthlySavings === 0 ? (
@@ -299,7 +308,7 @@ export default function FinancialPlans() {
           ) : (
             <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
               <p className="text-sm text-emerald-700 font-medium">
-                ✓ أداء جيد! أنت توفر {monthlySavings.toFixed(2)} ر.ع شهرياً
+                ✓ أداء جيد! أنت توفر {formatCurrency(monthlySavings, 2)} ر.ع شهرياً
               </p>
               <p className="text-xs text-emerald-600 mt-1">
                 استمر على هذا المنوال

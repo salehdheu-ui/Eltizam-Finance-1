@@ -314,7 +314,7 @@ export default function Layout({ children }: LayoutProps) {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-muted/30 pb-20 lg:pb-0">
+    <div className="flex min-h-screen flex-col overflow-x-hidden bg-muted/30 pb-20 lg:pb-0">
       {/* Header with menu button */}
       <header className="fixed top-0 left-0 right-0 z-40 bg-background/80 backdrop-blur-md border-b border-border">
         <div className="relative mx-auto flex h-14 w-full max-w-7xl items-center px-4 sm:px-6 lg:px-8" dir="rtl">
@@ -416,18 +416,18 @@ export default function Layout({ children }: LayoutProps) {
 
       {/* Main Content */}
       <main className="relative flex-1 pt-14">
-        <div className="mx-auto w-full max-w-7xl px-0 sm:px-4 lg:px-8">
+        <div className="mx-auto w-full max-w-7xl px-3 sm:px-4 lg:px-8">
           {children}
         </div>
         
-        <div className="fixed bottom-24 left-4 z-40 sm:left-6 lg:bottom-8 lg:left-8 xl:left-[max(2rem,calc((100vw-80rem)/2+2rem))]">
+        <div className="fixed bottom-[5.5rem] left-3 z-40 sm:bottom-24 sm:left-6 lg:bottom-8 lg:left-8 xl:left-[max(2rem,calc((100vw-80rem)/2+2rem))]">
           <Button 
             size="icon" 
-            className="h-14 w-14 rounded-full shadow-lg hover:shadow-xl transition-all shadow-primary/30 bg-primary text-primary-foreground cursor-pointer"
+            className="h-12 w-12 rounded-full shadow-lg hover:shadow-xl transition-all shadow-primary/30 bg-primary text-primary-foreground cursor-pointer sm:h-14 sm:w-14"
             onClick={() => setIsAddTxOpen(true)}
             data-testid="button-add-transaction"
           >
-            <Plus className="h-6 w-6" strokeWidth={2.5} />
+            <Plus className="h-5 w-5 sm:h-6 sm:w-6" strokeWidth={2.5} />
           </Button>
         </div>
       </main>

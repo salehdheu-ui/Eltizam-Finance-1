@@ -135,3 +135,84 @@
     -webkit-tap-highlight-color: transparent;
   }
 }
+
+.print-only {
+  display: none;
+}
+
+.print-break-avoid {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.print-report-root {
+  direction: rtl;
+}
+
+@media print {
+  @page {
+    size: auto;
+    margin: 14mm;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #111827 !important;
+  }
+
+  body.print-report-active * {
+    visibility: hidden !important;
+  }
+
+  body.print-report-active .print-report-root,
+  body.print-report-active .print-report-root * {
+    visibility: visible !important;
+  }
+
+  body.print-report-active .print-report-root {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+    background: #ffffff !important;
+    color: #111827 !important;
+  }
+
+  .hide-on-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .print-report-root .shadow-sm,
+  .print-report-root .shadow-md,
+  .print-report-root .shadow-lg {
+    box-shadow: none !important;
+  }
+
+  .print-report-root .bg-card,
+  .print-report-root .bg-muted\/20,
+  .print-report-root .bg-muted\/30,
+  .print-report-root .bg-primary\/5,
+  .print-report-root .bg-primary\/10,
+  .print-report-root .bg-destructive\/5 {
+    background: #ffffff !important;
+  }
+
+  .print-report-root .text-muted-foreground {
+    color: #4b5563 !important;
+  }
+
+  .print-report-root .border,
+  .print-report-root [class*='border-'] {
+    border-color: #d1d5db !important;
+  }
+
+  .print-report-root .recharts-wrapper {
+    max-width: 100% !important;
+  }
+}

@@ -1,6 +1,8 @@
-import { Plus, Loader2, Trash2, Edit2, Power, PowerOff, Calendar, Wallet, AlertCircle, Receipt, Repeat, X, Filter, ArrowLeftRight, Sparkles } from "lucide-react";
+import { Plus, Loader2, Trash2, Edit2, Power, PowerOff, Calendar, Wallet, AlertCircle, Receipt, Repeat, X, Filter, ArrowLeftRight, Sparkles, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn, formatCurrency, formatDate, formatObligationDueDate, getObligationStatusLabel, getUpcomingObligations, isObligationEnded, toDate } from "@/lib/utils";
@@ -584,6 +586,20 @@ function formatDueDate(obligation: Obligation) {
   return formatObligationDueDate(obligation);
 }
 
+type ReportFieldKey = "title" | "amount" | "type" | "status" | "frequency" | "startDate" | "endDate" | "dueDate" | "daysLeft";
+
+const reportFieldOptions: Array<{ key: ReportFieldKey; label: string; group: "basic" | "dates" }> = [
+  { key: "title", label: "عنوان الالتزام", group: "basic" },
+  { key: "amount", label: "المبلغ", group: "basic" },
+  { key: "type", label: "النوع", group: "basic" },
+  { key: "status", label: "الحالة", group: "basic" },
+  { key: "frequency", label: "التكرار", group: "basic" },
+  { key: "startDate", label: "تاريخ البداية", group: "dates" },
+  { key: "endDate", label: "تاريخ الانتهاء", group: "dates" },
+  { key: "dueDate", label: "موعد الاستحقاق", group: "dates" },
+  { key: "daysLeft", label: "الأيام المتبقية", group: "dates" },
+];
+
 export default function Obligations() {
   const { data: obligations, isLoading } = useObligations();
   const { data: wallets = [] } = useWallets();
@@ -596,6 +612,10 @@ export default function Obligations() {
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [frequencyFilter, setFrequencyFilter] = useState<"all" | "monthly" | "yearly" | "one_time">("all");
   const [timingFilter, setTimingFilter] = useState<"all" | "upcoming" | "auto">("all");
+  const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
+  const [reportScope, setReportScope] = useState<"all" | "filtered" | "single">("filtered");
+  const [selectedReportObligationId, setSelectedReportObligationId] = useState<number | null>(null);
+  const [selectedReportFields, setSelectedReportFields] = useState<ReportFieldKey[]>(["title", "amount", "type", "status", "frequency", "startDate", "endDate", "dueDate", "daysLeft"]);
 
   const upcomingObligations = getUpcomingObligations(obligations, 99);
   const upcomingIds = new Set(upcomingObligations.filter((obligation) => obligation.daysLeft <= 30).map((obligation) => obligation.id));
@@ -680,6 +700,48 @@ export default function Obligations() {
     if (timingFilter === "auto" && !obligation.autoCreateTransaction) return false;
     return true;
   });
+  const allObligations = obligations || [];
+  const reportObligations = reportScope === "all"
+    ? allObligations
+    : reportScope === "single"
+      ? allObligations.filter((obligation) => obligation.id === selectedReportObligationId)
+      : filteredObligations;
+
+  const toggleReportField = (field: ReportFieldKey) => {
+    setSelectedReportFields((current) => current.includes(field)
+      ? current.filter((item) => item !== field)
+      : [...current, field]);
+  };
+
+  const handleOpenSingleReport = (obligationId: number) => {
+    setReportScope("single");
+    setSelectedReportObligationId(obligationId);
+    setIsReportDialogOpen(true);
+  };
+
+  const handleOpenGeneralReport = () => {
+    setReportScope("filtered");
+    setSelectedReportObligationId(filteredObligations[0]?.id ?? null);
+    setIsReportDialogOpen(true);
+  };
+
+  const handlePrintReport = () => {
+    document.body.classList.add("print-report-active");
+    window.print();
+    window.setTimeout(() => {
+      document.body.classList.remove("print-report-active");
+    }, 150);
+  };
+
+  const getReportStatus = (obligation: Obligation) => getObligationStatusLabel(obligation);
+
+  const getReportDaysLeft = (obligation: Obligation) => {
+    const upcoming = upcomingObligations.find((item) => item.id === obligation.id);
+    if (!upcoming) return "غير متاح";
+    if (upcoming.daysLeft === 0) return "مستحق اليوم";
+    if (upcoming.daysLeft === 1) return "مستحق غداً";
+    return `بعد ${upcoming.daysLeft} يوم`;
+  };
 
   if (isLoading) {
     return (
@@ -698,15 +760,21 @@ export default function Obligations() {
     <div className="flex flex-col h-full animate-in fade-in duration-300">
       {/* Header */}
       <header className="px-4 py-6 pb-2">
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex justify-between items-center mb-6 gap-3">
           <h1 className="text-2xl font-bold">الالتزامات</h1>
-          <Button 
-            size="icon" 
-            className="rounded-full shadow-md bg-primary text-primary-foreground cursor-pointer"
-            onClick={() => handleAdd()}
-          >
-            <Plus className="h-5 w-5" />
-          </Button>
+          <div className="flex items-center gap-2 hide-on-print">
+            <Button type="button" variant="outline" className="rounded-full" onClick={handleOpenGeneralReport}>
+              <Printer className="h-4 w-4 ml-1" />
+              طباعة / PDF
+            </Button>
+            <Button 
+              size="icon" 
+              className="rounded-full shadow-md bg-primary text-primary-foreground cursor-pointer"
+              onClick={() => handleAdd()}
+            >
+              <Plus className="h-5 w-5" />
+            </Button>
+          </div>
         </div>
         <p className="text-sm text-muted-foreground">تابع ما يجب دفعه، وما هو قريب الاستحقاق، وسجّل الدفعات بسرعة من نفس الصفحة.</p>
       </header>
@@ -992,6 +1060,15 @@ export default function Obligations() {
                           <ArrowLeftRight className="h-4 w-4 ml-1" />
                           تسجيل دفعة
                         </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="rounded-full hide-on-print"
+                          onClick={() => handleOpenSingleReport(obligation.id)}
+                        >
+                          <Printer className="h-4 w-4 ml-1" />
+                          طباعة التقرير
+                        </Button>
                         <Button 
                           variant="ghost" 
                           size="icon"
@@ -1042,6 +1119,160 @@ export default function Obligations() {
         onClose={handleCloseForm} 
         editingObligation={editingObligation}
       />
+
+      <Dialog open={isReportDialogOpen} onOpenChange={setIsReportDialogOpen}>
+        <DialogContent dir="rtl" className="max-w-5xl overflow-hidden p-0">
+          <DialogHeader className="hide-on-print px-6 pt-6 text-right">
+            <DialogTitle>إعداد تقرير الالتزامات</DialogTitle>
+            <DialogDescription>
+              اختر نطاق التقرير والحقول المطلوبة ثم اطبع التقرير أو احفظه بصيغة PDF.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid max-h-[80vh] overflow-hidden md:grid-cols-[320px_minmax(0,1fr)]">
+            <div className="hide-on-print overflow-y-auto border-b p-6 md:border-b-0 md:border-l">
+              <div className="space-y-6">
+                <div className="space-y-3">
+                  <p className="text-sm font-semibold">نطاق التقرير</p>
+                  <div className="grid gap-2">
+                    {[
+                      { value: "filtered", label: `الالتزامات الحالية بعد الفلترة (${filteredObligations.length})` },
+                      { value: "all", label: `كل الالتزامات (${obligations?.length ?? 0})` },
+                      { value: "single", label: "التزام واحد" },
+                    ].map((item) => (
+                      <button
+                        key={item.value}
+                        type="button"
+                        onClick={() => setReportScope(item.value as typeof reportScope)}
+                        className={cn(
+                          "rounded-2xl border px-4 py-3 text-right text-sm transition-all",
+                          reportScope === item.value ? "border-primary bg-primary/10 text-primary" : "border-border/50 hover:bg-muted/40"
+                        )}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {reportScope === "single" ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="report-obligation">الالتزام المطلوب</Label>
+                    <select
+                      id="report-obligation"
+                      value={selectedReportObligationId ?? ""}
+                      onChange={(e) => setSelectedReportObligationId(e.target.value ? Number(e.target.value) : null)}
+                      className="w-full h-10 rounded-md border bg-background px-3 text-sm"
+                    >
+                      <option value="">اختر الالتزام</option>
+                      {allObligations.map((obligation) => (
+                        <option key={obligation.id} value={obligation.id}>{obligation.title}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
+
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm font-semibold">البيانات الأساسية</p>
+                    <div className="mt-3 space-y-3">
+                      {reportFieldOptions.filter((item) => item.group === "basic").map((item) => (
+                        <label key={item.key} className="flex items-center gap-3 text-sm">
+                          <Checkbox checked={selectedReportFields.includes(item.key)} onCheckedChange={() => toggleReportField(item.key)} />
+                          <span>{item.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold">التواريخ والاستحقاق</p>
+                    <div className="mt-3 space-y-3">
+                      {reportFieldOptions.filter((item) => item.group === "dates").map((item) => (
+                        <label key={item.key} className="flex items-center gap-3 text-sm">
+                          <Checkbox checked={selectedReportFields.includes(item.key)} onCheckedChange={() => toggleReportField(item.key)} />
+                          <span>{item.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-2">
+                  <Button type="button" variant="outline" onClick={() => setIsReportDialogOpen(false)}>
+                    إغلاق
+                  </Button>
+                  <Button type="button" onClick={handlePrintReport} disabled={reportObligations.length === 0 || selectedReportFields.length === 0 || (reportScope === "single" && !selectedReportObligationId)}>
+                    <Printer className="h-4 w-4" />
+                    طباعة / PDF
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="max-h-[80vh] overflow-y-auto bg-muted/20 p-4 sm:p-6">
+              <div className="print-report-root mx-auto max-w-3xl space-y-6 rounded-3xl bg-background p-6 sm:p-8">
+                <div className="print-break-avoid rounded-3xl border bg-card p-6">
+                  <div className="flex items-start justify-between gap-4 border-b pb-4">
+                    <div className="space-y-2 text-right">
+                      <h2 className="text-2xl font-bold">تقرير الالتزامات</h2>
+                      <p className="text-sm text-muted-foreground">
+                        {reportScope === "single" ? "تقرير التزام واحد" : reportScope === "all" ? "تقرير جميع الالتزامات" : "تقرير الالتزامات المفلترة"}
+                      </p>
+                    </div>
+                    <div className="text-left text-sm text-muted-foreground">
+                      <p>عدد السجلات: {reportObligations.length}</p>
+                      <p>تاريخ الإنشاء: {new Date().toLocaleString("ar-OM")}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    <span className="rounded-full border px-3 py-1">الحالة: {statusFilter === "all" ? "الكل" : statusFilter === "active" ? "النشطة" : "المتوقفة"}</span>
+                    <span className="rounded-full border px-3 py-1">التكرار: {frequencyFilter === "all" ? "الكل" : frequencyLabels[frequencyFilter]}</span>
+                    <span className="rounded-full border px-3 py-1">التركيز: {timingFilter === "all" ? "الكل" : timingFilter === "upcoming" ? "القريبة" : "التلقائية"}</span>
+                  </div>
+                </div>
+
+                {reportObligations.length > 0 ? reportObligations.map((obligation) => {
+                  const upcoming = upcomingObligations.find((item) => item.id === obligation.id);
+                  return (
+                    <div key={`${obligation.id}-report`} className="print-break-avoid rounded-3xl border bg-card p-6">
+                      <div className="flex items-center justify-between gap-4 border-b pb-4">
+                        <div className="flex items-center gap-3">
+                          <div className={cn("flex h-12 w-12 items-center justify-center rounded-2xl text-2xl", obligationTypeColors[obligation.obligationType])}>
+                            {obligationTypeIcons[obligation.obligationType]}
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-bold">{obligation.title}</h3>
+                            <p className="text-sm text-muted-foreground">{obligationTypeLabels[obligation.obligationType]}</p>
+                          </div>
+                        </div>
+                        {selectedReportFields.includes("amount") ? <span className="text-lg font-bold text-destructive">{formatAmount(obligation.amount)}</span> : null}
+                      </div>
+
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        {selectedReportFields.includes("title") ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">العنوان</p><p className="mt-2 font-semibold">{obligation.title}</p></div> : null}
+                        {selectedReportFields.includes("type") ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">النوع</p><p className="mt-2 font-semibold">{obligationTypeLabels[obligation.obligationType]}</p></div> : null}
+                        {selectedReportFields.includes("status") ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">الحالة</p><p className="mt-2 font-semibold">{getReportStatus(obligation)}</p></div> : null}
+                        {selectedReportFields.includes("frequency") ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">التكرار</p><p className="mt-2 font-semibold">{obligation.scheduleType === "fixed" ? frequencyLabels[obligation.frequency] : "متغير"}</p></div> : null}
+                        {selectedReportFields.includes("startDate") ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">تاريخ البداية</p><p className="mt-2 font-semibold">{formatDate(obligation.startDate)}</p></div> : null}
+                        {selectedReportFields.includes("endDate") ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">تاريخ الانتهاء</p><p className="mt-2 font-semibold">{obligation.endDate ? formatDate(obligation.endDate) : "بدون انتهاء"}</p></div> : null}
+                        {selectedReportFields.includes("dueDate") ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">موعد الاستحقاق</p><p className="mt-2 font-semibold">{formatDueDate(obligation)}</p></div> : null}
+                        {selectedReportFields.includes("daysLeft") ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">الأيام المتبقية</p><p className="mt-2 font-semibold">{getReportDaysLeft(obligation)}</p></div> : null}
+                      </div>
+
+                      {upcoming ? <p className="mt-4 text-sm text-amber-600">{upcoming.daysLeft <= 7 ? "هذا الالتزام قريب من الاستحقاق." : "الالتزام مجدول ضمن قائمة الالتزامات القادمة."}</p> : null}
+                    </div>
+                  );
+                }) : (
+                  <div className="rounded-3xl border border-dashed bg-card p-8 text-center text-sm text-muted-foreground">
+                    لا توجد بيانات مطابقة لإعدادات التقرير الحالية.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

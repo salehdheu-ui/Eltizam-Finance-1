@@ -78,6 +78,28 @@ export function formatCurrency(value: number, fractionDigits = 3) {
   return formatNumber(value, fractionDigits, fractionDigits)
 }
 
+export function parseNumericInput(value: string | number | null | undefined) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null
+  }
+
+  if (typeof value !== "string") {
+    return null
+  }
+
+  const normalized = value
+    .trim()
+    .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 1632))
+    .replace(/[٫،]/g, ".")
+
+  if (!normalized) {
+    return null
+  }
+
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
 export function formatPercentage(value: number, fractionDigits = 1) {
   return `${formatNumber(value, fractionDigits, fractionDigits)}%`
 }
