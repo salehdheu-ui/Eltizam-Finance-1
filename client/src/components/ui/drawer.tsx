@@ -3,15 +3,80 @@ import { Drawer as DrawerPrimitive } from "vaul"
 
 import { cn } from "@/lib/utils"
 
+const clearDrawerArtifacts = () => {
+  if (typeof document === "undefined") {
+    return
+  }
+
+  const elements = [document.documentElement, document.body, document.getElementById("root")].filter(
+    (element): element is HTMLElement => Boolean(element)
+  )
+
+  for (const element of elements) {
+    element.style.removeProperty("overflow")
+    element.style.removeProperty("height")
+    element.style.removeProperty("position")
+    element.style.removeProperty("touch-action")
+    element.style.removeProperty("overscroll-behavior")
+  }
+
+  const drawerWrappers = document.querySelectorAll<HTMLElement>("[data-vaul-drawer-wrapper], [vaul-drawer-wrapper], [data-vaul-wrapper]")
+  drawerWrappers.forEach((element) => {
+    element.style.removeProperty("transform")
+    element.style.removeProperty("transform-origin")
+    element.style.removeProperty("transition")
+    element.style.removeProperty("height")
+    element.style.removeProperty("overflow")
+    element.style.removeProperty("will-change")
+    element.style.removeProperty("border-radius")
+  })
+}
+
 const Drawer = ({
   shouldScaleBackground = false,
+  open,
   ...props
-}: React.ComponentProps<typeof DrawerPrimitive.Root>) => (
-  <DrawerPrimitive.Root
-    shouldScaleBackground={shouldScaleBackground}
-    {...props}
-  />
-)
+}: React.ComponentProps<typeof DrawerPrimitive.Root>) => {
+  React.useEffect(() => {
+    if (open) {
+      return
+    }
+
+    const cleanup = () => {
+      clearDrawerArtifacts()
+      if (typeof window !== "undefined") {
+        document.documentElement.style.setProperty(
+          "--app-safe-viewport-height",
+          `${window.innerHeight}px`
+        )
+      }
+    }
+
+    cleanup()
+    const frame = window.requestAnimationFrame(cleanup)
+    const timeout = window.setTimeout(cleanup, 240)
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.clearTimeout(timeout)
+    }
+  }, [open])
+
+  React.useEffect(() => {
+    return () => {
+      clearDrawerArtifacts()
+    }
+  }, [])
+
+  return (
+    <DrawerPrimitive.Root
+      repositionInputs={false}
+      shouldScaleBackground={shouldScaleBackground}
+      open={open}
+      {...props}
+    />
+  )
+}
 Drawer.displayName = "Drawer"
 
 const DrawerTrigger = DrawerPrimitive.Trigger
