@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTransactions, useWallets } from "@/lib/hooks";
 import { cn, formatCurrency, parseNumericInput } from "@/lib/utils";
-import { ArrowRight, PiggyBank, Sparkles, Target, TrendingUp, Wallet } from "lucide-react";
+import { ArrowRight, CircleHelp, PiggyBank, Sparkles, Target, TrendingUp, Wallet } from "lucide-react";
 
 type SavingsPlan = {
   id: string;
@@ -15,6 +17,10 @@ type SavingsPlan = {
   reserveRate: number;
   description: string;
   highlights: string[];
+  quickTip: string;
+  bestFor: string;
+  caution: string;
+  detailedPoints: string[];
 };
 
 const savingsPlans: SavingsPlan[] = [
@@ -28,6 +34,14 @@ const savingsPlans: SavingsPlan[] = [
     reserveRate: 0.05,
     description: "احجز 10% من دخلك أولاً قبل أي صرف حتى تبني أصل الادخار والانضباط المالي.",
     highlights: ["بداية ممتازة", "تبني عادة ادخار", "سهلة التطبيق شهرياً"],
+    quickTip: "تبدأ بادخار بسيط وثابت قبل أي مصروف.",
+    bestFor: "المبتدئ أو من يريد عادة ادخار سهلة وواضحة.",
+    caution: "قد تكون بطيئة إذا كان هدفك كبيراً وتحتاج الوصول إليه بسرعة.",
+    detailedPoints: [
+      "الفكرة الأساسية أن تخصم جزء الادخار أولاً ثم تتعامل مع بقية الدخل.",
+      "النسبة المقترحة هنا 10% ادخار مع توزيع مريح لبقية المصروفات.",
+      "مناسبة إذا كنت تريد الالتزام بدون ضغط كبير في البداية.",
+    ],
   },
   {
     id: "50-30-20",
@@ -39,6 +53,14 @@ const savingsPlans: SavingsPlan[] = [
     reserveRate: 0,
     description: "تقسم دخلك بين الاحتياجات والرغبات والادخار بطريقة متوازنة ومناسبة لمعظم الناس.",
     highlights: ["متوازنة", "واضحة", "مناسبة لمعظم المستخدمين"],
+    quickTip: "خطة متوازنة بين المعيشة الحالية والادخار.",
+    bestFor: "من لديه دخل مستقر ويريد توازناً واضحاً بين الاحتياجات والرغبات والادخار.",
+    caution: "قد لا تكون الأنسب إذا كانت التزاماتك الشهرية مرتفعة جداً.",
+    detailedPoints: [
+      "تخصص 50% للاحتياجات، 30% للرغبات، و20% للادخار.",
+      "تساعدك على الاستمرار دون شعور بحرمان كبير.",
+      "تعمل جيداً عندما تكون مصاريفك الأساسية تحت السيطرة.",
+    ],
   },
   {
     id: "70-20-10",
@@ -50,6 +72,14 @@ const savingsPlans: SavingsPlan[] = [
     reserveRate: 0.1,
     description: "تناسب من يركز على الاستقرار والاحتياطي مع تقليل الهدر في الكماليات.",
     highlights: ["قوية للأسر", "تعزز الاحتياطي", "تخدم الالتزامات الشهرية"],
+    quickTip: "تقلل الكماليات وتعطي مساحة أكبر للالتزامات والاحتياطي.",
+    bestFor: "من لديه مسؤوليات أو أقساط ويريد خطة عملية ومحافظة.",
+    caution: "قد تكون مقيدة إذا كنت تحتاج مساحة أكبر للرغبات أو الترفيه.",
+    detailedPoints: [
+      "تعطي الأولوية للاحتياجات والالتزامات مع ادخار ثابت واحتياطي منفصل.",
+      "مفيدة للأسر أو لمن لديهم التزامات شهرية مستمرة.",
+      "تساعد على تقليل الهدر عندما تكون المصاريف المرتفعة تضغط على الميزانية.",
+    ],
   },
   {
     id: "gradual",
@@ -61,6 +91,14 @@ const savingsPlans: SavingsPlan[] = [
     reserveRate: 0.05,
     description: "مناسبة لمن يريد الدخول في الادخار بشكل مريح ثم زيادة النسبة مع الوقت.",
     highlights: ["مريحة نفسياً", "سهلة الالتزام", "مناسبة بعد التعثر المالي"],
+    quickTip: "ابدأ بنسبة مناسبة ثم ارفع الادخار تدريجياً مع الوقت.",
+    bestFor: "من يجد صعوبة في الالتزام بخطة قوية من البداية أو يمر بمرحلة تعافٍ مالي.",
+    caution: "تحتاج متابعة شهرية حتى لا تتوقف عند البداية دون تطوير.",
+    detailedPoints: [
+      "توفر بداية مريحة بدل القفز مباشرة إلى نسبة ادخار عالية.",
+      "مفيدة إذا كان وضعك الحالي لا يتحمل تغييراً حاداً في المصروفات.",
+      "الأفضل أن ترفع الادخار تدريجياً كلما تحسن انضباطك أو دخلك.",
+    ],
   },
 ];
 
@@ -74,6 +112,26 @@ function calculateCompoundInterest(principal: number, monthlyContribution: numbe
   }
 
   return total;
+}
+
+function getSavingsDistributionLabel(plan: SavingsPlan) {
+  return `${Math.round(plan.needsRate * 100)}% احتياجات - ${Math.round(plan.wantsRate * 100)}% رغبات - ${Math.round(plan.savingsRate * 100)}% ادخار${plan.reserveRate > 0 ? ` - ${Math.round(plan.reserveRate * 100)}% احتياطي` : ""}`;
+}
+
+function getPlanBadge(plan: SavingsPlan) {
+  if (plan.id === "50-30-20") {
+    return "الأكثر توازناً";
+  }
+
+  if (plan.id === "gradual") {
+    return "الأكثر راحة للبداية";
+  }
+
+  if (plan.id === "70-20-10") {
+    return "الأفضل لأصحاب الالتزامات";
+  }
+
+  return "الأفضل لبناء العادة";
 }
 
 export default function SavingsPlans() {
@@ -123,30 +181,89 @@ export default function SavingsPlans() {
     : manuallyCalculatedSavings;
   const currentSavingsRate = effectiveIncome > 0 ? currentSavings / effectiveIncome : 0;
   const targetNum = parsedTargetAmount ?? 0;
+  const obligationsRatio = effectiveIncome > 0 ? (effectiveNeeds + fixedObligations) / effectiveIncome : 0;
+  const wantsRatio = effectiveIncome > 0 ? effectiveWants / effectiveIncome : 0;
 
-  const recommendedPlan = useMemo(() => {
+  const rankedPlans = useMemo(() => {
     if (effectiveIncome <= 0) {
-      return savingsPlans[0];
+      return savingsPlans.map((plan, index) => ({
+        plan,
+        score: savingsPlans.length - index,
+        compatibility: 50,
+        reasons: ["لا توجد بيانات دخل كافية، لذلك نعرض الخطط من الأبسط إلى الأكثر التزاماً."],
+      }));
     }
 
-    const obligationsRatio = (effectiveNeeds + fixedObligations) / effectiveIncome;
+    return savingsPlans
+      .map((plan) => {
+        let score = 55;
+        const reasons: string[] = [];
+        const savingsGap = Math.abs(currentSavingsRate - plan.savingsRate);
+        const obligationsGap = Math.abs(obligationsRatio - plan.needsRate);
+        const wantsGap = Math.abs(wantsRatio - plan.wantsRate);
+        const planTargetSavings = effectiveIncome * plan.savingsRate;
+        const improvementGap = Math.max(planTargetSavings - Math.max(currentSavings, 0), 0);
+        const isStretch = effectiveIncome > 0 && improvementGap > effectiveIncome * 0.08;
 
-    if (currentSavingsRate < 0.08 || obligationsRatio > 0.75) {
-      return savingsPlans.find((plan) => plan.id === "gradual") ?? savingsPlans[3];
-    }
+        score += Math.max(0, 28 - savingsGap * 100);
+        score += Math.max(0, 16 - obligationsGap * 35);
+        score += Math.max(0, 10 - wantsGap * 25);
 
-    if (currentSavingsRate >= 0.2 && obligationsRatio <= 0.55) {
-      return savingsPlans.find((plan) => plan.id === "50-30-20") ?? savingsPlans[1];
-    }
+        if (plan.id === "gradual" && (currentSavingsRate < 0.1 || obligationsRatio > 0.72)) {
+          score += 18;
+          reasons.push("وضعك الحالي يحتاج بداية مريحة وتدرجاً في رفع الادخار.");
+        }
 
-    if (fixedObligations > 0 && obligationsRatio > 0.6) {
-      return savingsPlans.find((plan) => plan.id === "70-20-10") ?? savingsPlans[2];
-    }
+        if (plan.id === "50-30-20" && currentSavingsRate >= 0.15 && obligationsRatio <= 0.58) {
+          score += 18;
+          reasons.push("توازنك الحالي يسمح بخطة متوازنة بين المصروفات والادخار.");
+        }
 
-    return savingsPlans.find((plan) => plan.id === "babylon") ?? savingsPlans[0];
-  }, [currentSavingsRate, effectiveIncome, effectiveNeeds, fixedObligations]);
+        if (plan.id === "70-20-10" && fixedObligations > 0 && obligationsRatio >= 0.6) {
+          score += 18;
+          reasons.push("وجود التزامات شهرية واضحة يجعل هذه الخطة أكثر واقعية واستقراراً.");
+        }
 
-  const planCards = savingsPlans.map((plan) => {
+        if (plan.id === "babylon" && currentSavingsRate >= 0 && currentSavingsRate < 0.14) {
+          score += 12;
+          reasons.push("الخطة مناسبة لبناء عادة ادخار ثابتة بدون ضغط كبير.");
+        }
+
+        if (targetNum > 0 && plan.savingsRate >= 0.2) {
+          score += 8;
+          reasons.push("وجود هدف ادخاري واضح يجعل الخطط الأعلى ادخاراً أكثر فاعلية.");
+        }
+
+        if (targetNum > 0 && isStretch) {
+          score -= 10;
+          reasons.push("رغم أنها سريعة نحو الهدف، إلا أنها قد تكون متعبة في وضعك الحالي.");
+        }
+
+        if (reasons.length === 0) {
+          reasons.push("تقييم الخطة بُني على دخلك واحتياجاتك والتزاماتك الحالية.");
+        }
+
+        const compatibility = Math.max(45, Math.min(98, Math.round(score)));
+
+        return {
+          plan,
+          score,
+          compatibility,
+          reasons,
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+  }, [currentSavings, currentSavingsRate, effectiveIncome, fixedObligations, obligationsRatio, targetNum, wantsRatio]);
+
+  const recommendedPlan = rankedPlans[0]?.plan ?? savingsPlans[0];
+  const recommendedPlanAnalysis = rankedPlans[0];
+  const fastestGoalPlan = targetNum > totalBalance
+    ? rankedPlans
+        .filter(({ plan }) => effectiveIncome * plan.savingsRate > 0)
+        .sort((a, b) => b.plan.savingsRate - a.plan.savingsRate)[0]?.plan
+    : null;
+
+  const planCards = rankedPlans.map(({ plan, compatibility, reasons }, index) => {
     const monthlySavingsAmount = effectiveIncome * plan.savingsRate;
     const monthlyNeedsAmount = effectiveIncome * plan.needsRate;
     const monthlyWantsAmount = effectiveIncome * plan.wantsRate;
@@ -159,6 +276,9 @@ export default function SavingsPlans() {
 
     return {
       plan,
+      rank: index + 1,
+      compatibility,
+      reasons,
       monthlySavingsAmount,
       monthlyNeedsAmount,
       monthlyWantsAmount,
@@ -166,6 +286,7 @@ export default function SavingsPlans() {
       projectedBalance,
       investmentProjection,
       monthsToGoal,
+      smartBadge: fastestGoalPlan?.id === plan.id && targetNum > totalBalance ? "الأسرع لهدفك" : getPlanBadge(plan),
       isRecommended: recommendedPlan.id === plan.id,
     };
   });
@@ -173,10 +294,11 @@ export default function SavingsPlans() {
   const improvementGap = Math.max((recommendedPlan.savingsRate * effectiveIncome) - Math.max(currentSavings, 0), 0);
 
   return (
-    <div className="app-page" dir="rtl">
+    <TooltipProvider>
+      <div className="app-page" dir="rtl">
       <div className="text-center py-2 sm:py-4 space-y-1">
         <h1 className="text-xl font-bold sm:text-2xl">خطط الادخار</h1>
-        <p className="text-sm text-muted-foreground sm:text-base">4 خطط مشهورة مع قياس الخطة المناسبة لك تلقائياً</p>
+        <p className="text-sm text-muted-foreground sm:text-base">شرح أوضح، مقارنة أذكى، وترشيح تلقائي للخطة الأنسب لك</p>
       </div>
 
       <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
@@ -218,22 +340,27 @@ export default function SavingsPlans() {
             <div className="space-y-2">
               <label className="text-sm font-medium">الدخل الشهري</label>
               <Input type="text" inputMode="decimal" value={manualIncome} onChange={(e) => setManualIncome(e.target.value)} placeholder={lastMonthIncome ? `${formatCurrency(lastMonthIncome, 2)}` : "مثال: 1200"} dir="ltr" className="app-input text-left" />
+              <p className="text-xs text-muted-foreground">أدخل متوسط ما يدخل لك شهرياً إذا أردت حساباً أدق.</p>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">المصاريف الأساسية</label>
               <Input type="text" inputMode="decimal" value={manualNeeds} onChange={(e) => setManualNeeds(e.target.value)} placeholder="مثال: 500" dir="ltr" className="app-input text-left" />
+              <p className="text-xs text-muted-foreground">مثل السكن، الفواتير، الطعام، النقل، والتعليم.</p>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">الرغبات والكماليات</label>
               <Input type="text" inputMode="decimal" value={manualWants} onChange={(e) => setManualWants(e.target.value)} placeholder="مثال: 150" dir="ltr" className="app-input text-left" />
+              <p className="text-xs text-muted-foreground">مثل الترفيه، التسوق غير الضروري، والمطاعم.</p>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">الالتزامات الشهرية الثابتة</label>
               <Input type="text" inputMode="decimal" value={manualFixedObligations} onChange={(e) => setManualFixedObligations(e.target.value)} placeholder="مثال: 200" dir="ltr" className="app-input text-left" />
+              <p className="text-xs text-muted-foreground">مثل الأقساط، الديون، الاشتراكات، أو أي التزام ثابت.</p>
             </div>
             <div className="space-y-2 sm:col-span-2">
               <label className="text-sm font-medium">الهدف الادخاري</label>
               <Input type="text" inputMode="decimal" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} placeholder="مثال: 10000" dir="ltr" className="app-input text-left" />
+              <p className="text-xs text-muted-foreground">أدخل المبلغ الذي تريد الوصول إليه ليحسب النظام أسرع خطة وأقرب خطة واقعية.</p>
             </div>
           </div>
 
@@ -265,41 +392,167 @@ export default function SavingsPlans() {
           <div className="rounded-xl border bg-white p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
-                <p className="text-lg font-bold text-emerald-700">{recommendedPlan.title}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-lg font-bold text-emerald-700">{recommendedPlan.title}</p>
+                  <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-700">{fastestGoalPlan?.id === recommendedPlan.id && targetNum > totalBalance ? "الأسرع لهدفك" : getPlanBadge(recommendedPlan)}</span>
+                </div>
                 <p className="text-sm text-muted-foreground">{recommendedPlan.subtitle}</p>
               </div>
-              <div className="w-fit rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">موصى بها</div>
+              <div className="flex items-center gap-2">
+                <div className="w-fit rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">موصى بها</div>
+                <div className="w-fit rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
+                  توافق {recommendedPlanAnalysis?.compatibility ?? 50}%
+                </div>
+              </div>
             </div>
             <p className="mt-3 text-sm text-slate-700">{recommendedPlan.description}</p>
+            <div className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">
+              <p className="font-medium">لماذا رشحها لك النظام؟</p>
+              <ul className="mt-2 space-y-2 text-emerald-700">
+                {(recommendedPlanAnalysis?.reasons ?? []).map((reason) => (
+                  <li key={reason} className="flex items-start gap-2"><ArrowRight className="mt-0.5 h-4 w-4 text-emerald-600" /><span>{reason}</span></li>
+                ))}
+              </ul>
+            </div>
             <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
               <li className="flex items-start gap-2"><ArrowRight className="h-4 w-4 text-emerald-600 mt-0.5" /><span>الادخار المقترح شهرياً: {formatCurrency(effectiveIncome * recommendedPlan.savingsRate, 2)} ر.ع</span></li>
               <li className="flex items-start gap-2"><ArrowRight className="h-4 w-4 text-emerald-600 mt-0.5" /><span>الزيادة المطلوبة عن وضعك الحالي: {formatCurrency(improvementGap, 2)} ر.ع شهرياً</span></li>
-              <li className="flex items-start gap-2"><ArrowRight className="h-4 w-4 text-emerald-600 mt-0.5" /><span>تعتمد التوصية على توازن دخلك مع احتياجاتك والتزاماتك الحالية</span></li>
+              <li className="flex items-start gap-2"><ArrowRight className="h-4 w-4 text-emerald-600 mt-0.5" /><span>توزيع الخطة: {getSavingsDistributionLabel(recommendedPlan)}</span></li>
             </ul>
           </div>
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-primary" />
+            مقارنة سريعة بين أفضل الخيارات
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-3">
+          {planCards.slice(0, 3).map(({ plan, compatibility, monthlySavingsAmount, monthsToGoal, smartBadge, isRecommended }) => (
+            <div key={plan.id} className={cn("rounded-xl border p-4", isRecommended ? "border-emerald-300 bg-emerald-50" : "bg-white") }>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-bold text-foreground">{plan.title}</p>
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-700">{smartBadge}</span>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">{getSavingsDistributionLabel(plan)}</p>
+              <div className="mt-3 space-y-2 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">التوافق</span>
+                  <span className="font-bold text-blue-700">{compatibility}%</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                  <div className={cn("h-full rounded-full", isRecommended ? "bg-emerald-500" : "bg-blue-500")} style={{ width: `${compatibility}%` }} />
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">الادخار الشهري</span>
+                  <span className="font-medium">{formatCurrency(monthlySavingsAmount, 2)} ر.ع</span>
+                </div>
+                {targetNum > totalBalance ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">الوصول للهدف</span>
+                    <span className="font-medium">{monthsToGoal ? `${monthsToGoal} شهر` : "غير متاح حالياً"}</span>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
       <div className="grid gap-4">
-        {planCards.map(({ plan, monthlySavingsAmount, monthlyNeedsAmount, monthlyWantsAmount, monthlyReserveAmount, projectedBalance, investmentProjection, monthsToGoal, isRecommended }) => (
-          <Card key={plan.id} className={cn(isRecommended ? "border-emerald-400 shadow-lg" : "") }>
+        {planCards.map(({ plan, rank, compatibility, reasons, monthlySavingsAmount, monthlyNeedsAmount, monthlyWantsAmount, monthlyReserveAmount, projectedBalance, investmentProjection, monthsToGoal, smartBadge, isRecommended }) => (
+          <Card key={plan.id} className={cn("overflow-hidden", isRecommended ? "border-emerald-400 shadow-lg ring-2 ring-emerald-200" : "") }>
+            {isRecommended ? <div className="bg-gradient-to-l from-emerald-500 to-teal-500 px-4 py-2 text-center text-sm font-bold text-white">هذه الخطة هي الأنسب لك الآن بناءً على بياناتك الحالية</div> : null}
             <CardHeader className="pb-3">
               <CardTitle className="flex flex-col gap-3 text-base sm:flex-row sm:items-center sm:justify-between sm:text-lg">
                 <div className="min-w-0">
-                  <span>{plan.title}</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span>{plan.title}</span>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button type="button" className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" aria-label={`شرح سريع لخطة ${plan.title}`}>
+                          <CircleHelp className="h-4 w-4" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs text-right leading-6">
+                        <p className="font-medium">{plan.quickTip}</p>
+                        <p className="mt-1 text-[11px] opacity-90">{plan.bestFor}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button type="button" className="rounded-full border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" aria-label={`شرح مفصل لخطة ${plan.title}`}>
+                          تفاصيل الخطة
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="w-80 text-right sm:w-96">
+                        <div className="space-y-3">
+                          <div>
+                            <p className="font-bold text-foreground">{plan.title}</p>
+                            <p className="text-sm text-muted-foreground">{plan.subtitle}</p>
+                          </div>
+                          <div className="rounded-lg bg-muted/40 p-3 text-sm leading-6 text-slate-700">
+                            {plan.description}
+                          </div>
+                          <div className="space-y-2 text-sm">
+                            <p className="font-medium">كيف تعمل؟</p>
+                            <ul className="space-y-2 text-muted-foreground">
+                              {plan.detailedPoints.map((point) => (
+                                <li key={point} className="flex items-start gap-2"><ArrowRight className="mt-0.5 h-4 w-4 text-primary" /><span>{point}</span></li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div className="rounded-lg border p-3 text-sm">
+                            <p className="font-medium text-foreground">التوزيع المقترح</p>
+                            <p className="mt-1 text-muted-foreground">{getSavingsDistributionLabel(plan)}</p>
+                          </div>
+                          <div className="space-y-2 text-sm">
+                            <p><span className="font-medium text-foreground">تناسب من؟ </span><span className="text-muted-foreground">{plan.bestFor}</span></p>
+                            <p><span className="font-medium text-foreground">انتبه إلى: </span><span className="text-muted-foreground">{plan.caution}</span></p>
+                          </div>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
                   <p className="mt-1 text-sm font-normal text-muted-foreground">{plan.subtitle}</p>
                 </div>
-                {isRecommended ? <span className="w-fit rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">الأنسب لك</span> : null}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="w-fit rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">ترتيب #{rank}</span>
+                  <span className="w-fit rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">توافق {compatibility}%</span>
+                  <span className="w-fit rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">{smartBadge}</span>
+                  {isRecommended ? <span className="w-fit rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">الأنسب لك</span> : null}
+                </div>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-slate-700">{plan.description}</p>
+              <div className="rounded-xl bg-primary/5 p-3 text-sm">
+                <p className="font-medium text-foreground">لماذا حصلت هذه الخطة على هذا الترتيب؟</p>
+                <ul className="mt-2 space-y-2 text-muted-foreground">
+                  {reasons.map((reason) => (
+                    <li key={reason} className="flex items-start gap-2"><ArrowRight className="mt-0.5 h-4 w-4 text-primary" /><span>{reason}</span></li>
+                  ))}
+                </ul>
+              </div>
 
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">الادخار</p><p className="font-bold text-emerald-600">{formatCurrency(monthlySavingsAmount, 2)} ر.ع</p></div>
                 <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">الاحتياجات</p><p className="font-bold text-blue-600">{formatCurrency(monthlyNeedsAmount, 2)} ر.ع</p></div>
                 <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">الرغبات</p><p className="font-bold text-amber-600">{formatCurrency(monthlyWantsAmount, 2)} ر.ع</p></div>
                 <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">الاحتياطي</p><p className="font-bold text-violet-600">{formatCurrency(monthlyReserveAmount, 2)} ر.ع</p></div>
+              </div>
+
+              <div className="rounded-xl border bg-white p-3">
+                <div className="mb-2 flex items-center justify-between gap-3 text-sm">
+                  <span className="font-medium text-foreground">شريط الملاءمة</span>
+                  <span className="font-bold text-blue-700">{compatibility}%</span>
+                </div>
+                <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
+                  <div className={cn("h-full rounded-full transition-all", isRecommended ? "bg-emerald-500" : "bg-blue-500")} style={{ width: `${compatibility}%` }} />
+                </div>
               </div>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -326,6 +579,7 @@ export default function SavingsPlans() {
           </Card>
         ))}
       </div>
-    </div>
+      </div>
+    </TooltipProvider>
   );
 }
