@@ -1133,7 +1133,7 @@ export default function Obligations() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid max-h-[80vh] overflow-hidden md:grid-cols-[320px_minmax(0,1fr)]">
+          <div className="grid overflow-hidden md:grid-cols-[320px_minmax(0,1fr)]" style={{ maxHeight: "calc(var(--app-viewport-height, 100vh) * 0.8)" }}>
             <div className="hide-on-print overflow-y-auto border-b p-6 md:border-b-0 md:border-l">
               <div className="space-y-6">
                 <div className="space-y-3">
@@ -1213,7 +1213,7 @@ export default function Obligations() {
               </div>
             </div>
 
-            <div className="max-h-[80vh] overflow-y-auto bg-muted/20 p-4 sm:p-6">
+            <div className="overflow-y-auto bg-muted/20 p-4 sm:p-6" style={{ maxHeight: "calc(var(--app-viewport-height, 100vh) * 0.8)" }}>
               <div className="print-report-root mx-auto max-w-3xl space-y-6 rounded-3xl bg-background p-6 sm:p-8">
                 <div className="print-break-avoid rounded-3xl border bg-card p-6">
                   <div className="flex items-start justify-between gap-4 border-b pb-4">

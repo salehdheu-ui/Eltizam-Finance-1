@@ -171,28 +171,6 @@ export default function Layout({ children }: LayoutProps) {
   }, [isVariableObligationQuickPay, quickPayAmountOptions, txAmount]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const updateViewportHeight = () => {
-      const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
-      document.documentElement.style.setProperty("--app-viewport-height", `${viewportHeight}px`);
-    };
-
-    updateViewportHeight();
-    window.addEventListener("resize", updateViewportHeight);
-    window.visualViewport?.addEventListener("resize", updateViewportHeight);
-    window.visualViewport?.addEventListener("scroll", updateViewportHeight);
-
-    return () => {
-      window.removeEventListener("resize", updateViewportHeight);
-      window.visualViewport?.removeEventListener("resize", updateViewportHeight);
-      window.visualViewport?.removeEventListener("scroll", updateViewportHeight);
-    };
-  }, []);
-
-  useEffect(() => {
     if (!isAddTxOpen) {
       blurActiveElement();
       requestAnimationFrame(() => window.scrollTo({ top: window.scrollY, behavior: "instant" as ScrollBehavior }));
@@ -314,7 +292,7 @@ export default function Layout({ children }: LayoutProps) {
   };
 
   return (
-    <div className="flex min-h-screen flex-col overflow-x-hidden bg-muted/30 pb-20 lg:pb-0">
+    <div className="app-min-h-screen flex flex-col overflow-x-hidden bg-muted/30 pb-20 lg:pb-0">
       {/* Header with menu button */}
       <header className="fixed top-0 left-0 right-0 z-40 bg-background/80 backdrop-blur-md border-b border-border">
         <div className="relative mx-auto flex h-14 w-full max-w-7xl items-center px-4 sm:px-6 lg:px-8" dir="rtl">

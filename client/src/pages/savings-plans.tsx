@@ -540,6 +540,45 @@ export default function SavingsPlans() {
                             <p className="font-medium text-foreground">التوزيع المقترح</p>
                             <p className="mt-1 text-muted-foreground">{getSavingsDistributionLabel(plan)}</p>
                           </div>
+                          <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
+                            <p className="font-medium text-foreground">كيف يحسبها النظام؟</p>
+                            <ul className="mt-2 space-y-2 text-muted-foreground leading-6">
+                              <li>
+                                <span className="font-medium text-foreground">الدخل المعتمد في الحساب: </span>
+                                {formatCurrency(effectiveIncome, 2)} ر.ع
+                              </li>
+                              <li>
+                                <span className="font-medium text-foreground">الادخار الشهري: </span>
+                                {formatCurrency(effectiveIncome, 2)} × {Math.round(plan.savingsRate * 100)}% = {formatCurrency(monthlySavingsAmount, 2)} ر.ع
+                              </li>
+                              <li>
+                                <span className="font-medium text-foreground">الاحتياجات: </span>
+                                {formatCurrency(effectiveIncome, 2)} × {Math.round(plan.needsRate * 100)}% = {formatCurrency(monthlyNeedsAmount, 2)} ر.ع
+                              </li>
+                              <li>
+                                <span className="font-medium text-foreground">الرغبات: </span>
+                                {formatCurrency(effectiveIncome, 2)} × {Math.round(plan.wantsRate * 100)}% = {formatCurrency(monthlyWantsAmount, 2)} ر.ع
+                              </li>
+                              <li>
+                                <span className="font-medium text-foreground">الاحتياطي: </span>
+                                {formatCurrency(effectiveIncome, 2)} × {Math.round(plan.reserveRate * 100)}% = {formatCurrency(monthlyReserveAmount, 2)} ر.ع
+                              </li>
+                              <li>
+                                <span className="font-medium text-foreground">الرصيد المتوقع بعد {planYears} سنوات: </span>
+                                {formatCurrency(totalBalance, 2)} + ({formatCurrency(monthlySavingsAmount, 2)} × {planYears * 12} شهر) = {formatCurrency(projectedBalance, 2)} ر.ع
+                              </li>
+                              <li>
+                                <span className="font-medium text-foreground">مع افتراض استثمار بعائد 8%: </span>
+                                يحسب النظام نمواً مركباً على الرصيد الحالي مع إضافة الادخار الشهري ليصل تقريباً إلى {formatCurrency(investmentProjection, 2)} ر.ع
+                              </li>
+                              <li>
+                                <span className="font-medium text-foreground">الوقت التقريبي لتحقيق الهدف: </span>
+                                {targetNum > totalBalance && monthlySavingsAmount > 0
+                                  ? `${formatCurrency(targetNum - totalBalance, 2)} ÷ ${formatCurrency(monthlySavingsAmount, 2)} = ${monthsToGoal} شهر تقريباً`
+                                  : "يظهر عندما يكون لديك هدف ادخاري أكبر من رصيدك الحالي وادخار شهري موجب."}
+                              </li>
+                            </ul>
+                          </div>
                           <div className="space-y-2 text-sm">
                             <p><span className="font-medium text-foreground">تناسب من؟ </span><span className="text-muted-foreground">{plan.bestFor}</span></p>
                             <p><span className="font-medium text-foreground">انتبه إلى: </span><span className="text-muted-foreground">{plan.caution}</span></p>

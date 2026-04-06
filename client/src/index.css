@@ -45,6 +45,8 @@
   --opaque-button-border-intensity: -8;
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .08);
+  --app-viewport-height: 100vh;
+  --app-safe-viewport-height: 100svh;
 
   --background: 210 40% 98%;
   --foreground: 222 47% 11%;
@@ -137,6 +139,21 @@
 }
 
 @layer utilities {
+  .app-min-h-screen {
+    min-height: var(--app-viewport-height);
+    min-height: var(--app-safe-viewport-height);
+  }
+
+  .app-h-screen {
+    height: var(--app-viewport-height);
+    height: var(--app-safe-viewport-height);
+  }
+
+  .app-max-h-screen {
+    max-height: var(--app-viewport-height);
+    max-height: var(--app-safe-viewport-height);
+  }
+
   .app-page {
     @apply space-y-4 px-1 py-4 pb-24 sm:px-2 sm:py-6 xl:px-0 xl:py-8;
   }

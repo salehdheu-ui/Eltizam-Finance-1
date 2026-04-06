@@ -20,6 +20,33 @@ const DrawerPortal = DrawerPrimitive.Portal
 
 const DrawerClose = DrawerPrimitive.Close
 
+const useVisualViewportHeight = () => {
+  const [viewportHeight, setViewportHeight] = React.useState<number | null>(null)
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    const updateViewportHeight = () => {
+      const nextHeight = window.visualViewport?.height ?? window.innerHeight
+      setViewportHeight(nextHeight)
+    }
+
+    updateViewportHeight()
+
+    window.visualViewport?.addEventListener("resize", updateViewportHeight)
+    window.addEventListener("resize", updateViewportHeight)
+
+    return () => {
+      window.visualViewport?.removeEventListener("resize", updateViewportHeight)
+      window.removeEventListener("resize", updateViewportHeight)
+    }
+  }, [])
+
+  return viewportHeight
+}
+
 const DrawerOverlay = React.forwardRef<
   React.ElementRef<typeof DrawerPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Overlay>
@@ -35,22 +62,30 @@ DrawerOverlay.displayName = DrawerPrimitive.Overlay.displayName
 const DrawerContent = React.forwardRef<
   React.ElementRef<typeof DrawerPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Content>
->(({ className, children, ...props }, ref) => (
-  <DrawerPortal>
-    <DrawerOverlay />
-    <DrawerPrimitive.Content
-      ref={ref}
-      className={cn(
-        "fixed inset-x-0 bottom-0 z-50 mt-24 flex h-auto max-h-[90dvh] min-h-0 flex-col overflow-hidden rounded-t-[20px] border bg-background overscroll-contain",
-        className
-      )}
-      {...props}
-    >
-      <div className="mx-auto mt-3 h-2 w-[72px] rounded-full bg-muted" />
-      {children}
-    </DrawerPrimitive.Content>
-  </DrawerPortal>
-))
+>(({ className, children, style, ...props }, ref) => {
+  const viewportHeight = useVisualViewportHeight()
+
+  return (
+    <DrawerPortal>
+      <DrawerOverlay />
+      <DrawerPrimitive.Content
+        ref={ref}
+        className={cn(
+          "fixed inset-x-0 bottom-0 z-50 mt-24 flex h-auto min-h-0 flex-col overflow-hidden rounded-t-[20px] border bg-background overscroll-contain",
+          className
+        )}
+        style={{
+          maxHeight: viewportHeight ? `${Math.max(viewportHeight * 0.9, 320)}px` : undefined,
+          ...style,
+        }}
+        {...props}
+      >
+        <div className="mx-auto mt-3 h-2 w-[72px] rounded-full bg-muted" />
+        {children}
+      </DrawerPrimitive.Content>
+    </DrawerPortal>
+  )
+})
 DrawerContent.displayName = "DrawerContent"
 
 const DrawerHeader = ({
