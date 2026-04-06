@@ -85,33 +85,6 @@ const DrawerPortal = DrawerPrimitive.Portal
 
 const DrawerClose = DrawerPrimitive.Close
 
-const useVisualViewportHeight = () => {
-  const [viewportHeight, setViewportHeight] = React.useState<number | null>(null)
-
-  React.useEffect(() => {
-    if (typeof window === "undefined") {
-      return
-    }
-
-    const updateViewportHeight = () => {
-      const nextHeight = window.visualViewport?.height ?? window.innerHeight
-      setViewportHeight(nextHeight)
-    }
-
-    updateViewportHeight()
-
-    window.visualViewport?.addEventListener("resize", updateViewportHeight)
-    window.addEventListener("resize", updateViewportHeight)
-
-    return () => {
-      window.visualViewport?.removeEventListener("resize", updateViewportHeight)
-      window.removeEventListener("resize", updateViewportHeight)
-    }
-  }, [])
-
-  return viewportHeight
-}
-
 const DrawerOverlay = React.forwardRef<
   React.ElementRef<typeof DrawerPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Overlay>
@@ -128,8 +101,6 @@ const DrawerContent = React.forwardRef<
   React.ElementRef<typeof DrawerPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Content>
 >(({ className, children, style, ...props }, ref) => {
-  const viewportHeight = useVisualViewportHeight()
-
   return (
     <DrawerPortal>
       <DrawerOverlay />
@@ -140,7 +111,7 @@ const DrawerContent = React.forwardRef<
           className
         )}
         style={{
-          maxHeight: viewportHeight ? `${Math.max(viewportHeight * 0.9, 320)}px` : undefined,
+          maxHeight: "calc(var(--app-viewport-height, 100vh) * 0.9)",
           ...style,
         }}
         {...props}
