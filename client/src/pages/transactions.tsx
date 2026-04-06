@@ -124,30 +124,30 @@ export default function Transactions() {
             />
           </div>
         </div>
-
+  
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4" dir="rtl">
-          <TabsList className="w-full h-auto p-1 bg-muted/50 rounded-xl grid grid-cols-4">
-            <TabsTrigger value="all" className="rounded-lg py-2 text-xs" data-testid="tab-all">الكل</TabsTrigger>
-            <TabsTrigger value="income" className="rounded-lg py-2 text-xs" data-testid="tab-income">دخل</TabsTrigger>
-            <TabsTrigger value="expense" className="rounded-lg py-2 text-xs" data-testid="tab-expense">صرف</TabsTrigger>
-            <TabsTrigger value="debt" className="rounded-lg py-2 text-xs" data-testid="tab-debt">ديون</TabsTrigger>
+          <TabsList className="grid h-auto w-full grid-cols-4 rounded-2xl bg-muted/50 p-1.5">
+            <TabsTrigger value="all" className="rounded-xl px-1 py-2 text-[11px] sm:text-xs" data-testid="tab-all">الكل</TabsTrigger>
+            <TabsTrigger value="income" className="rounded-xl px-1 py-2 text-[11px] sm:text-xs" data-testid="tab-income">دخل</TabsTrigger>
+            <TabsTrigger value="expense" className="rounded-xl px-1 py-2 text-[11px] sm:text-xs" data-testid="tab-expense">صرف</TabsTrigger>
+            <TabsTrigger value="debt" className="rounded-xl px-1 py-2 text-[11px] sm:text-xs" data-testid="tab-debt">ديون</TabsTrigger>
           </TabsList>
         </Tabs>
 
-        <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          <select value={walletFilter} onChange={(e) => setWalletFilter(e.target.value)} className="app-select">
+        <div className="mt-4 flex gap-2 overflow-x-auto pb-1 sm:grid sm:grid-cols-2 xl:grid-cols-3">
+          <select value={walletFilter} onChange={(e) => setWalletFilter(e.target.value)} className="app-select min-w-[150px] shrink-0 rounded-xl">
             <option value="all">كل المحافظ</option>
             {wallets.map((wallet) => (
               <option key={wallet.id} value={wallet.id.toString()}>{wallet.name}</option>
             ))}
           </select>
-          <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="app-select">
+          <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="app-select min-w-[150px] shrink-0 rounded-xl">
             <option value="all">كل الأقسام</option>
             {categories.map((category) => (
               <option key={category.id} value={category.id.toString()}>{category.name}</option>
             ))}
           </select>
-          <select value={rangeFilter} onChange={(e) => setRangeFilter(e.target.value as typeof rangeFilter)} className="app-select">
+          <select value={rangeFilter} onChange={(e) => setRangeFilter(e.target.value as typeof rangeFilter)} className="app-select min-w-[150px] shrink-0 rounded-xl">
             <option value="all">كل الفترات</option>
             <option value="7days">آخر 7 أيام</option>
             <option value="30days">آخر 30 يومًا</option>
@@ -157,20 +157,20 @@ export default function Transactions() {
       </header>
 
       <div className="flex-1 overflow-auto px-1 py-4 pb-24 sm:px-2 sm:py-6 xl:px-0 xl:py-8">
-        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:max-w-3xl">
-          <div className="bg-emerald-50 dark:bg-emerald-950/20 rounded-2xl p-4 border border-emerald-100 dark:border-emerald-900/50">
-            <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 text-sm font-medium mb-1">
+        <div className="mb-6 grid grid-cols-2 gap-3 xl:max-w-3xl">
+          <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3 dark:border-emerald-900/50 dark:bg-emerald-950/20 sm:p-4">
+            <div className="mb-1 flex items-center gap-2 text-xs font-medium text-emerald-700 dark:text-emerald-400 sm:text-sm">
               <ArrowLeftRight className="h-4 w-4" />
               إجمالي الدخل
             </div>
-            <p className="break-words text-lg font-bold text-emerald-700 dark:text-emerald-300 sm:text-xl">+{formatCurrency(totalIncome, 2)}</p>
+            <p className="break-words text-sm font-bold text-emerald-700 dark:text-emerald-300 sm:text-xl">+{formatCurrency(totalIncome, 2)}</p>
           </div>
-          <div className="bg-red-50 dark:bg-red-950/20 rounded-2xl p-4 border border-red-100 dark:border-red-900/50">
-            <div className="flex items-center gap-2 text-red-700 dark:text-red-400 text-sm font-medium mb-1">
+          <div className="rounded-2xl border border-red-100 bg-red-50 p-3 dark:border-red-900/50 dark:bg-red-950/20 sm:p-4">
+            <div className="mb-1 flex items-center gap-2 text-xs font-medium text-red-700 dark:text-red-400 sm:text-sm">
               <Filter className="h-4 w-4" />
               إجمالي الخروج
             </div>
-            <p className="break-words text-lg font-bold text-red-700 dark:text-red-300 sm:text-xl">-{formatCurrency(totalOutflow, 2)}</p>
+            <p className="break-words text-sm font-bold text-red-700 dark:text-red-300 sm:text-xl">-{formatCurrency(totalOutflow, 2)}</p>
           </div>
         </div>
 
@@ -200,31 +200,47 @@ export default function Transactions() {
                   const icon = tx.categoryIcon || defaultIcons[catName] || "📝";
                   const bg = defaultBgs[catName] || "bg-muted";
                   return (
-                    <div key={tx.id} className="bg-card flex flex-col gap-3 rounded-2xl border border-border/50 p-3.5 shadow-sm transition-all active-elevate sm:flex-row sm:items-center sm:justify-between" data-testid={`card-transaction-${tx.id}`}>
-                      <div className="flex min-w-0 items-center gap-3">
-                        <div className={cn("h-12 w-12 rounded-2xl flex items-center justify-center text-xl shrink-0", bg)}>
+                    <div key={tx.id} className="bg-card flex flex-col gap-3 rounded-2xl border border-border/50 p-3 shadow-sm transition-all active-elevate sm:flex-row sm:items-center sm:justify-between sm:p-3.5" data-testid={`card-transaction-${tx.id}`}>
+                      <div className="flex min-w-0 items-start gap-3 sm:items-center">
+                        <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-lg sm:h-12 sm:w-12 sm:text-xl", bg)}>
                           {icon}
                         </div>
-                        <div className="min-w-0">
-                          <h4 className="font-bold text-sm">{catName}</h4>
-                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{getTransferLabel(tx.note)}</p>
-                          <div className="flex flex-wrap items-center gap-2 mt-1 text-[10px] text-muted-foreground">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex min-w-0 items-start justify-between gap-3 sm:hidden">
+                            <div className="min-w-0">
+                              <h4 className="text-sm font-bold leading-5">{catName}</h4>
+                              <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{getTransferLabel(tx.note)}</p>
+                            </div>
+                            <span className={cn(
+                              "shrink-0 text-sm font-bold",
+                              tx.type === 'income' ? "text-emerald-500" : 
+                              tx.type === 'expense' ? "text-red-500" :
+                              "text-gray-900 dark:text-gray-100"
+                            )}>
+                              {tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount, 2)}
+                            </span>
+                          </div>
+                          <div className="hidden sm:block">
+                            <h4 className="text-sm font-bold">{catName}</h4>
+                            <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{getTransferLabel(tx.note)}</p>
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
                             {tx.walletName ? <span className="inline-flex items-center gap-1"><Wallet className="h-3 w-3" />{tx.walletName}</span> : null}
                             {tx.categoryName ? <span className="inline-flex items-center gap-1"><PieChart className="h-3 w-3" />{tx.categoryName}</span> : null}
                           </div>
                         </div>
                       </div>
-                      <div className="flex shrink-0 items-center justify-between gap-2 sm:justify-normal">
+                      <div className="flex shrink-0 items-center justify-between gap-2 border-t border-border/40 pt-2 sm:border-0 sm:pt-0 sm:justify-normal">
                         <div className="flex min-w-0 flex-col items-start sm:items-end">
                           <span className={cn(
-                            "text-sm font-bold sm:text-base",
+                            "hidden text-sm font-bold sm:inline sm:text-base",
                             tx.type === 'income' ? "text-emerald-500" : 
                             tx.type === 'expense' ? "text-red-500" :
                             "text-gray-900 dark:text-gray-100"
                           )}>
                             {tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount, 2)}
                           </span>
-                          <span className="mt-1 text-[10px] text-muted-foreground sm:text-right">
+                          <span className="text-[10px] text-muted-foreground sm:mt-1 sm:text-right">
                             {tx.date && formatRelativeArabicDate(tx.date)} {tx.date && `• ${formatTime(tx.date)}`}
                           </span>
                         </div>

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "wouter";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, XAxis } from "recharts";
 import { ArrowDownLeft, ArrowUpRight, BarChart3, Landmark, Loader2, Printer, Receipt, Sparkles, Wallet } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
@@ -51,6 +52,7 @@ export default function Reports() {
   const [period, setPeriod] = useState<"all" | "1month" | "3months" | "6months" | "1year">("1month");
   const [showAllRecentTransactions, setShowAllRecentTransactions] = useState(false);
   const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
+  const isMobile = useIsMobile();
   const { data, isLoading } = useReportsSummary(period);
 
   const pieData = useMemo(() => {
@@ -240,12 +242,19 @@ export default function Reports() {
         </CardHeader>
         <CardContent className="px-3 pb-4 sm:px-6">
           {data.timeline.length > 0 ? (
-            <ChartContainer config={trendChartConfig} className="h-[220px] w-full sm:h-[250px]">
-              <AreaChart data={data.timeline}>
+            <ChartContainer config={trendChartConfig} className="h-[240px] w-full sm:h-[250px]">
+              <AreaChart data={data.timeline} margin={isMobile ? { top: 8, right: 8, left: 8, bottom: 0 } : { top: 8, right: 16, left: 16, bottom: 0 }}>
                 <CartesianGrid vertical={false} />
-                <XAxis dataKey="label" tickLine={false} axisLine={false} />
+                <XAxis
+                  dataKey="label"
+                  tickLine={false}
+                  axisLine={false}
+                  minTickGap={isMobile ? 24 : 16}
+                  interval="preserveStartEnd"
+                  tick={{ fontSize: isMobile ? 11 : 12 }}
+                />
                 <ChartTooltip content={<ChartTooltipContent />} />
-                <ChartLegend content={<ChartLegendContent />} />
+                <ChartLegend content={<ChartLegendContent className="flex-wrap gap-x-3 gap-y-2 text-xs sm:text-sm" />} />
                 <Area type="monotone" dataKey="income" stroke="var(--color-income)" fill="var(--color-income)" fillOpacity={0.18} strokeWidth={2} />
                 <Area type="monotone" dataKey="expenses" stroke="var(--color-expenses)" fill="var(--color-expenses)" fillOpacity={0.12} strokeWidth={2} />
               </AreaChart>
@@ -258,16 +267,16 @@ export default function Reports() {
 
       <Card className="overflow-hidden rounded-[24px] border border-border/50 bg-card shadow-sm sm:rounded-[28px]">
         <CardHeader className="px-4 pb-0 pt-5 sm:px-6 sm:pt-6">
-          <CardTitle className="justify-center text-center text-xl font-bold leading-tight text-foreground sm:text-[28px]">
+          <CardTitle className="justify-center text-center text-lg font-bold leading-tight text-foreground sm:text-[28px]">
             توزيع النفقات حسب الأقسام
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-5 px-3 pb-4 pt-4 sm:space-y-6 sm:px-6 sm:pb-6">
           {pieData.length > 0 ? (
             <div className="flex flex-col items-center justify-center">
-              <div className="h-[250px] w-full max-w-[280px] sm:h-[290px] sm:max-w-[320px]">
+              <div className="h-[220px] w-full max-w-[240px] sm:h-[290px] sm:max-w-[320px]">
                 <ChartContainer config={{ total: { label: "النفقات" } }} className="h-full w-full">
-                  <PieChart margin={{ top: 20, right: 16, left: 16, bottom: 20 }}>
+                  <PieChart margin={isMobile ? { top: 8, right: 8, left: 8, bottom: 8 } : { top: 20, right: 16, left: 16, bottom: 20 }}>
                     <ChartTooltip
                       content={
                         <ChartTooltipContent
@@ -287,14 +296,18 @@ export default function Reports() {
                       data={pieData}
                       dataKey="total"
                       nameKey="categoryName"
-                      innerRadius={48}
-                      outerRadius={82}
+                      innerRadius={isMobile ? 40 : 48}
+                      outerRadius={isMobile ? 68 : 82}
                       paddingAngle={2}
                       cornerRadius={4}
                       stroke="#ffffff"
                       strokeWidth={2}
                       labelLine={false}
                       label={({ cx, cy, midAngle, outerRadius, percent }) => {
+                        if (isMobile) {
+                          return null;
+                        }
+
                         const radius = Number(outerRadius) + 24;
                         const x = Number(cx) + radius * Math.cos((-midAngle * Math.PI) / 180);
                         const y = Number(cy) + radius * Math.sin((-midAngle * Math.PI) / 180);
@@ -320,11 +333,11 @@ export default function Reports() {
                   </PieChart>
                 </ChartContainer>
               </div>
-              <div className="flex w-full flex-wrap items-center justify-center gap-x-4 gap-y-2 text-sm font-semibold text-foreground sm:gap-x-6 sm:gap-y-3 sm:text-[15px]">
+              <div className="flex w-full flex-wrap items-center justify-center gap-x-2 gap-y-2 text-xs font-semibold text-foreground sm:gap-x-6 sm:gap-y-3 sm:text-[15px]">
                 {pieData.map((item) => (
-                  <div key={`${item.categoryId}-${item.categoryName}-legend`} className="max-w-full rounded-full bg-muted/40 px-3 py-1.5">
+                  <div key={`${item.categoryId}-${item.categoryName}-legend`} className="max-w-full rounded-full bg-muted/40 px-2.5 py-1 sm:px-3 sm:py-1.5">
                     <div className="flex items-center gap-2">
-                      <span className="truncate">{item.categoryName}</span>
+                      <span className="max-w-[120px] truncate sm:max-w-none">{item.categoryName}</span>
                       <span className="h-3.5 w-3.5 shrink-0 rounded-md" style={{ backgroundColor: item.fill }} />
                     </div>
                   </div>
@@ -360,12 +373,21 @@ export default function Reports() {
         <CardContent className="space-y-4 px-3 pb-4 sm:px-6">
           {data.walletBreakdown.length > 0 ? (
             <>
-              <ChartContainer config={walletChartConfig} className="h-[220px] w-full sm:h-[240px]">
-                <BarChart data={data.walletBreakdown.slice(0, 5)}>
+              <ChartContainer config={walletChartConfig} className="h-[240px] w-full sm:h-[240px]">
+                <BarChart data={data.walletBreakdown.slice(0, 5)} margin={isMobile ? { top: 8, right: 8, left: 8, bottom: 0 } : { top: 8, right: 16, left: 16, bottom: 0 }}>
                   <CartesianGrid vertical={false} />
-                  <XAxis dataKey="name" tickLine={false} axisLine={false} />
+                  <XAxis
+                    dataKey="name"
+                    tickLine={false}
+                    axisLine={false}
+                    interval={0}
+                    height={isMobile ? 44 : 32}
+                    minTickGap={isMobile ? 8 : 16}
+                    tick={{ fontSize: isMobile ? 11 : 12 }}
+                    tickFormatter={(value: string) => (isMobile && value.length > 8 ? `${value.slice(0, 8)}…` : value)}
+                  />
                   <ChartTooltip content={<ChartTooltipContent />} />
-                  <ChartLegend content={<ChartLegendContent />} />
+                  <ChartLegend content={<ChartLegendContent className="flex-wrap gap-x-3 gap-y-2 text-xs sm:text-sm" />} />
                   <Bar dataKey="income" fill="var(--color-income)" radius={[6, 6, 0, 0]} />
                   <Bar dataKey="expenses" fill="var(--color-expenses)" radius={[6, 6, 0, 0]} />
                 </BarChart>
