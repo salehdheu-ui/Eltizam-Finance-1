@@ -148,7 +148,7 @@ export default function Reports() {
         </Card>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:gap-4 2xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:gap-4">
         <Card className="border-emerald-200 bg-gradient-to-br from-emerald-50 to-emerald-100">
           <CardContent className="flex min-h-[132px] flex-col justify-between p-3 sm:min-h-[156px] sm:p-4">
             <div className="flex items-center justify-between gap-2">

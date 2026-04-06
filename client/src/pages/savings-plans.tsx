@@ -1,11 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTransactions, useWallets } from "@/lib/hooks";
 import { cn, formatCurrency, parseNumericInput } from "@/lib/utils";
-import { ArrowRight, CircleHelp, PiggyBank, Sparkles, Target, TrendingUp, Wallet } from "lucide-react";
+import { ArrowRight, CheckCircle2, PiggyBank, Sparkles, Target, TrendingUp, Wallet } from "lucide-react";
 
 type SavingsPlan = {
   id: string;
@@ -17,7 +16,6 @@ type SavingsPlan = {
   reserveRate: number;
   description: string;
   highlights: string[];
-  quickTip: string;
   bestFor: string;
   caution: string;
   detailedPoints: string[];
@@ -34,7 +32,6 @@ const savingsPlans: SavingsPlan[] = [
     reserveRate: 0.05,
     description: "احجز 10% من دخلك أولاً قبل أي صرف حتى تبني أصل الادخار والانضباط المالي.",
     highlights: ["بداية ممتازة", "تبني عادة ادخار", "سهلة التطبيق شهرياً"],
-    quickTip: "تبدأ بادخار بسيط وثابت قبل أي مصروف.",
     bestFor: "المبتدئ أو من يريد عادة ادخار سهلة وواضحة.",
     caution: "قد تكون بطيئة إذا كان هدفك كبيراً وتحتاج الوصول إليه بسرعة.",
     detailedPoints: [
@@ -53,7 +50,6 @@ const savingsPlans: SavingsPlan[] = [
     reserveRate: 0,
     description: "تقسم دخلك بين الاحتياجات والرغبات والادخار بطريقة متوازنة ومناسبة لمعظم الناس.",
     highlights: ["متوازنة", "واضحة", "مناسبة لمعظم المستخدمين"],
-    quickTip: "خطة متوازنة بين المعيشة الحالية والادخار.",
     bestFor: "من لديه دخل مستقر ويريد توازناً واضحاً بين الاحتياجات والرغبات والادخار.",
     caution: "قد لا تكون الأنسب إذا كانت التزاماتك الشهرية مرتفعة جداً.",
     detailedPoints: [
@@ -72,7 +68,6 @@ const savingsPlans: SavingsPlan[] = [
     reserveRate: 0.1,
     description: "تناسب من يركز على الاستقرار والاحتياطي مع تقليل الهدر في الكماليات.",
     highlights: ["قوية للأسر", "تعزز الاحتياطي", "تخدم الالتزامات الشهرية"],
-    quickTip: "تقلل الكماليات وتعطي مساحة أكبر للالتزامات والاحتياطي.",
     bestFor: "من لديه مسؤوليات أو أقساط ويريد خطة عملية ومحافظة.",
     caution: "قد تكون مقيدة إذا كنت تحتاج مساحة أكبر للرغبات أو الترفيه.",
     detailedPoints: [
@@ -91,7 +86,6 @@ const savingsPlans: SavingsPlan[] = [
     reserveRate: 0.05,
     description: "مناسبة لمن يريد الدخول في الادخار بشكل مريح ثم زيادة النسبة مع الوقت.",
     highlights: ["مريحة نفسياً", "سهلة الالتزام", "مناسبة بعد التعثر المالي"],
-    quickTip: "ابدأ بنسبة مناسبة ثم ارفع الادخار تدريجياً مع الوقت.",
     bestFor: "من يجد صعوبة في الالتزام بخطة قوية من البداية أو يمر بمرحلة تعافٍ مالي.",
     caution: "تحتاج متابعة شهرية حتى لا تتوقف عند البداية دون تطوير.",
     detailedPoints: [
@@ -144,6 +138,7 @@ export default function SavingsPlans() {
   const [manualNeeds, setManualNeeds] = useState("");
   const [manualWants, setManualWants] = useState("");
   const [manualFixedObligations, setManualFixedObligations] = useState("");
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
 
   const totalBalance = wallets.reduce((sum, wallet) => sum + wallet.balance, 0);
 
@@ -262,6 +257,7 @@ export default function SavingsPlans() {
         .filter(({ plan }) => effectiveIncome * plan.savingsRate > 0)
         .sort((a, b) => b.plan.savingsRate - a.plan.savingsRate)[0]?.plan
     : null;
+  const selectedPlan = savingsPlans.find((plan) => plan.id === selectedPlanId) ?? null;
 
   const planCards = rankedPlans.map(({ plan, compatibility, reasons }, index) => {
     const monthlySavingsAmount = effectiveIncome * plan.savingsRate;
@@ -292,9 +288,29 @@ export default function SavingsPlans() {
   });
 
   const improvementGap = Math.max((recommendedPlan.savingsRate * effectiveIncome) - Math.max(currentSavings, 0), 0);
+  const exampleIncome = effectiveIncome > 0 ? effectiveIncome : 1000;
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const savedPlanId = window.localStorage.getItem("eltizam-selected-savings-plan");
+
+    if (savedPlanId) {
+      setSelectedPlanId(savedPlanId);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !selectedPlanId) {
+      return;
+    }
+
+    window.localStorage.setItem("eltizam-selected-savings-plan", selectedPlanId);
+  }, [selectedPlanId]);
 
   return (
-    <TooltipProvider>
       <div className="app-page" dir="rtl">
       <div className="text-center py-2 sm:py-4 space-y-1">
         <h1 className="text-xl font-bold sm:text-2xl">خطط الادخار</h1>
@@ -423,6 +439,31 @@ export default function SavingsPlans() {
         </CardContent>
       </Card>
 
+      {selectedPlan ? (
+        <Card className="border-primary/30 bg-gradient-to-br from-primary/5 to-emerald-50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-primary" />
+              خطتك المعتمدة حالياً
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-bold text-primary">{selectedPlan.title}</p>
+                <p className="text-sm text-muted-foreground">{selectedPlan.subtitle}</p>
+              </div>
+              <span className="w-fit rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">تم اعتمادها</span>
+            </div>
+            <p className="text-sm text-slate-700">{selectedPlan.description}</p>
+            <div className="rounded-xl bg-white/80 p-3 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">التوزيع المعتمد: </span>
+              {getSavingsDistributionLabel(selectedPlan)}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base sm:text-lg flex items-center gap-2">
@@ -464,24 +505,14 @@ export default function SavingsPlans() {
 
       <div className="grid gap-4">
         {planCards.map(({ plan, rank, compatibility, reasons, monthlySavingsAmount, monthlyNeedsAmount, monthlyWantsAmount, monthlyReserveAmount, projectedBalance, investmentProjection, monthsToGoal, smartBadge, isRecommended }) => (
-          <Card key={plan.id} className={cn("overflow-hidden", isRecommended ? "border-emerald-400 shadow-lg ring-2 ring-emerald-200" : "") }>
+          <Card key={plan.id} className={cn("overflow-hidden", isRecommended ? "border-emerald-400 shadow-lg ring-2 ring-emerald-200" : "", selectedPlanId === plan.id ? "border-primary shadow-md ring-2 ring-primary/20" : "") }>
             {isRecommended ? <div className="bg-gradient-to-l from-emerald-500 to-teal-500 px-4 py-2 text-center text-sm font-bold text-white">هذه الخطة هي الأنسب لك الآن بناءً على بياناتك الحالية</div> : null}
+            {selectedPlanId === plan.id ? <div className="bg-gradient-to-l from-primary to-blue-600 px-4 py-2 text-center text-sm font-bold text-white">أنت تعتمد هذه الخطة حالياً</div> : null}
             <CardHeader className="pb-3">
               <CardTitle className="flex flex-col gap-3 text-base sm:flex-row sm:items-center sm:justify-between sm:text-lg">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span>{plan.title}</span>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button type="button" className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" aria-label={`شرح سريع لخطة ${plan.title}`}>
-                          <CircleHelp className="h-4 w-4" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent className="max-w-xs text-right leading-6">
-                        <p className="font-medium">{plan.quickTip}</p>
-                        <p className="mt-1 text-[11px] opacity-90">{plan.bestFor}</p>
-                      </TooltipContent>
-                    </Tooltip>
                     <Popover>
                       <PopoverTrigger asChild>
                         <button type="button" className="rounded-full border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" aria-label={`شرح مفصل لخطة ${plan.title}`}>
@@ -545,6 +576,34 @@ export default function SavingsPlans() {
                 <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">الاحتياطي</p><p className="font-bold text-violet-600">{formatCurrency(monthlyReserveAmount, 2)} ر.ع</p></div>
               </div>
 
+              <div className="rounded-xl border bg-slate-50 p-4">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="font-medium text-foreground">مثال مباشر على تطبيق الخطة</p>
+                  <p className="text-xs text-muted-foreground">على دخل شهري قدره {formatCurrency(exampleIncome, 2)} ر.ع</p>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="rounded-lg bg-white p-3 border">
+                    <p className="text-xs text-muted-foreground">الاحتياجات</p>
+                    <p className="font-bold text-blue-600">{formatCurrency(exampleIncome * plan.needsRate, 2)} ر.ع</p>
+                  </div>
+                  <div className="rounded-lg bg-white p-3 border">
+                    <p className="text-xs text-muted-foreground">الرغبات</p>
+                    <p className="font-bold text-amber-600">{formatCurrency(exampleIncome * plan.wantsRate, 2)} ر.ع</p>
+                  </div>
+                  <div className="rounded-lg bg-white p-3 border">
+                    <p className="text-xs text-muted-foreground">الادخار</p>
+                    <p className="font-bold text-emerald-600">{formatCurrency(exampleIncome * plan.savingsRate, 2)} ر.ع</p>
+                  </div>
+                  <div className="rounded-lg bg-white p-3 border">
+                    <p className="text-xs text-muted-foreground">الاحتياطي</p>
+                    <p className="font-bold text-violet-600">{formatCurrency(exampleIncome * plan.reserveRate, 2)} ر.ع</p>
+                  </div>
+                </div>
+                <p className="mt-3 text-xs leading-6 text-muted-foreground">
+                  هذا المثال يتغير تلقائياً حسب الدخل الذي تدخله أنت، وإذا لم تدخل دخلاً نعرض مثالاً مبسطاً على دخل افتراضي.
+                </p>
+              </div>
+
               <div className="rounded-xl border bg-white p-3">
                 <div className="mb-2 flex items-center justify-between gap-3 text-sm">
                   <span className="font-medium text-foreground">شريط الملاءمة</span>
@@ -575,11 +634,41 @@ export default function SavingsPlans() {
                 </ul>
                 {targetNum > 0 ? <div className="mt-4 rounded-lg bg-primary/5 p-3 text-sm"><span className="font-medium">الوقت التقريبي لتحقيق هدفك:</span> {monthsToGoal ? `${monthsToGoal} شهر` : "أدخل دخلاً شهرياً أو ارفع الادخار"}</div> : null}
               </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <button
+                  type="button"
+                  onClick={() => setSelectedPlanId(plan.id)}
+                  className={cn(
+                    "w-full rounded-xl px-4 py-3 text-sm font-bold transition-colors sm:w-auto",
+                    selectedPlanId === plan.id
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-slate-900 text-white hover:bg-slate-800"
+                  )}
+                >
+                  {selectedPlanId === plan.id ? "تم اعتماد هذه الخطة" : "اعتمد هذه الخطة"}
+                </button>
+                {selectedPlanId === plan.id ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedPlanId(null);
+                      if (typeof window !== "undefined") {
+                        window.localStorage.removeItem("eltizam-selected-savings-plan");
+                      }
+                    }}
+                    className="w-full rounded-xl border px-4 py-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted sm:w-auto"
+                  >
+                    إلغاء الاعتماد
+                  </button>
+                ) : (
+                  <p className="text-xs text-muted-foreground">يمكنك اعتماد الخطة المناسبة لك وسيتم تذكرها عند عودتك لاحقاً.</p>
+                )}
+              </div>
             </CardContent>
           </Card>
         ))}
       </div>
       </div>
-    </TooltipProvider>
   );
 }
