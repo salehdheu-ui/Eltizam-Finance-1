@@ -776,48 +776,76 @@ export default function Obligations() {
 
   return (
     <div className="animate-in fade-in duration-300">
-      {/* Header */}
-      <header className="px-1 py-4 pb-2 sm:px-2 sm:py-6 xl:px-0">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <h1 className="text-xl font-bold sm:text-2xl">الالتزامات</h1>
-            <p className="mt-1 text-sm text-muted-foreground sm:text-base">تابع ما يجب دفعه، وما هو قريب الاستحقاق، وسجّل الدفعات بسرعة من نفس الصفحة.</p>
+      <header className="px-1 py-4 pb-3 sm:px-2 sm:py-6 xl:px-0">
+        <div className="overflow-hidden rounded-[28px] border border-border/60 bg-gradient-to-b from-background via-background to-muted/30 shadow-sm">
+          <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+            <div className="min-w-0 space-y-2">
+              <div className="inline-flex w-fit items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary">
+                <Receipt className="h-3.5 w-3.5" />
+                متابعة ذكية للالتزامات
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">الالتزامات</h1>
+                <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">تابع ما يجب دفعه، وما هو قريب الاستحقاق، وسجّل الدفعات بسرعة من نفس الصفحة.</p>
+              </div>
+            </div>
+            <div className="flex flex-col gap-2 hide-on-print sm:flex-row sm:items-center">
+              <Button type="button" variant="outline" className="h-11 w-full rounded-2xl border-border/70 bg-background/80 px-4 sm:w-auto" onClick={handleOpenGeneralReport}>
+                <Printer className="h-4 w-4 ml-1" />
+                طباعة / PDF
+              </Button>
+              <Button 
+                className="h-11 w-full rounded-2xl px-5 shadow-md shadow-primary/20 bg-primary text-primary-foreground cursor-pointer sm:w-auto"
+                onClick={() => handleAdd()}
+              >
+                <Plus className="h-5 w-5" />
+                إضافة التزام
+              </Button>
+            </div>
           </div>
-          <div className="flex flex-col gap-2 hide-on-print sm:flex-row sm:items-center">
-            <Button type="button" variant="outline" className="w-full rounded-full sm:w-auto" onClick={handleOpenGeneralReport}>
-              <Printer className="h-4 w-4 ml-1" />
-              طباعة / PDF
-            </Button>
-            <Button 
-              className="w-full rounded-full shadow-md bg-primary text-primary-foreground cursor-pointer sm:w-auto"
-              onClick={() => handleAdd()}
-            >
-              <Plus className="h-5 w-5" />
-              إضافة التزام
-            </Button>
+          <div className="grid grid-cols-3 gap-2 border-t border-border/50 bg-muted/20 p-3 sm:p-4">
+            <div className="rounded-2xl bg-background/80 px-3 py-3 text-center shadow-sm">
+              <div className="text-xs text-muted-foreground">النشطة</div>
+              <div className="mt-1 text-lg font-bold">{activeObligations.length}</div>
+            </div>
+            <div className="rounded-2xl bg-background/80 px-3 py-3 text-center shadow-sm">
+              <div className="text-xs text-muted-foreground">قريبة</div>
+              <div className="mt-1 text-lg font-bold text-amber-600 dark:text-amber-400">{dueSoonCount}</div>
+            </div>
+            <div className="rounded-2xl bg-background/80 px-3 py-3 text-center shadow-sm">
+              <div className="text-xs text-muted-foreground">تلقائي</div>
+              <div className="mt-1 text-lg font-bold text-primary">{autoCreateCount}</div>
+            </div>
           </div>
         </div>
       </header>
 
-      {/* محتوى الصفحة */}
       <div className="px-1 pb-24 sm:px-2 xl:px-0">
         {obligations?.length === 0 ? (
-          // حالة الصفحة الفارغة
-          <div className="text-center py-16">
-            <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Receipt className="h-10 w-10 text-primary" />
+          <div className="rounded-[28px] border border-dashed border-border/60 bg-gradient-to-b from-muted/20 to-background px-5 py-14 text-center shadow-sm">
+            <div className="mx-auto mb-5 flex h-24 w-24 items-center justify-center rounded-full bg-primary/10 shadow-inner shadow-primary/10">
+              <Receipt className="h-11 w-11 text-primary" />
             </div>
-            <h3 className="font-bold text-xl mb-2">لا توجد التزامات</h3>
-            <p className="text-muted-foreground mb-6 max-w-xs mx-auto">
-              أضف التزاماتك المالية لتتبع مواعيد الاستحقاق والمبالغ
+            <h3 className="text-2xl font-bold">لا توجد التزامات</h3>
+            <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-muted-foreground sm:text-base">
+              أضف التزاماتك المالية لتتبع مواعيد الاستحقاق والمبالغ وتنظيم دفعاتك القادمة من مكان واحد.
             </p>
-            <div className="text-xs text-muted-foreground/80 mb-6 space-y-1">
-              <p>1. أضف عنوان الالتزام والمبلغ</p>
-              <p>2. حدد التكرار وموعد الاستحقاق</p>
-              <p>3. اربطه بمحفظة لتسجيل الدفع بسرعة لاحقًا</p>
+            <div className="mx-auto mt-6 grid max-w-md gap-3 text-right sm:grid-cols-3">
+              <div className="rounded-2xl border border-border/60 bg-background/80 p-3 text-center shadow-sm">
+                <div className="text-lg font-bold text-primary">1</div>
+                <div className="mt-1 text-xs text-muted-foreground">أضف العنوان والمبلغ</div>
+              </div>
+              <div className="rounded-2xl border border-border/60 bg-background/80 p-3 text-center shadow-sm">
+                <div className="text-lg font-bold text-primary">2</div>
+                <div className="mt-1 text-xs text-muted-foreground">حدد التكرار والموعد</div>
+              </div>
+              <div className="rounded-2xl border border-border/60 bg-background/80 p-3 text-center shadow-sm">
+                <div className="text-lg font-bold text-primary">3</div>
+                <div className="mt-1 text-xs text-muted-foreground">اربطه بمحفظة أو قسم</div>
+              </div>
             </div>
             <Button 
-              className="rounded-full px-6"
+              className="mt-7 h-12 rounded-2xl px-6 shadow-md shadow-primary/20"
               onClick={() => handleAdd()}
             >
               <Plus className="h-5 w-5 ml-2" />
@@ -825,12 +853,10 @@ export default function Obligations() {
             </Button>
           </div>
         ) : (
-          // لوحة التحكم
           <div className="flex flex-col gap-6">
-            {/* بطاقات الإحصائيات */}
             <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-              <Card className="border-0 shadow-sm bg-emerald-50/50 dark:bg-emerald-950/20">
-                <CardContent className="p-4">
+              <Card className="border border-emerald-200/60 shadow-sm bg-emerald-50/70 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+                <CardContent className="p-4 sm:p-5">
                   <div className="flex items-center gap-2 mb-1">
                     <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center">
                       <Power className="h-4 w-4 text-emerald-600" />
@@ -841,8 +867,8 @@ export default function Obligations() {
                 </CardContent>
               </Card>
               
-              <Card className="border-0 shadow-sm bg-destructive/5">
-                <CardContent className="p-4">
+              <Card className="border border-destructive/10 shadow-sm bg-destructive/5">
+                <CardContent className="p-4 sm:p-5">
                   <div className="flex items-center gap-2 mb-1">
                     <div className="w-8 h-8 rounded-lg bg-destructive/10 flex items-center justify-center">
                       <Wallet className="h-4 w-4 text-destructive" />
@@ -854,8 +880,8 @@ export default function Obligations() {
                   </div>
                 </CardContent>
               </Card>
-              <Card className="border-0 shadow-sm bg-amber-50/70 dark:bg-amber-950/20">
-                <CardContent className="p-4">
+              <Card className="border border-amber-200/60 shadow-sm bg-amber-50/70 dark:border-amber-900/50 dark:bg-amber-950/20">
+                <CardContent className="p-4 sm:p-5">
                   <div className="flex items-center gap-2 mb-1">
                     <div className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900 flex items-center justify-center">
                       <AlertCircle className="h-4 w-4 text-amber-600" />
@@ -865,8 +891,8 @@ export default function Obligations() {
                   <div className="text-2xl font-bold text-amber-700 dark:text-amber-400">{dueSoonCount}</div>
                 </CardContent>
               </Card>
-              <Card className="border-0 shadow-sm bg-primary/5">
-                <CardContent className="p-4">
+              <Card className="border border-primary/10 shadow-sm bg-primary/5">
+                <CardContent className="p-4 sm:p-5">
                   <div className="flex items-center gap-2 mb-1">
                     <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
                       <Sparkles className="h-4 w-4 text-primary" />
@@ -878,8 +904,8 @@ export default function Obligations() {
               </Card>
             </div>
 
-            <Card className="border border-border/50 shadow-sm">
-              <CardContent className="p-4 space-y-4">
+            <Card className="overflow-hidden border border-border/50 shadow-sm">
+              <CardContent className="space-y-4 p-4 sm:p-5">
                 <div className="flex items-center gap-2 text-sm font-semibold">
                   <Filter className="h-4 w-4 text-primary" />
                   تصفية الالتزامات
@@ -894,8 +920,8 @@ export default function Obligations() {
                           type="button"
                           onClick={() => setStatusFilter(item.value as typeof statusFilter)}
                           className={cn(
-                            "px-3 py-1.5 rounded-full text-sm border transition-all",
-                            statusFilter === item.value ? "border-primary bg-primary/10 text-primary font-medium" : "border-border/50 hover:bg-muted/50"
+                            "px-3 py-2 rounded-2xl text-sm border transition-all shadow-sm",
+                            statusFilter === item.value ? "border-primary bg-primary/10 text-primary font-medium shadow-primary/10" : "border-border/50 bg-background hover:bg-muted/50"
                           )}
                         >
                           {item.label}
@@ -912,8 +938,8 @@ export default function Obligations() {
                           type="button"
                           onClick={() => setFrequencyFilter(item.value as typeof frequencyFilter)}
                           className={cn(
-                            "px-3 py-1.5 rounded-full text-sm border transition-all",
-                            frequencyFilter === item.value ? "border-primary bg-primary/10 text-primary font-medium" : "border-border/50 hover:bg-muted/50"
+                            "px-3 py-2 rounded-2xl text-sm border transition-all shadow-sm",
+                            frequencyFilter === item.value ? "border-primary bg-primary/10 text-primary font-medium shadow-primary/10" : "border-border/50 bg-background hover:bg-muted/50"
                           )}
                         >
                           {item.label}
@@ -930,8 +956,8 @@ export default function Obligations() {
                           type="button"
                           onClick={() => setTimingFilter(item.value as typeof timingFilter)}
                           className={cn(
-                            "px-3 py-1.5 rounded-full text-sm border transition-all",
-                            timingFilter === item.value ? "border-primary bg-primary/10 text-primary font-medium" : "border-border/50 hover:bg-muted/50"
+                            "px-3 py-2 rounded-2xl text-sm border transition-all shadow-sm",
+                            timingFilter === item.value ? "border-primary bg-primary/10 text-primary font-medium shadow-primary/10" : "border-border/50 bg-background hover:bg-muted/50"
                           )}
                         >
                           {item.label}

@@ -108,6 +108,27 @@ function App() {
     let keyboardOpen = false;
     let restoreScrollY = window.scrollY;
     let pendingRestoreFrame = 0;
+    const pendingTimeouts = new Set<number>();
+
+    const syncViewportVars = (viewportHeight: number) => {
+      document.documentElement.style.setProperty("--app-viewport-height", `${viewportHeight}px`);
+      baselineHeight = Math.max(baselineHeight, viewportHeight, window.innerHeight);
+      document.documentElement.style.setProperty("--app-safe-viewport-height", `${baselineHeight}px`);
+    };
+
+    const scheduleViewportRecovery = () => {
+      const delays = [0, 60, 140, 260, 420];
+
+      delays.forEach((delay) => {
+        const timeout = window.setTimeout(() => {
+          pendingTimeouts.delete(timeout);
+          const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+          syncViewportVars(viewportHeight);
+        }, delay);
+
+        pendingTimeouts.add(timeout);
+      });
+    };
 
     const updateViewportHeight = () => {
       const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
@@ -127,11 +148,11 @@ function App() {
         pendingRestoreFrame = window.requestAnimationFrame(() => {
           window.scrollTo({ top: restoreScrollY, behavior: "auto" });
         });
+        scheduleViewportRecovery();
       }
 
       if (!keyboardLikelyOpen) {
-        baselineHeight = Math.max(baselineHeight, viewportHeight);
-        document.documentElement.style.setProperty("--app-safe-viewport-height", `${baselineHeight}px`);
+        syncViewportVars(viewportHeight);
       }
     };
 
@@ -150,23 +171,28 @@ function App() {
         const activeElement = document.activeElement;
         if (!isEditableElement(activeElement)) {
           window.scrollTo({ top: restoreScrollY, behavior: "auto" });
+          scheduleViewportRecovery();
         }
       }, 180);
     };
 
     updateViewportHeight();
-    document.documentElement.style.setProperty("--app-safe-viewport-height", `${baselineHeight}px`);
+    syncViewportVars(window.visualViewport?.height ?? window.innerHeight);
     window.addEventListener("resize", updateViewportHeight);
     window.visualViewport?.addEventListener("resize", updateViewportHeight);
     window.visualViewport?.addEventListener("scroll", updateViewportHeight);
+    window.addEventListener("orientationchange", scheduleViewportRecovery);
     document.addEventListener("focusin", handleFocusIn);
     document.addEventListener("focusout", handleFocusOut);
 
     return () => {
       window.cancelAnimationFrame(pendingRestoreFrame);
+      pendingTimeouts.forEach((timeout) => window.clearTimeout(timeout));
+      pendingTimeouts.clear();
       window.removeEventListener("resize", updateViewportHeight);
       window.visualViewport?.removeEventListener("resize", updateViewportHeight);
       window.visualViewport?.removeEventListener("scroll", updateViewportHeight);
+      window.removeEventListener("orientationchange", scheduleViewportRecovery);
       document.removeEventListener("focusin", handleFocusIn);
       document.removeEventListener("focusout", handleFocusOut);
     };

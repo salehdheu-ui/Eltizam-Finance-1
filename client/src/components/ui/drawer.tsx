@@ -44,12 +44,6 @@ const Drawer = ({
 
     const cleanup = () => {
       clearDrawerArtifacts()
-      if (typeof window !== "undefined") {
-        document.documentElement.style.setProperty(
-          "--app-safe-viewport-height",
-          `${window.innerHeight}px`
-        )
-      }
     }
 
     cleanup()
@@ -107,11 +101,11 @@ const DrawerContent = React.forwardRef<
       <DrawerPrimitive.Content
         ref={ref}
         className={cn(
-          "fixed inset-x-0 bottom-0 z-50 mt-24 flex h-auto min-h-0 flex-col overflow-hidden rounded-t-[20px] border bg-background overscroll-contain",
+          "fixed inset-x-0 bottom-0 z-50 flex h-auto min-h-0 flex-col overflow-hidden rounded-t-[20px] border bg-background overscroll-contain",
           className
         )}
         style={{
-          maxHeight: "calc(var(--app-viewport-height, 100vh) * 0.9)",
+          maxHeight: "min(90dvh, var(--app-safe-viewport-height, 100vh) * 0.95)",
           ...style,
         }}
         {...props}
