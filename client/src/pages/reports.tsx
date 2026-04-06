@@ -90,7 +90,7 @@ export default function Reports() {
   };
 
   return (
-    <div className="space-y-4 px-1 py-4 pb-24 sm:px-2 sm:py-6 xl:px-0 xl:py-8" dir="rtl">
+    <div className="space-y-4 overflow-x-hidden px-2 py-4 pb-24 sm:px-3 sm:py-6 xl:px-0 xl:py-8" dir="rtl">
       <div className="flex flex-col gap-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:py-4">
         <div className="text-center sm:text-right">
           <h1 className="text-xl font-bold sm:text-2xl">التقارير المالية</h1>
@@ -114,7 +114,7 @@ export default function Reports() {
             key={item.key}
             onClick={() => setPeriod(item.key as typeof period)}
             className={cn(
-              "min-h-10 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all",
+              "min-h-10 rounded-full px-4 py-2 text-sm font-medium whitespace-nowrap transition-all",
               period === item.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80",
             )}
           >
@@ -132,8 +132,8 @@ export default function Reports() {
 
       {!hasData ? (
         <Card className="border-dashed border-border/60">
-          <CardContent className="p-8 text-center space-y-3">
-            <BarChart3 className="h-10 w-10 mx-auto text-muted-foreground" />
+          <CardContent className="space-y-3 p-8 text-center">
+            <BarChart3 className="mx-auto h-10 w-10 text-muted-foreground" />
             <h2 className="text-lg font-bold">لا توجد بيانات كافية للتقارير بعد</h2>
             <p className="text-sm text-muted-foreground">أضف حركات دخل ومصروف أو أضف راتبًا شهريًا ليبدأ النظام بعرض التحليلات.</p>
             <div className="flex items-center justify-center gap-2 pt-2">
@@ -141,14 +141,15 @@ export default function Reports() {
                 <Button size="sm">إدارة الدخل</Button>
               </Link>
               <Link href="/transactions">
-                <Button variant="outline" size="sm">عرض المعاملات</Button>
+                <Button variant="outline" size="sm" className="whitespace-normal text-center">عرض المعاملات</Button>
               </Link>
             </div>
           </CardContent>
         </Card>
       ) : null}
-      <div className="grid grid-cols-2 gap-3 md:gap-4 2xl:grid-cols-4">
-        <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200">
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:gap-4 2xl:grid-cols-4">
+        <Card className="border-emerald-200 bg-gradient-to-br from-emerald-50 to-emerald-100">
           <CardContent className="flex min-h-[132px] flex-col justify-between p-3 sm:min-h-[156px] sm:p-4">
             <div className="flex items-center justify-between gap-2">
               <div className="rounded-xl bg-emerald-500/20 p-2 sm:p-2.5">
@@ -163,7 +164,7 @@ export default function Reports() {
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200">
+        <Card className="border-red-200 bg-gradient-to-br from-red-50 to-red-100">
           <CardContent className="flex min-h-[132px] flex-col justify-between p-3 sm:min-h-[156px] sm:p-4">
             <div className="flex items-center justify-between gap-2">
               <div className="rounded-xl bg-red-500/20 p-2 sm:p-2.5">
@@ -197,7 +198,7 @@ export default function Reports() {
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+        <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100">
           <CardContent className="flex min-h-[132px] flex-col justify-between p-3 sm:min-h-[156px] sm:p-4">
             <div className="flex items-center justify-between gap-2">
               <div className="rounded-xl bg-blue-500/20 p-2 sm:p-2.5">
@@ -217,15 +218,15 @@ export default function Reports() {
         <CardContent className="p-4 sm:p-5">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
-              <p className="text-sm text-primary font-semibold mb-1">نظرة تنفيذية سريعة</p>
-              <h3 className="font-bold text-lg">ماذا يخبرك التقرير الآن؟</h3>
-              <div className="space-y-2 mt-3 text-sm text-muted-foreground">
+              <p className="mb-1 text-sm font-semibold text-primary">نظرة تنفيذية سريعة</p>
+              <h3 className="text-lg font-bold">ماذا يخبرك التقرير الآن؟</h3>
+              <div className="mt-3 space-y-2 text-sm text-muted-foreground">
                 {data.insights.map((insight) => (
                   <p key={insight}>{insight}</p>
                 ))}
               </div>
             </div>
-            <div className="flex h-11 w-11 items-center justify-center self-end rounded-2xl bg-primary/10 text-primary shrink-0 sm:self-auto">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center self-end rounded-2xl bg-primary/10 text-primary sm:self-auto">
               <Sparkles className="h-5 w-5" />
             </div>
           </div>
@@ -233,210 +234,188 @@ export default function Reports() {
       </Card>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.95fr)]">
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-            <BarChart3 className="h-5 w-5 text-primary" />
-            اتجاه الدخل والمصروف
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="px-3 pb-4 sm:px-6">
-          {data.timeline.length > 0 ? (
-            <ChartContainer config={trendChartConfig} className="h-[240px] w-full sm:h-[250px]">
-              <AreaChart data={data.timeline} margin={isMobile ? { top: 8, right: 8, left: 8, bottom: 0 } : { top: 8, right: 16, left: 16, bottom: 0 }}>
-                <CartesianGrid vertical={false} />
-                <XAxis
-                  dataKey="label"
-                  tickLine={false}
-                  axisLine={false}
-                  minTickGap={isMobile ? 24 : 16}
-                  interval="preserveStartEnd"
-                  tick={{ fontSize: isMobile ? 11 : 12 }}
-                />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <ChartLegend content={<ChartLegendContent className="flex-wrap gap-x-3 gap-y-2 text-xs sm:text-sm" />} />
-                <Area type="monotone" dataKey="income" stroke="var(--color-income)" fill="var(--color-income)" fillOpacity={0.18} strokeWidth={2} />
-                <Area type="monotone" dataKey="expenses" stroke="var(--color-expenses)" fill="var(--color-expenses)" fillOpacity={0.12} strokeWidth={2} />
-              </AreaChart>
-            </ChartContainer>
-          ) : (
-            <p className="text-center text-sm text-muted-foreground py-8">لا توجد بيانات كافية للرسم</p>
-          )}
-        </CardContent>
-      </Card>
+        <Card className="min-w-0 overflow-hidden">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <BarChart3 className="h-5 w-5 text-primary" />
+              اتجاه الدخل والمصروف
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-3 pb-4 sm:px-6">
+            {data.timeline.length > 0 ? (
+              <ChartContainer config={trendChartConfig} className="h-[220px] w-full sm:h-[250px]">
+                <AreaChart data={data.timeline}>
+                  <CartesianGrid vertical={false} />
+                  <XAxis dataKey="label" tickLine={false} axisLine={false} minTickGap={isMobile ? 24 : 12} tick={{ fontSize: isMobile ? 11 : 12 }} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <ChartLegend content={<ChartLegendContent className="flex-wrap gap-x-3 gap-y-2 text-xs sm:text-sm" />} />
+                  <Area type="monotone" dataKey="income" stroke="var(--color-income)" fill="var(--color-income)" fillOpacity={0.18} strokeWidth={2} />
+                  <Area type="monotone" dataKey="expenses" stroke="var(--color-expenses)" fill="var(--color-expenses)" fillOpacity={0.12} strokeWidth={2} />
+                </AreaChart>
+              </ChartContainer>
+            ) : (
+              <p className="py-8 text-center text-sm text-muted-foreground">لا توجد بيانات كافية للرسم</p>
+            )}
+          </CardContent>
+        </Card>
 
-      <Card className="overflow-hidden rounded-[24px] border border-border/50 bg-card shadow-sm sm:rounded-[28px]">
-        <CardHeader className="px-4 pb-0 pt-5 sm:px-6 sm:pt-6">
-          <CardTitle className="justify-center text-center text-lg font-bold leading-tight text-foreground sm:text-[28px]">
-            توزيع النفقات حسب الأقسام
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-5 px-3 pb-4 pt-4 sm:space-y-6 sm:px-6 sm:pb-6">
-          {pieData.length > 0 ? (
-            <div className="flex flex-col items-center justify-center">
-              <div className="h-[220px] w-full max-w-[240px] sm:h-[290px] sm:max-w-[320px]">
-                <ChartContainer config={{ total: { label: "النفقات" } }} className="h-full w-full">
-                  <PieChart margin={isMobile ? { top: 8, right: 8, left: 8, bottom: 8 } : { top: 20, right: 16, left: 16, bottom: 20 }}>
-                    <ChartTooltip
-                      content={
-                        <ChartTooltipContent
-                          nameKey="categoryName"
-                          formatter={(value, name, item) => (
-                            <div className="flex min-w-[9rem] items-center justify-between gap-3 text-xs sm:min-w-[10rem] sm:text-sm">
-                              <span className="text-muted-foreground">{name}</span>
-                              <span className="font-medium">
-                                {formatCurrency(Number(value), 2)} ({item.payload.percentValue}%)
-                              </span>
-                            </div>
-                          )}
-                        />
-                      }
-                    />
-                    <Pie
-                      data={pieData}
-                      dataKey="total"
-                      nameKey="categoryName"
-                      innerRadius={isMobile ? 40 : 48}
-                      outerRadius={isMobile ? 68 : 82}
-                      paddingAngle={2}
-                      cornerRadius={4}
-                      stroke="#ffffff"
-                      strokeWidth={2}
-                      labelLine={false}
-                      label={({ cx, cy, midAngle, outerRadius, percent }) => {
-                        if (isMobile) {
-                          return null;
+        <Card className="min-w-0 overflow-hidden rounded-[24px] border border-border/50 bg-card shadow-sm sm:rounded-[28px]">
+          <CardHeader className="px-4 pb-0 pt-5 sm:px-6 sm:pt-6">
+            <CardTitle className="text-center text-lg font-bold leading-tight text-foreground sm:justify-center sm:text-[28px]">
+              توزيع النفقات حسب الأقسام
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5 px-3 pb-4 pt-4 sm:space-y-6 sm:px-6 sm:pb-6">
+            {pieData.length > 0 ? (
+              <div className="flex flex-col items-center justify-center">
+                <div className="h-[240px] w-full max-w-[260px] sm:h-[290px] sm:max-w-[320px]">
+                  <ChartContainer config={{ total: { label: "النفقات" } }} className="h-full w-full">
+                    <PieChart margin={{ top: isMobile ? 8 : 20, right: isMobile ? 8 : 16, left: isMobile ? 8 : 16, bottom: isMobile ? 8 : 20 }}>
+                      <ChartTooltip
+                        content={
+                          <ChartTooltipContent
+                            nameKey="categoryName"
+                            formatter={(value, name, item) => (
+                              <div className="flex min-w-[9rem] items-center justify-between gap-3 text-xs sm:min-w-[10rem] sm:text-sm">
+                                <span className="text-muted-foreground">{name}</span>
+                                <span className="font-medium">
+                                  {formatCurrency(Number(value), 2)} ({item.payload.percentValue}%)
+                                </span>
+                              </div>
+                            )}
+                          />
                         }
+                      />
+                      <Pie
+                        data={pieData}
+                        dataKey="total"
+                        nameKey="categoryName"
+                        innerRadius={isMobile ? 42 : 48}
+                        outerRadius={isMobile ? 72 : 82}
+                        paddingAngle={2}
+                        cornerRadius={4}
+                        stroke="#ffffff"
+                        strokeWidth={2}
+                        labelLine={false}
+                        label={isMobile ? false : ({ cx, cy, midAngle, outerRadius, percent }) => {
+                          const radius = Number(outerRadius) + 24;
+                          const x = Number(cx) + radius * Math.cos((-midAngle * Math.PI) / 180);
+                          const y = Number(cy) + radius * Math.sin((-midAngle * Math.PI) / 180);
 
-                        const radius = Number(outerRadius) + 24;
-                        const x = Number(cx) + radius * Math.cos((-midAngle * Math.PI) / 180);
-                        const y = Number(cy) + radius * Math.sin((-midAngle * Math.PI) / 180);
-
-                        return (
-                          <text
-                            x={x}
-                            y={y}
-                            fill="currentColor"
-                            textAnchor={x > Number(cx) ? "start" : "end"}
-                            dominantBaseline="central"
-                            className="fill-foreground text-sm font-bold sm:text-base"
-                          >
-                            {`${Math.round((percent ?? 0) * 100)}%`}
-                          </text>
-                        );
-                      }}
-                    >
-                      {pieData.map((entry) => (
-                        <Cell key={`${entry.categoryId}-${entry.categoryName}`} fill={entry.fill} />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                </ChartContainer>
-              </div>
-              <div className="flex w-full flex-wrap items-center justify-center gap-x-2 gap-y-2 text-xs font-semibold text-foreground sm:gap-x-6 sm:gap-y-3 sm:text-[15px]">
-                {pieData.map((item) => (
-                  <div key={`${item.categoryId}-${item.categoryName}-legend`} className="max-w-full rounded-full bg-muted/40 px-2.5 py-1 sm:px-3 sm:py-1.5">
-                    <div className="flex items-center gap-2">
-                      <span className="max-w-[120px] truncate sm:max-w-none">{item.categoryName}</span>
-                      <span className="h-3.5 w-3.5 shrink-0 rounded-md" style={{ backgroundColor: item.fill }} />
+                          return (
+                            <text
+                              x={x}
+                              y={y}
+                              fill="currentColor"
+                              textAnchor={x > Number(cx) ? "start" : "end"}
+                              dominantBaseline="central"
+                              className="fill-foreground text-sm font-bold sm:text-base"
+                            >
+                              {`${Math.round((percent ?? 0) * 100)}%`}
+                            </text>
+                          );
+                        }}
+                      >
+                        {pieData.map((entry) => (
+                          <Cell key={`${entry.categoryId}-${entry.categoryName}`} fill={entry.fill} />
+                        ))}
+                      </Pie>
+                    </PieChart>
+                  </ChartContainer>
+                </div>
+                <div className="flex w-full flex-wrap items-center justify-center gap-x-2 gap-y-2 text-xs font-semibold text-foreground sm:gap-x-6 sm:gap-y-3 sm:text-[15px]">
+                  {pieData.map((item) => (
+                    <div key={`${item.categoryId}-${item.categoryName}-legend`} className="max-w-full rounded-full bg-muted/40 px-2.5 py-1 sm:px-3 sm:py-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="max-w-[9rem] truncate sm:max-w-none">{item.categoryName}</span>
+                        <span className="h-3.5 w-3.5 shrink-0 rounded-md" style={{ backgroundColor: item.fill }} />
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-              <div className="grid w-full max-w-[420px] gap-2 pt-1">
-                {pieData.map((item) => (
-                  <div key={`${item.categoryId}-${item.categoryName}-details`} className="flex items-center justify-between gap-3 rounded-2xl border border-border/40 bg-muted/30 px-3 py-3 text-sm sm:px-4">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span className="h-3 w-3 rounded-full" style={{ backgroundColor: item.fill }} />
-                      <span className="truncate font-medium text-foreground">{item.categoryName}</span>
+                  ))}
+                </div>
+                <div className="grid w-full max-w-[420px] gap-2 pt-1">
+                  {pieData.map((item) => (
+                    <div key={`${item.categoryId}-${item.categoryName}-details`} className="flex items-center justify-between gap-3 rounded-2xl border border-border/40 bg-muted/30 px-3 py-3 text-sm sm:px-4">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="h-3 w-3 rounded-full" style={{ backgroundColor: item.fill }} />
+                        <span className="truncate font-medium text-foreground">{item.categoryName}</span>
+                      </div>
+                      <span className="shrink-0 font-bold text-foreground">{item.percentValue}%</span>
                     </div>
-                    <span className="shrink-0 font-bold text-foreground">{item.percentValue}%</span>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
-          ) : (
-            <p className="text-center text-sm text-muted-foreground py-8">لا توجد مصروفات مصنفة في هذه الفترة</p>
-          )}
-        </CardContent>
-      </Card>
+            ) : (
+              <p className="py-8 text-center text-sm text-muted-foreground">لا توجد مصروفات مصنفة في هذه الفترة</p>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-            <Wallet className="h-5 w-5 text-primary" />
-            أداء المحافظ
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4 px-3 pb-4 sm:px-6">
-          {data.walletBreakdown.length > 0 ? (
-            <>
-              <ChartContainer config={walletChartConfig} className="h-[240px] w-full sm:h-[240px]">
-                <BarChart data={data.walletBreakdown.slice(0, 5)} margin={isMobile ? { top: 8, right: 8, left: 8, bottom: 0 } : { top: 8, right: 16, left: 16, bottom: 0 }}>
-                  <CartesianGrid vertical={false} />
-                  <XAxis
-                    dataKey="name"
-                    tickLine={false}
-                    axisLine={false}
-                    interval={0}
-                    height={isMobile ? 44 : 32}
-                    minTickGap={isMobile ? 8 : 16}
-                    tick={{ fontSize: isMobile ? 11 : 12 }}
-                    tickFormatter={(value: string) => (isMobile && value.length > 8 ? `${value.slice(0, 8)}…` : value)}
-                  />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <ChartLegend content={<ChartLegendContent className="flex-wrap gap-x-3 gap-y-2 text-xs sm:text-sm" />} />
-                  <Bar dataKey="income" fill="var(--color-income)" radius={[6, 6, 0, 0]} />
-                  <Bar dataKey="expenses" fill="var(--color-expenses)" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ChartContainer>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                {data.walletBreakdown.slice(0, 4).map((wallet) => (
-                  <div key={wallet.id} className="flex flex-col gap-2 rounded-xl border border-border/50 bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0">
-                      <p className="truncate font-medium text-sm">{wallet.name}</p>
-                      <p className="mt-1 text-xs text-muted-foreground break-words">
-                        {wallet.transactionCount} حركة • +{formatCurrency(wallet.income, 2)} / -{formatCurrency(wallet.expenses, 2)}
-                      </p>
+        <Card className="min-w-0 overflow-hidden">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <Wallet className="h-5 w-5 text-primary" />
+              أداء المحافظ
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 px-3 pb-4 sm:px-6">
+            {data.walletBreakdown.length > 0 ? (
+              <>
+                <ChartContainer config={walletChartConfig} className="h-[220px] w-full sm:h-[240px]">
+                  <BarChart data={data.walletBreakdown.slice(0, 5)}>
+                    <CartesianGrid vertical={false} />
+                    <XAxis dataKey="name" tickLine={false} axisLine={false} interval={0} height={isMobile ? 52 : 36} tick={{ fontSize: isMobile ? 10 : 12 }} />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <ChartLegend content={<ChartLegendContent className="flex-wrap gap-x-3 gap-y-2 text-xs sm:text-sm" />} />
+                    <Bar dataKey="income" fill="var(--color-income)" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="expenses" fill="var(--color-expenses)" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ChartContainer>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                  {data.walletBreakdown.slice(0, 4).map((wallet) => (
+                    <div key={wallet.id} className="flex flex-col gap-2 rounded-xl border border-border/50 bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{wallet.name}</p>
+                        <p className="mt-1 break-words text-xs text-muted-foreground">
+                          {wallet.transactionCount} حركة • +{formatCurrency(wallet.income, 2)} / -{formatCurrency(wallet.expenses, 2)}
+                        </p>
+                      </div>
+                      <span className="break-words text-sm font-bold sm:shrink-0 sm:text-base">{formatCurrency(wallet.balance, 2)} ر.ع</span>
                     </div>
-                    <span className="shrink-0 font-bold">{formatCurrency(wallet.balance, 2)} ر.ع</span>
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : (
-            <p className="text-center text-sm text-muted-foreground py-8">لا توجد محافظ أو حركات كافية للتحليل</p>
-          )}
-        </CardContent>
-      </Card>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="py-8 text-center text-sm text-muted-foreground">لا توجد محافظ أو حركات كافية للتحليل</p>
+            )}
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-            <Receipt className="h-5 w-5 text-primary" />
-            التزامات قادمة
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {data.upcomingObligations.length > 0 ? data.upcomingObligations.map((obligation) => (
-            <div key={obligation.id} className="flex flex-col gap-3 rounded-xl border border-border/50 bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="font-medium text-sm">{obligation.title}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {obligation.frequency === "monthly"
-                    ? `شهري - يوم ${obligation.dueDay ?? "-"}`
-                    : obligation.frequency === "yearly"
-                      ? `سنوي - ${obligation.dueDay ?? "-"}/${obligation.dueMonth ?? "-"}`
-                      : "مرة واحدة"}
-                </p>
+        <Card className="min-w-0 overflow-hidden">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <Receipt className="h-5 w-5 text-primary" />
+              التزامات قادمة
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 px-3 pb-4 sm:px-6">
+            {data.upcomingObligations.length > 0 ? data.upcomingObligations.map((obligation) => (
+              <div key={obligation.id} className="flex flex-col gap-3 rounded-xl border border-border/50 bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{obligation.title}</p>
+                  <p className="mt-1 break-words text-xs text-muted-foreground">
+                    {obligation.frequency === "monthly"
+                      ? `شهري - يوم ${obligation.dueDay ?? "-"}` : obligation.frequency === "yearly"
+                        ? `سنوي - ${obligation.dueDay ?? "-"}/${obligation.dueMonth ?? "-"}` : "مرة واحدة"}
+                  </p>
+                </div>
+                <span className="break-words text-sm font-bold text-destructive sm:text-base">{formatCurrency(obligation.amount, 2)} ر.ع</span>
               </div>
-              <span className="font-bold text-destructive">{formatCurrency(obligation.amount, 2)} ر.ع</span>
-            </div>
-          )) : <p className="text-center text-sm text-muted-foreground py-6">لا توجد التزامات قريبة في الوقت الحالي</p>}
-        </CardContent>
-      </Card>
+            )) : <p className="py-6 text-center text-sm text-muted-foreground">لا توجد التزامات قريبة في الوقت الحالي</p>}
+          </CardContent>
+        </Card>
       </div>
 
       <Card>
@@ -464,8 +443,8 @@ export default function Reports() {
               {visibleRecentTransactions.map((tx) => (
                 <div key={tx.id} className="flex flex-col gap-2 rounded-xl border border-border/50 bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                   <div className="min-w-0">
-                    <p className="font-medium text-sm line-clamp-1">{normalizeArabicText(tx.note) || tx.categoryName || "معاملة"}</p>
-                    <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{tx.walletName || "بدون محفظة"}</p>
+                    <p className="line-clamp-1 text-sm font-medium">{normalizeArabicText(tx.note) || tx.categoryName || "معاملة"}</p>
+                    <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{tx.walletName || "بدون محفظة"}</p>
                   </div>
                   <span className={cn("shrink-0 text-sm font-bold sm:text-base", tx.type === "income" ? "text-emerald-600" : "text-red-600")}>
                     {tx.type === "income" ? "+" : "-"}{formatCurrency(tx.amount, 2)}
@@ -473,7 +452,7 @@ export default function Reports() {
                 </div>
               ))}
             </div>
-          ) : <p className="text-center text-sm text-muted-foreground py-6">لا توجد معاملات حديثة في هذه الفترة</p>}
+          ) : <p className="py-6 text-center text-sm text-muted-foreground">لا توجد معاملات حديثة في هذه الفترة</p>}
         </CardContent>
       </Card>
 
