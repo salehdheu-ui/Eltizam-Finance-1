@@ -457,7 +457,7 @@ export default function Reports() {
       </Card>
 
       <Dialog open={isPrintPreviewOpen} onOpenChange={setIsPrintPreviewOpen}>
-        <DialogContent dir="rtl" className="max-h-[90vh] max-w-[calc(100vw-1rem)] overflow-hidden p-0 sm:max-w-4xl">
+        <DialogContent dir="rtl" className="max-w-[calc(100vw-1rem)] overflow-hidden p-0 sm:max-w-4xl">
           <DialogHeader className="hide-on-print px-4 pt-5 text-right sm:px-6 sm:pt-6">
             <DialogTitle>معاينة تقرير التقارير المالية</DialogTitle>
             <DialogDescription>
@@ -480,7 +480,7 @@ export default function Reports() {
             </div>
           </div>
 
-          <div className="max-h-[75vh] overflow-y-auto bg-muted/20 p-3 sm:p-6">
+          <div className="overflow-y-auto bg-muted/20 p-3 sm:p-6" style={{ maxHeight: "calc(var(--app-viewport-height, 100vh) * 0.75)" }}>
             <div className="print-report-root mx-auto max-w-3xl space-y-4 rounded-[28px] bg-background p-4 sm:space-y-6 sm:rounded-3xl sm:p-8">
               <div className="print-break-avoid rounded-[28px] border bg-card p-4 sm:rounded-3xl sm:p-6">
                 <div className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-start sm:justify-between sm:gap-4">

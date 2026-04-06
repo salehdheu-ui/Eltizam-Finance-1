@@ -131,6 +131,7 @@ function App() {
 
       if (!keyboardLikelyOpen) {
         baselineHeight = Math.max(baselineHeight, viewportHeight);
+        document.documentElement.style.setProperty("--app-safe-viewport-height", `${baselineHeight}px`);
       }
     };
 
@@ -154,6 +155,7 @@ function App() {
     };
 
     updateViewportHeight();
+    document.documentElement.style.setProperty("--app-safe-viewport-height", `${baselineHeight}px`);
     window.addEventListener("resize", updateViewportHeight);
     window.visualViewport?.addEventListener("resize", updateViewportHeight);
     window.visualViewport?.addEventListener("scroll", updateViewportHeight);

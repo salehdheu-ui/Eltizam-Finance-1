@@ -46,7 +46,7 @@
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .08);
   --app-viewport-height: 100vh;
-  --app-safe-viewport-height: 100svh;
+  --app-safe-viewport-height: 100vh;
 
   --background: 210 40% 98%;
   --foreground: 222 47% 11%;
@@ -136,8 +136,7 @@
 
   body,
   #root {
-    min-height: var(--app-viewport-height);
-    min-height: var(--app-safe-viewport-height);
+    min-height: var(--app-safe-viewport-height, 100vh);
   }
 
   * {
@@ -153,18 +152,15 @@
 
 @layer utilities {
   .app-min-h-screen {
-    min-height: var(--app-viewport-height);
-    min-height: var(--app-safe-viewport-height);
+    min-height: var(--app-safe-viewport-height, 100vh);
   }
 
   .app-h-screen {
-    height: var(--app-viewport-height);
-    height: var(--app-safe-viewport-height);
+    height: var(--app-safe-viewport-height, 100vh);
   }
 
   .app-max-h-screen {
-    max-height: var(--app-viewport-height);
-    max-height: var(--app-safe-viewport-height);
+    max-height: var(--app-safe-viewport-height, 100vh);
   }
 
   .app-page {
