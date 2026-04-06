@@ -105,7 +105,7 @@ export default function Transactions() {
   };
 
   return (
-    <div className="flex h-full flex-col bg-background animate-in fade-in duration-300" dir="rtl">
+    <div className="bg-background animate-in fade-in duration-300" dir="rtl">
       <header className="sticky top-0 z-10 border-b border-border/50 bg-background/95 px-3 py-4 pb-4 backdrop-blur sm:px-4 sm:py-6 xl:px-8">
         <div className="mb-4 space-y-1">
           <h1 className="text-xl font-bold sm:text-2xl">المعاملات</h1>
@@ -156,7 +156,7 @@ export default function Transactions() {
         </div>
       </header>
 
-      <div className="flex-1 overflow-auto px-1 py-4 pb-24 sm:px-2 sm:py-6 xl:px-0 xl:py-8">
+      <div className="px-1 py-4 pb-24 sm:px-2 sm:py-6 xl:px-0 xl:py-8">
         <div className="mb-6 grid grid-cols-2 gap-3 xl:max-w-3xl">
           <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3 dark:border-emerald-900/50 dark:bg-emerald-950/20 sm:p-4">
             <div className="mb-1 flex items-center gap-2 text-xs font-medium text-emerald-700 dark:text-emerald-400 sm:text-sm">

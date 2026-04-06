@@ -160,12 +160,12 @@ export default function Settings() {
   const initials = displayName.split(' ').map(n => n[0]).join(' ').substring(0, 3);
 
   return (
-    <div className="flex flex-col h-full bg-background animate-in fade-in duration-300" dir="rtl">
+    <div className="bg-background animate-in fade-in duration-300" dir="rtl">
       <header className="px-4 py-6 pb-2 sm:px-6 xl:px-8">
         <h1 className="text-2xl font-bold mb-6">الإعدادات</h1>
       </header>
 
-      <div className="p-4 flex-1 overflow-auto pb-24 space-y-6 sm:p-6 xl:p-8">
+      <div className="p-4 pb-24 space-y-6 sm:p-6 xl:p-8">
         <Card className="p-3 border border-primary/10 bg-primary/5 text-sm text-muted-foreground">
           يتم حفظ تفضيلات الواجهة مثل العملة والوضع الليلي والإشعارات على هذا الجهاز لتبقى التجربة سلسة.
         </Card>

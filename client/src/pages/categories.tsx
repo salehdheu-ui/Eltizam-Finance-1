@@ -114,7 +114,7 @@ export default function Categories() {
   );
 
   return (
-    <div className="flex flex-col h-full animate-in fade-in duration-300">
+    <div className="animate-in fade-in duration-300">
       <header className="px-4 py-6 pb-2">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold">الأقسام</h1>

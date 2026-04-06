@@ -747,11 +747,11 @@ export default function Obligations() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col h-full bg-background animate-in fade-in duration-300">
+      <div className="bg-background animate-in fade-in duration-300">
         <header className="px-4 py-6 pb-4 bg-background sticky top-0 z-10 border-b border-border/50">
           <h1 className="text-2xl font-bold">الالتزامات</h1>
         </header>
-        <div className="flex-1 flex items-center justify-center">
+        <div className="flex items-center justify-center py-10">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
       </div>
@@ -759,7 +759,7 @@ export default function Obligations() {
   }
 
   return (
-    <div className="flex h-full flex-col animate-in fade-in duration-300">
+    <div className="animate-in fade-in duration-300">
       {/* Header */}
       <header className="px-1 py-4 pb-2 sm:px-2 sm:py-6 xl:px-0">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -784,7 +784,7 @@ export default function Obligations() {
       </header>
 
       {/* محتوى الصفحة */}
-      <div className="flex-1 overflow-auto px-1 pb-24 sm:px-2 xl:px-0">
+      <div className="px-1 pb-24 sm:px-2 xl:px-0">
         {obligations?.length === 0 ? (
           // حالة الصفحة الفارغة
           <div className="text-center py-16">

@@ -393,7 +393,7 @@ export default function Layout({ children }: LayoutProps) {
       </div>
 
       {/* Main Content */}
-      <main className="relative flex-1 pt-14">
+      <main className="relative flex-1 min-h-0 pt-14">
         <div className="mx-auto w-full max-w-7xl px-3 sm:px-4 lg:px-8">
           {children}
         </div>
