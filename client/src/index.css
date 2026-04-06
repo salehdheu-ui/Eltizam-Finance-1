@@ -128,11 +128,24 @@
 }
 
 @layer base {
+  html {
+    height: 100%;
+    min-height: 100%;
+    overflow-x: hidden;
+  }
+
+  body,
+  #root {
+    min-height: var(--app-viewport-height);
+    min-height: var(--app-safe-viewport-height);
+  }
+
   * {
     @apply border-border;
   }
   body {
     @apply font-sans antialiased bg-background text-foreground;
+    overflow-x: hidden;
     /* Ensure no text selection highlight on interactive elements */
     -webkit-tap-highlight-color: transparent;
   }
