@@ -21,6 +21,17 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 
+function blurActiveElement() {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  const activeElement = document.activeElement;
+  if (activeElement instanceof HTMLElement) {
+    activeElement.blur();
+  }
+}
+
 // نموذج إضافة/تعديل الالتزام
 interface ObligationFormProps {
   isOpen: boolean;
@@ -194,7 +205,12 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
   };
 
   return (
-    <Drawer open={isOpen} onOpenChange={onClose}>
+    <Drawer open={isOpen} onOpenChange={(open) => {
+      if (!open) {
+        blurActiveElement();
+        onClose();
+      }
+    }}>
       <DrawerContent dir="rtl">
         <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col">
           <DrawerHeader className="shrink-0 px-4 pb-3 text-center sm:px-6">
@@ -204,8 +220,8 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
             </DrawerDescription>
           </DrawerHeader>
 
-          <form onSubmit={handleSubmit} className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
-            <div className="flex flex-col gap-4 pb-2 sm:gap-5">
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4 pb-2 sm:gap-5">
             <div className="app-field">
               <Label htmlFor="title" className="text-right">عنوان الالتزام <span className="text-destructive">*</span></Label>
               <Input
@@ -524,8 +540,8 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
                 إنشاء معاملة تلقائياً عند الاستحقاق
               </Label>
             </div>
-            </div>
-          </form>
+            </form>
+          </div>
 
           <DrawerFooter className="shrink-0 border-t border-border/50 bg-background/95 pt-4 pb-5 backdrop-blur">
             <Button 
