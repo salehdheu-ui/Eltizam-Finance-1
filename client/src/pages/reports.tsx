@@ -119,7 +119,7 @@ function ReportsContent() {
   const printPeriod = printSnapshot?.period ?? period;
   const printCreatedAt = printSnapshot?.createdAt ?? new Date().toLocaleString("ar-OM");
 
-  const printPieData = useMemo(() => {
+  const printPieData = (() => {
     const expenses = printData.expensesByCategory ?? [];
     const total = expenses.reduce((sum, item) => sum + item.total, 0);
 
@@ -128,7 +128,7 @@ function ReportsContent() {
       fill: expenseCategoryColors[index % expenseCategoryColors.length],
       percentValue: total > 0 ? Math.round((item.total / total) * 100) : 0,
     }));
-  }, [printData]);
+  })();
 
   const hasData = resolvedData.summary.transactionCount > 0 || resolvedData.summary.salarySourceCount > 0;
   const visibleRecentTransactions = showAllRecentTransactions
