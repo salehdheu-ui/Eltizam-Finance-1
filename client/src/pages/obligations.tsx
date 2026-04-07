@@ -639,6 +639,7 @@ export default function Obligations() {
   const [timingFilter, setTimingFilter] = useState<"all" | "upcoming" | "auto">("all");
   const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
   const [isPrintPortalReady, setIsPrintPortalReady] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
   const [reportScope, setReportScope] = useState<"all" | "filtered" | "single">("filtered");
   const [selectedReportObligationId, setSelectedReportObligationId] = useState<number | null>(null);
   const [selectedReportFields, setSelectedReportFields] = useState<ReportFieldKey[]>(["title", "amount", "type", "status", "frequency", "startDate", "endDate", "dueDate", "daysLeft"]);
@@ -764,6 +765,17 @@ export default function Obligations() {
   };
 
   const handlePrintReport = async () => {
+    setIsPrinting(true);
+    setIsReportDialogOpen(false);
+
+    await new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          resolve();
+        });
+      });
+    });
+
     document.body.classList.add("print-report-active");
 
     let cleanedUp = false;
@@ -774,6 +786,8 @@ export default function Obligations() {
 
       cleanedUp = true;
       document.body.classList.remove("print-report-active");
+      setIsPrinting(false);
+      setIsReportDialogOpen(true);
       window.removeEventListener("afterprint", cleanup);
       window.removeEventListener("focus", handleWindowFocus);
     };
@@ -1350,7 +1364,13 @@ export default function Obligations() {
         editingObligation={editingObligation}
       />
 
-      <Dialog open={isReportDialogOpen} onOpenChange={setIsReportDialogOpen}>
+      <Dialog open={isReportDialogOpen && !isPrinting} onOpenChange={(open) => {
+        if (isPrinting) {
+          return;
+        }
+
+        setIsReportDialogOpen(open);
+      }}>
         <DialogContent dir="rtl" className="max-w-5xl overflow-hidden p-0">
           <DialogHeader className="hide-on-print px-6 pt-6 text-right">
             <DialogTitle>إعداد تقرير الالتزامات</DialogTitle>

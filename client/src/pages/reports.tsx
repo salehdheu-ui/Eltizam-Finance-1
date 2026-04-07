@@ -55,6 +55,7 @@ export default function Reports() {
   const [showAllRecentTransactions, setShowAllRecentTransactions] = useState(false);
   const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
   const [isPrintPortalReady, setIsPrintPortalReady] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
   const [printSnapshot, setPrintSnapshot] = useState<{ data: ReportsSummary; period: typeof period; createdAt: string } | null>(null);
   const isMobile = useIsMobile();
   const { data, isLoading } = useReportsSummary(period);
@@ -74,21 +75,6 @@ export default function Reports() {
     }));
   }, [data]);
 
-  const printData = printSnapshot?.data ?? data;
-  const printPeriod = printSnapshot?.period ?? period;
-  const printCreatedAt = printSnapshot?.createdAt ?? new Date().toLocaleString("ar-OM");
-
-  const printPieData = useMemo(() => {
-    const expenses = printData?.expensesByCategory ?? [];
-    const total = expenses.reduce((sum, item) => sum + item.total, 0);
-
-    return expenses.map((item, index) => ({
-      ...item,
-      fill: expenseCategoryColors[index % expenseCategoryColors.length],
-      percentValue: total > 0 ? Math.round((item.total / total) * 100) : 0,
-    }));
-  }, [printData]);
-
   if (isLoading || !data) {
     return (
       <div className="p-4 pb-24" dir="rtl">
@@ -99,10 +85,26 @@ export default function Reports() {
     );
   }
 
-  const hasData = data.summary.transactionCount > 0 || data.summary.salarySourceCount > 0;
+  const resolvedData = data;
+  const printData: ReportsSummary = printSnapshot?.data ?? resolvedData;
+  const printPeriod = printSnapshot?.period ?? period;
+  const printCreatedAt = printSnapshot?.createdAt ?? new Date().toLocaleString("ar-OM");
+
+  const printPieData = useMemo(() => {
+    const expenses = printData.expensesByCategory ?? [];
+    const total = expenses.reduce((sum, item) => sum + item.total, 0);
+
+    return expenses.map((item, index) => ({
+      ...item,
+      fill: expenseCategoryColors[index % expenseCategoryColors.length],
+      percentValue: total > 0 ? Math.round((item.total / total) * 100) : 0,
+    }));
+  }, [printData]);
+
+  const hasData = resolvedData.summary.transactionCount > 0 || resolvedData.summary.salarySourceCount > 0;
   const visibleRecentTransactions = showAllRecentTransactions
-    ? data.recentTransactions
-    : data.recentTransactions.slice(0, 4);
+    ? resolvedData.recentTransactions
+    : resolvedData.recentTransactions.slice(0, 4);
   const printRecentTransactions = printData.recentTransactions.slice(0, 6);
   const printUpcomingObligations = printData.upcomingObligations.slice(0, 4);
 
@@ -116,6 +118,17 @@ export default function Reports() {
   };
 
   const handlePrint = async () => {
+    setIsPrinting(true);
+    setIsPrintPreviewOpen(false);
+
+    await new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          resolve();
+        });
+      });
+    });
+
     document.body.classList.add("print-report-active");
 
     let cleanedUp = false;
@@ -126,6 +139,8 @@ export default function Reports() {
 
       cleanedUp = true;
       document.body.classList.remove("print-report-active");
+      setIsPrinting(false);
+      setIsPrintPreviewOpen(true);
       window.removeEventListener("afterprint", cleanup);
       window.removeEventListener("focus", handleWindowFocus);
     };
@@ -441,7 +456,7 @@ export default function Reports() {
             </div>
             <div className="space-y-1 text-right">
               <p className="text-[11px] font-medium text-emerald-700 sm:text-xs">إجمالي الدخل</p>
-              <p className="break-words text-sm font-bold leading-6 text-emerald-700 sm:text-xl">+{formatCurrency(data.summary.totalIncome, 2)}</p>
+              <p className="break-words text-sm font-bold leading-6 text-emerald-700 sm:text-xl">+{formatCurrency(resolvedData.summary.totalIncome, 2)}</p>
             </div>
           </CardContent>
         </Card>
@@ -452,29 +467,29 @@ export default function Reports() {
               <div className="rounded-xl bg-red-500/20 p-2 sm:p-2.5">
                 <ArrowUpRight className="h-4 w-4 text-red-600 sm:h-5 sm:w-5" />
               </div>
-              <span className="text-[11px] font-medium text-red-700 sm:text-xs">{formatPercentage(data.summary.savingsRate)}</span>
+              <span className="text-[11px] font-medium text-red-700 sm:text-xs">{formatPercentage(resolvedData.summary.savingsRate)}</span>
             </div>
             <div className="space-y-1 text-right">
               <p className="text-[11px] font-medium text-red-700 sm:text-xs">إجمالي المصروفات</p>
-              <p className="break-words text-sm font-bold leading-6 text-red-700 sm:text-xl">-{formatCurrency(data.summary.totalExpenses, 2)}</p>
+              <p className="break-words text-sm font-bold leading-6 text-red-700 sm:text-xl">-{formatCurrency(resolvedData.summary.totalExpenses, 2)}</p>
             </div>
           </CardContent>
         </Card>
 
-        <Card className={cn("border-2", data.summary.netFlow >= 0 ? "border-emerald-300 bg-emerald-50/70" : "border-red-300 bg-red-50/70")}>
+        <Card className={cn("border-2", resolvedData.summary.netFlow >= 0 ? "border-emerald-300 bg-emerald-50/70" : "border-red-300 bg-red-50/70")}>
           <CardContent className="flex min-h-[132px] flex-col justify-between p-3 sm:min-h-[156px] sm:p-4">
             <div className="flex items-center justify-between gap-2">
-              <div className={cn("rounded-xl p-2 sm:p-2.5", data.summary.netFlow >= 0 ? "bg-emerald-500/20" : "bg-red-500/20")}>
-                <Wallet className={cn("h-4 w-4 sm:h-5 sm:w-5", data.summary.netFlow >= 0 ? "text-emerald-600" : "text-red-600")} />
+              <div className={cn("rounded-xl p-2 sm:p-2.5", resolvedData.summary.netFlow >= 0 ? "bg-emerald-500/20" : "bg-red-500/20")}>
+                <Wallet className={cn("h-4 w-4 sm:h-5 sm:w-5", resolvedData.summary.netFlow >= 0 ? "text-emerald-600" : "text-red-600")} />
               </div>
-              <span className={cn("text-[11px] font-medium sm:text-xs", data.summary.netFlow >= 0 ? "text-emerald-700" : "text-red-700")}>
-                {data.summary.netFlow >= 0 ? "فائض" : "عجز"}
+              <span className={cn("text-[11px] font-medium sm:text-xs", resolvedData.summary.netFlow >= 0 ? "text-emerald-700" : "text-red-700")}>
+                {resolvedData.summary.netFlow >= 0 ? "فائض" : "عجز"}
               </span>
             </div>
             <div className="space-y-1 text-right">
               <p className="text-[11px] font-medium text-muted-foreground sm:text-xs">صافي التدفق</p>
-              <p className={cn("break-words text-sm font-bold leading-6 sm:text-xl", data.summary.netFlow >= 0 ? "text-emerald-700" : "text-red-700")}>
-                {data.summary.netFlow >= 0 ? "+" : ""}{formatCurrency(data.summary.netFlow, 2)}
+              <p className={cn("break-words text-sm font-bold leading-6 sm:text-xl", resolvedData.summary.netFlow >= 0 ? "text-emerald-700" : "text-red-700")}>
+                {resolvedData.summary.netFlow >= 0 ? "+" : ""}{formatCurrency(resolvedData.summary.netFlow, 2)}
               </p>
             </div>
           </CardContent>
@@ -738,7 +753,11 @@ export default function Reports() {
         </CardContent>
       </Card>
 
-      <Dialog open={isPrintPreviewOpen} onOpenChange={(open) => {
+      <Dialog open={isPrintPreviewOpen && !isPrinting} onOpenChange={(open) => {
+        if (isPrinting) {
+          return;
+        }
+
         setIsPrintPreviewOpen(open);
         if (!open) {
           setPrintSnapshot(null);
