@@ -167,13 +167,21 @@ export default function SavingsPlans() {
   const parsedTargetAmount = parseNumericInput(targetAmount);
 
   const effectiveIncome = parsedManualIncome ?? lastMonthIncome;
+
+  const hasManualExpenseBreakdown =
+    parsedManualNeeds !== null ||
+    parsedManualWants !== null ||
+    parsedFixedObligations !== null;
+
   const effectiveNeeds = parsedManualNeeds ?? 0;
   const effectiveWants = parsedManualWants ?? 0;
   const fixedObligations = parsedFixedObligations ?? 0;
-  const manuallyCalculatedSavings = effectiveIncome - effectiveNeeds - effectiveWants - fixedObligations;
-  const currentSavings = parsedManualIncome === null && parsedManualNeeds === null && parsedManualWants === null && parsedFixedObligations === null
-    ? lastMonthIncome - lastMonthExpenses
-    : manuallyCalculatedSavings;
+
+  const effectiveExpenses = hasManualExpenseBreakdown
+    ? (effectiveNeeds + effectiveWants + fixedObligations)
+    : lastMonthExpenses;
+
+  const currentSavings = effectiveIncome - effectiveExpenses;
   const currentSavingsRate = effectiveIncome > 0 ? currentSavings / effectiveIncome : 0;
   const targetNum = parsedTargetAmount ?? 0;
   const obligationsRatio = effectiveIncome > 0 ? (effectiveNeeds + fixedObligations) / effectiveIncome : 0;
@@ -513,13 +521,18 @@ export default function SavingsPlans() {
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span>{plan.title}</span>
-                    <Popover>
+                    <Popover modal>
                       <PopoverTrigger asChild>
                         <button type="button" className="rounded-full border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" aria-label={`شرح مفصل لخطة ${plan.title}`}>
                           تفاصيل الخطة
                         </button>
                       </PopoverTrigger>
-                      <PopoverContent align="start" className="w-80 text-right sm:w-96">
+                      <PopoverContent
+                        align="start"
+                        className="w-80 text-right sm:w-96"
+                        onOpenAutoFocus={(event) => event.preventDefault()}
+                        onCloseAutoFocus={(event) => event.preventDefault()}
+                      >
                         <div className="space-y-3">
                           <div>
                             <p className="font-bold text-foreground">{plan.title}</p>
