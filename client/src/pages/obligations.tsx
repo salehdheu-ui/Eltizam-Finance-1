@@ -1173,7 +1173,7 @@ export default function Obligations() {
           </div>
         )}
       </div>
-
+@@
       <ObligationForm 
         isOpen={isFormOpen} 
         onClose={handleCloseForm} 
@@ -1222,7 +1222,7 @@ export default function Obligations() {
                       id="report-obligation"
                       value={selectedReportObligationId ?? ""}
                       onChange={(e) => setSelectedReportObligationId(e.target.value ? Number(e.target.value) : null)}
-                      className="w-full h-10 rounded-md border bg-background px-3 text-sm"
+                      className="h-10 w-full rounded-md border bg-background px-3 text-sm"
                     >
                       <option value="">اختر الالتزام</option>
                       {allObligations.map((obligation) => (
@@ -1285,41 +1285,46 @@ export default function Obligations() {
                     </div>
                   </div>
 
-                  <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                    <span className="rounded-full border px-3 py-1">الحالة: {statusFilter === "all" ? "الكل" : statusFilter === "active" ? "النشطة" : "المتوقفة"}</span>
-                    <span className="rounded-full border px-3 py-1">التكرار: {frequencyFilter === "all" ? "الكل" : frequencyLabels[frequencyFilter]}</span>
-                    <span className="rounded-full border px-3 py-1">التركيز: {timingFilter === "all" ? "الكل" : timingFilter === "upcoming" ? "القريبة" : "التلقائية"}</span>
-                  </div>
+                  {reportScope !== "single" ? (
+                    <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                      <span className="rounded-full border px-3 py-1">الحالة: {statusFilter === "all" ? "الكل" : statusFilter === "active" ? "النشطة" : "المتوقفة"}</span>
+                      <span className="rounded-full border px-3 py-1">التكرار: {frequencyFilter === "all" ? "الكل" : frequencyLabels[frequencyFilter]}</span>
+                      <span className="rounded-full border px-3 py-1">التركيز: {timingFilter === "all" ? "الكل" : timingFilter === "upcoming" ? "القريبة" : "التلقائية"}</span>
+                    </div>
+                  ) : null}
                 </div>
-
-                {reportScope === "single" && selectedReportObligation ? (
-                  <div className="print-break-avoid rounded-3xl border bg-card p-6">
-                    <div className="flex flex-col gap-4 border-b pb-4 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className={cn("flex h-14 w-14 items-center justify-center rounded-3xl text-3xl", obligationTypeColors[selectedReportObligation.obligationType])}>
-                          {obligationTypeIcons[selectedReportObligation.obligationType]}
+@@
+                {reportScope === "single" && selectedReportObligation ? (() => {
+                  const obligation = selectedReportObligation;
+                  return (
+                    <div className="print-break-avoid rounded-3xl border bg-card p-6">
+                      <div className="flex flex-col gap-4 border-b pb-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className={cn("flex h-14 w-14 items-center justify-center rounded-3xl text-3xl", obligationTypeColors[obligation.obligationType])}>
+                            {obligationTypeIcons[obligation.obligationType]}
+                          </div>
+                          <div>
+                            <h3 className="text-xl font-bold">{obligation.title}</h3>
+                            <p className="text-sm text-muted-foreground">{obligationTypeLabels[obligation.obligationType]} • {obligation.scheduleType === "fixed" ? frequencyLabels[obligation.frequency] : "متغير"}</p>
+                          </div>
                         </div>
-                        <div>
-                          <h3 className="text-xl font-bold">{selectedReportObligation.title}</h3>
-                          <p className="text-sm text-muted-foreground">{obligationTypeLabels[selectedReportObligation.obligationType]} • {selectedReportObligation.scheduleType === "fixed" ? frequencyLabels[selectedReportObligation.frequency] : "متغير"}</p>
+                        <div className="text-right sm:text-left">
+                          <p className="text-xs text-muted-foreground">المبلغ الدوري</p>
+                          <p className="mt-1 text-xl font-bold text-destructive">{formatAmount(obligation.amount)}</p>
                         </div>
                       </div>
-                      <div className="text-right sm:text-left">
-                        <p className="text-xs text-muted-foreground">المبلغ الدوري</p>
-                        <p className="mt-1 text-xl font-bold text-destructive">{formatAmount(selectedReportObligation.amount)}</p>
+
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">الحالة</p><p className="mt-2 font-semibold">{getReportStatus(obligation)}</p></div>
+                        <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">موعد الاستحقاق</p><p className="mt-2 font-semibold">{formatDueDate(obligation)}</p></div>
+                        <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">المحفظة</p><p className="mt-2 font-semibold">{selectedReportWalletName}</p></div>
+                        <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">التصنيف</p><p className="mt-2 font-semibold">{selectedReportCategoryName}</p></div>
+                        <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">تاريخ البداية</p><p className="mt-2 font-semibold">{formatDate(obligation.startDate)}</p></div>
+                        <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">الانتهاء</p><p className="mt-2 font-semibold">{obligation.endDate ? formatDate(obligation.endDate) : "بدون انتهاء"}</p></div>
                       </div>
                     </div>
-
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">الحالة</p><p className="mt-2 font-semibold">{getReportStatus(selectedReportObligation)}</p></div>
-                      <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">موعد الاستحقاق</p><p className="mt-2 font-semibold">{formatDueDate(selectedReportObligation)}</p></div>
-                      <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">المحفظة</p><p className="mt-2 font-semibold">{selectedReportWalletName}</p></div>
-                      <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">التصنيف</p><p className="mt-2 font-semibold">{selectedReportCategoryName}</p></div>
-                      <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">تاريخ البداية</p><p className="mt-2 font-semibold">{formatDate(selectedReportObligation.startDate)}</p></div>
-                      <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">الانتهاء</p><p className="mt-2 font-semibold">{selectedReportObligation.endDate ? formatDate(selectedReportObligation.endDate) : "بدون انتهاء"}</p></div>
-                    </div>
-                  </div>
-                ) : null}
+                  );
+                })() : null}
 
                 {reportScope === "single" && selectedReportObligation ? (
                   <div className="print-break-avoid rounded-3xl border bg-card p-6">
@@ -1357,10 +1362,11 @@ export default function Obligations() {
                   </div>
                 ) : null}
 
-                {reportObligations.length > 0 ? reportObligations.map((obligation) => {
+                {reportScope !== "single" && reportObligations.length > 0 ? reportObligations.map((obligation) => {
                   const upcoming = upcomingObligations.find((item) => item.id === obligation.id);
                   const walletName = wallets.find((wallet) => wallet.id === obligation.walletId)?.name;
                   const categoryName = categories.find((category) => category.id === obligation.categoryId)?.name;
+
                   return (
                     <div key={`${obligation.id}-report`} className="print-break-avoid rounded-3xl border bg-card p-6">
                       <div className="flex items-center justify-between gap-4 border-b pb-4">
@@ -1385,18 +1391,18 @@ export default function Obligations() {
                         {selectedReportFields.includes("endDate") ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">تاريخ الانتهاء</p><p className="mt-2 font-semibold">{obligation.endDate ? formatDate(obligation.endDate) : "بدون انتهاء"}</p></div> : null}
                         {selectedReportFields.includes("dueDate") ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">موعد الاستحقاق</p><p className="mt-2 font-semibold">{formatDueDate(obligation)}</p></div> : null}
                         {selectedReportFields.includes("daysLeft") ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">الأيام المتبقية</p><p className="mt-2 font-semibold">{getReportDaysLeft(obligation)}</p></div> : null}
-                        {reportScope !== "single" ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">المحفظة</p><p className="mt-2 font-semibold">{walletName || "بدون محفظة"}</p></div> : null}
-                        {reportScope !== "single" ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">التصنيف</p><p className="mt-2 font-semibold">{categoryName || "بدون تصنيف"}</p></div> : null}
+                        <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">المحفظة</p><p className="mt-2 font-semibold">{walletName || "بدون محفظة"}</p></div>
+                        <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">التصنيف</p><p className="mt-2 font-semibold">{categoryName || "بدون تصنيف"}</p></div>
                       </div>
 
                       {upcoming ? <p className="mt-4 text-sm text-amber-600">{upcoming.daysLeft <= 7 ? "هذا الالتزام قريب من الاستحقاق." : "الالتزام مجدول ضمن قائمة الالتزامات القادمة."}</p> : null}
                     </div>
                   );
-                }) : (
+                }) : reportScope !== "single" ? (
                   <div className="rounded-3xl border border-dashed bg-card p-8 text-center text-sm text-muted-foreground">
                     لا توجد بيانات مطابقة لإعدادات التقرير الحالية.
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
           </div>
