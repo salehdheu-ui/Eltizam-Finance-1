@@ -421,7 +421,10 @@ export default function Layout({ children }: LayoutProps) {
             return (
               <div
                 key={item.href}
-                onClick={() => setLocation(item.href)}
+                onClick={() => {
+                  console.log(`Navigating to: ${item.href}`);
+                  setLocation(item.href);
+                }}
                 className={cn(
                   "flex h-full min-w-[70px] cursor-pointer flex-col items-center justify-center gap-1.5 transition-colors duration-200 lg:min-w-[88px] lg:flex-row lg:gap-2 lg:px-3",
                   isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
