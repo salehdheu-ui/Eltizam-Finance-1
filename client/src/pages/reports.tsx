@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "wouter";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, XAxis } from "recharts";
 import { ArrowDownLeft, ArrowUpRight, BarChart3, Landmark, Loader2, Printer, Receipt, Sparkles, Wallet } from "lucide-react";
@@ -52,8 +53,13 @@ export default function Reports() {
   const [period, setPeriod] = useState<"all" | "1month" | "3months" | "6months" | "1year">("1month");
   const [showAllRecentTransactions, setShowAllRecentTransactions] = useState(false);
   const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
+  const [isPrintPortalReady, setIsPrintPortalReady] = useState(false);
   const isMobile = useIsMobile();
   const { data, isLoading } = useReportsSummary(period);
+
+  useEffect(() => {
+    setIsPrintPortalReady(true);
+  }, []);
 
   const pieData = useMemo(() => {
     const expenses = data?.expensesByCategory ?? [];
@@ -83,12 +89,27 @@ export default function Reports() {
   const printRecentTransactions = data.recentTransactions.slice(0, 6);
   const printUpcomingObligations = data.upcomingObligations.slice(0, 4);
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     document.body.classList.add("print-report-active");
-    window.print();
-    window.setTimeout(() => {
+
+    const cleanup = () => {
       document.body.classList.remove("print-report-active");
-    }, 150);
+      window.removeEventListener("afterprint", cleanup);
+    };
+
+    window.addEventListener("afterprint", cleanup);
+
+    await new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          resolve();
+        });
+      });
+    });
+
+    window.print();
+
+    window.setTimeout(cleanup, 1000);
   };
 
   const printReportContent = (
@@ -711,11 +732,14 @@ export default function Reports() {
         </DialogContent>
       </Dialog>
 
-      <div className="print-only">
-        <div className="print-report-root bg-background">
-          {printReportContent}
-        </div>
-      </div>
+      {isPrintPortalReady ? createPortal(
+        <div className="print-only-portal" dir="rtl">
+          <div className="print-report-root bg-background">
+            {printReportContent}
+          </div>
+        </div>,
+        document.body,
+      ) : null}
     </div>
   );
 }
