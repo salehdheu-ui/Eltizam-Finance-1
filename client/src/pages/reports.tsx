@@ -61,7 +61,12 @@ export default function Reports() {
   const { data, isLoading } = useReportsSummary(period);
 
   useEffect(() => {
+    document.body.classList.remove("print-report-active");
     setIsPrintPortalReady(true);
+
+    return () => {
+      document.body.classList.remove("print-report-active");
+    };
   }, []);
 
   const pieData = useMemo(() => {
@@ -143,14 +148,28 @@ export default function Reports() {
       setIsPrintPreviewOpen(true);
       window.removeEventListener("afterprint", cleanup);
       window.removeEventListener("focus", handleWindowFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pageshow", handlePageShow);
     };
 
     const handleWindowFocus = () => {
       window.setTimeout(cleanup, 150);
     };
 
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        window.setTimeout(cleanup, 150);
+      }
+    };
+
+    const handlePageShow = () => {
+      window.setTimeout(cleanup, 150);
+    };
+
     window.addEventListener("afterprint", cleanup);
     window.addEventListener("focus", handleWindowFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pageshow", handlePageShow);
 
     await new Promise<void>((resolve) => {
       window.requestAnimationFrame(() => {
