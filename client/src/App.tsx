@@ -136,6 +136,16 @@ function Router() {
 
 function App() {
   useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    document.documentElement.dir = "rtl";
+    document.documentElement.lang = "ar";
+    document.body.dir = "rtl";
+  }, []);
+
+  useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }

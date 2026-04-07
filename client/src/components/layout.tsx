@@ -1,5 +1,5 @@
 import { useLocation } from "wouter";
-import { Home, ListFilter, Wallet, PieChart, Plus, Settings, Loader2, BarChart3, Menu, X, ChevronLeft, Receipt, Landmark, LogOut, PiggyBank } from "lucide-react";
+import { Home, ListFilter, Wallet, PieChart, Plus, Settings, Loader2, BarChart3, Menu, X, ChevronLeft, Receipt, Landmark, LogOut, Sparkles } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -188,7 +188,7 @@ export default function Layout({ children }: LayoutProps) {
   const sidebarItems = [
     { href: "/income", icon: Landmark, label: "الدخل والراتب" },
     { href: "/wallets", icon: Wallet, label: "المحافظ" },
-    { href: "/financial-plans", icon: PiggyBank, label: "خطط الادخار" },
+    { href: "/financial-plans", icon: Sparkles, label: "خطط الادخار" },
     { href: "/obligations", icon: Receipt, label: "الالتزامات" },
     { href: "/categories", icon: PieChart, label: "الأقسام" },
     { href: "/settings", icon: Settings, label: "الإعدادات" },

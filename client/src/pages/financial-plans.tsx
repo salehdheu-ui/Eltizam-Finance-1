@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { useTransactions, useWallets } from "@/lib/hooks";
 import { cn, formatCurrency, parseNumericInput } from "@/lib/utils";
 import { 
-  Target, Calendar, TrendingUp, PiggyBank, Wallet, 
+  Target, Calendar, TrendingUp, Wallet, 
   ArrowRight, Sparkles, ChevronDown, ChevronUp 
 } from "lucide-react";
 
@@ -282,7 +282,7 @@ export default function FinancialPlans() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
-            <PiggyBank className="h-5 w-5 text-primary" />
+            <Sparkles className="h-5 w-5 text-primary" />
             خطة العمل
           </CardTitle>
         </CardHeader>

@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTransactions, useWallets } from "@/lib/hooks";
 import { cn, formatCurrency, parseNumericInput } from "@/lib/utils";
-import { ArrowRight, CheckCircle2, PiggyBank, Sparkles, Target, TrendingUp, Wallet } from "lucide-react";
+import { ArrowRight, CheckCircle2, Sparkles, Target, TrendingUp, Wallet } from "lucide-react";
 import {
   calculateCompoundInterest,
   getPlanBadge,
@@ -14,7 +14,7 @@ import {
 } from "@/lib/savings-plans";
 
 export default function SavingsPlans() {
-  const [location, setLocation] = useLocation();
+  const [, setLocation] = useLocation();
   const { data: transactions = [] } = useTransactions();
   const { data: wallets = [] } = useWallets();
 
@@ -205,19 +205,6 @@ export default function SavingsPlans() {
     window.localStorage.setItem("eltizam-selected-savings-plan", selectedPlanId);
   }, [selectedPlanId]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const search = new URLSearchParams(window.location.search);
-    const tab = search.get("tab");
-
-    if (tab === "plans" || tab === "savings") {
-      setActiveTab(tab);
-    }
-  }, [location]);
-
   return (
     <div className="app-page" dir="rtl">
       <div className="text-center py-2 sm:py-4 space-y-1">
@@ -225,15 +212,7 @@ export default function SavingsPlans() {
         <p className="text-sm text-muted-foreground sm:text-base">شرح أوضح، مقارنة أذكى، وترشيح تلقائي للخطة الأنسب لك</p>
       </div>
 
-      <Tabs
-        value={activeTab}
-        onValueChange={(value) => {
-          const nextTab = value as "savings" | "plans";
-          setActiveTab(nextTab);
-          setLocation(`/financial-plans?tab=${nextTab}`);
-        }}
-        className="space-y-4"
-      >
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "savings" | "plans")} className="space-y-4">
         <TabsList className="grid w-full grid-cols-2 rounded-2xl bg-muted p-1">
           <TabsTrigger value="savings" className="rounded-xl">الادخار</TabsTrigger>
           <TabsTrigger value="plans" className="rounded-xl">الخطط</TabsTrigger>
@@ -323,7 +302,7 @@ export default function SavingsPlans() {
           <Card className="border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50">
             <CardHeader className="pb-3">
               <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-                <PiggyBank className="h-5 w-5 text-amber-600" />
+                <Sparkles className="h-5 w-5 text-amber-600" />
                 ملخص سريع
               </CardTitle>
             </CardHeader>
@@ -483,7 +462,9 @@ export default function SavingsPlans() {
                     <span>{plan.title}</span>
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
                         const search = new URLSearchParams();
                         search.set("income", manualIncome);
                         search.set("needs", manualNeeds);
@@ -491,7 +472,6 @@ export default function SavingsPlans() {
                         search.set("fixed", manualFixedObligations);
                         search.set("target", targetAmount);
                         search.set("years", String(planYears));
-                        search.set("fromTab", activeTab);
                         setLocation(`/financial-plans/${plan.id}?${search.toString()}`);
                       }}
                       className="rounded-full border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -568,7 +548,7 @@ export default function SavingsPlans() {
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="rounded-xl bg-slate-50 p-4 border">
-                  <div className="flex items-center gap-2 mb-2"><PiggyBank className="h-4 w-4 text-primary" /><span className="font-medium">بعد {planYears} سنوات</span></div>
+                  <div className="flex items-center gap-2 mb-2"><Target className="h-4 w-4 text-primary" /><span className="font-medium">بعد {planYears} سنوات</span></div>
                   <p className="break-words text-xl font-bold text-slate-800 sm:text-2xl">{formatCurrency(projectedBalance, 2)} ر.ع</p>
                 </div>
                 <div className="rounded-xl bg-emerald-50 p-4 border border-emerald-200">

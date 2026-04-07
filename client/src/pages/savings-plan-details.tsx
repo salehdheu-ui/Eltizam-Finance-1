@@ -1,11 +1,11 @@
+import { useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { cn, formatCurrency, parseNumericInput } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import { useTransactions, useWallets } from "@/lib/hooks";
 import { useRoute, useLocation } from "wouter";
 import { ArrowRight, ChevronLeft, Sparkles } from "lucide-react";
 import { calculateCompoundInterest, getSavingsDistributionLabel, savingsPlans } from "@/lib/savings-plans";
-import { useEffect } from "react";
 
 export default function SavingsPlanDetails() {
   const [, setLocation] = useLocation();
@@ -45,31 +45,17 @@ export default function SavingsPlanDetails() {
     })
     .reduce((sum, transaction) => sum + transaction.amount, 0);
 
-  const searchParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  const parsedManualIncome = parseNumericInput(searchParams.get("income") ?? "");
-  const parsedManualNeeds = parseNumericInput(searchParams.get("needs") ?? "");
-  const parsedManualWants = parseNumericInput(searchParams.get("wants") ?? "");
-  const parsedManualFixed = parseNumericInput(searchParams.get("fixed") ?? "");
-  const parsedYearsRaw = parseNumericInput(searchParams.get("years") ?? "");
-  const fromTab = searchParams.get("fromTab") === "plans" ? "plans" : "savings";
-
-  const planYears: 3 | 5 | 10 = parsedYearsRaw === 3 || parsedYearsRaw === 5 || parsedYearsRaw === 10 ? parsedYearsRaw : 5;
-  const effectiveIncome = parsedManualIncome ?? lastMonthIncome;
-  const hasManualExpenseBreakdown = parsedManualNeeds !== null || parsedManualWants !== null || parsedManualFixed !== null;
-  const effectiveExpenses = hasManualExpenseBreakdown
-    ? ((parsedManualNeeds ?? 0) + (parsedManualWants ?? 0) + (parsedManualFixed ?? 0))
-    : lastMonthExpenses;
-
+  const effectiveIncome = lastMonthIncome;
   const monthlySavingsAmount = plan ? effectiveIncome * plan.savingsRate : 0;
-  const projectedSavings = monthlySavingsAmount * planYears * 12;
+  const projectedSavings = monthlySavingsAmount * 60;
   const projectedBalance = totalBalance + projectedSavings;
-  const investmentProjection = calculateCompoundInterest(totalBalance, monthlySavingsAmount, planYears, 0.08);
+  const investmentProjection = calculateCompoundInterest(totalBalance, monthlySavingsAmount, 5, 0.08);
 
   if (!plan) {
     return (
       <div className="app-page" dir="rtl">
         <div className="flex items-center justify-between">
-          <Button variant="outline" onClick={() => setLocation(`/financial-plans?tab=${fromTab}`)}>عودة</Button>
+          <Button variant="outline" onClick={() => setLocation("/financial-plans")}>عودة</Button>
         </div>
         <div className="mt-6 text-center text-sm text-muted-foreground">الخطة غير موجودة</div>
       </div>
@@ -79,12 +65,12 @@ export default function SavingsPlanDetails() {
   return (
     <div className="app-page" dir="rtl">
       <div className="flex items-center justify-between gap-3">
-        <Button variant="outline" className="rounded-xl" onClick={() => setLocation(`/financial-plans?tab=${fromTab}`)}>عودة</Button>
+        <Button variant="outline" className="rounded-xl" onClick={() => setLocation("/financial-plans")}>عودة</Button>
         <div className="min-w-0 text-right">
           <h1 className="truncate text-lg font-bold sm:text-xl">{plan.title}</h1>
           <p className="truncate text-sm text-muted-foreground">{plan.subtitle}</p>
         </div>
-        <ChevronLeft className="h-5 w-5 text-muted-foreground" />
+        <ChevronLeft className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
       </div>
 
       <Card className="mt-4 border-primary/20 bg-primary/5">
@@ -100,11 +86,11 @@ export default function SavingsPlanDetails() {
             <p className="mt-1 text-base font-bold text-emerald-700">{formatCurrency(monthlySavingsAmount, 2)} ر.ع</p>
           </div>
           <div className="rounded-xl border bg-white p-3">
-            <p className="text-xs text-muted-foreground">إجمالي الادخار ({planYears} سنوات)</p>
+            <p className="text-xs text-muted-foreground">إجمالي الادخار (5 سنوات)</p>
             <p className="mt-1 text-base font-bold text-slate-800">{formatCurrency(projectedSavings, 2)} ر.ع</p>
           </div>
           <div className="rounded-xl border bg-white p-3">
-            <p className="text-xs text-muted-foreground">الرصيد المتوقع ({planYears} سنوات)</p>
+            <p className="text-xs text-muted-foreground">الرصيد المتوقع (5 سنوات)</p>
             <p className="mt-1 text-base font-bold text-primary">{formatCurrency(projectedBalance, 2)} ر.ع</p>
           </div>
         </CardContent>
@@ -143,10 +129,10 @@ export default function SavingsPlanDetails() {
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
             <p>الدخل المعتمد: <span className="font-bold text-foreground">{formatCurrency(effectiveIncome, 2)} ر.ع</span></p>
-            <p>المصروفات المعتمدة: <span className="font-bold text-foreground">{formatCurrency(effectiveExpenses, 2)} ر.ع</span></p>
+            <p>مصروفات آخر 30 يوم: <span className="font-bold text-foreground">{formatCurrency(lastMonthExpenses, 2)} ر.ع</span></p>
             <p>الادخار الشهري: <span className="font-bold text-foreground">{formatCurrency(monthlySavingsAmount, 2)} ر.ع</span></p>
-            <p>إجمالي الادخار {planYears} سنوات: <span className="font-bold text-foreground">{formatCurrency(projectedSavings, 2)} ر.ع</span></p>
-            <p>الرصيد المتوقع {planYears} سنوات: <span className={cn("font-bold", "text-foreground")}>{formatCurrency(projectedBalance, 2)} ر.ع</span></p>
+            <p>إجمالي الادخار 5 سنوات: <span className="font-bold text-foreground">{formatCurrency(projectedSavings, 2)} ر.ع</span></p>
+            <p>الرصيد المتوقع 5 سنوات: <span className={cn("font-bold", "text-foreground")}>{formatCurrency(projectedBalance, 2)} ر.ع</span></p>
             <p>مع استثمار 8%: <span className="font-bold text-foreground">{formatCurrency(investmentProjection, 2)} ر.ع</span></p>
           </CardContent>
         </Card>
