@@ -1,11 +1,13 @@
-import { Filter, Search, Calendar, Loader2, Trash2, Wallet, PieChart, ArrowLeftRight } from "lucide-react";
+import { Filter, Search, Calendar, Loader2, Trash2, Wallet, PieChart, ArrowLeftRight, Printer, Receipt } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn, formatCurrency, formatRelativeArabicDate, formatTime, normalizeArabicText, toDate } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useMemo, useState } from "react";
 import { useTransactions, useDeleteTransaction, useWallets, useCategories } from "@/lib/hooks";
 import { useToast } from "@/hooks/use-toast";
+import type { Transaction } from "@shared/schema";
 
 function isTransferTransaction(note?: string | null) {
   return typeof note === "string" && note.startsWith("__transfer__:");
@@ -46,12 +48,20 @@ const defaultBgs: Record<string, string> = {
   "تسوق": "bg-pink-100 dark:bg-pink-950",
 };
 
+function getTransactionTypeLabel(type: Transaction["type"], note?: string | null) {
+  if (type === "transfer" || isTransferTransaction(note)) return "تحويل";
+  if (type === "income") return "دخل";
+  if (type === "expense") return "صرف";
+  return "دين";
+}
+
 export default function Transactions() {
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [walletFilter, setWalletFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [rangeFilter, setRangeFilter] = useState<"all" | "7days" | "30days" | "90days">("all");
+  const [selectedTransaction, setSelectedTransaction] = useState<(Transaction & { categoryName?: string | null; categoryIcon?: string | null; walletName?: string | null }) | null>(null);
   const { data: transactions = [], isLoading } = useTransactions();
   const { data: wallets = [] } = useWallets();
   const { data: categories = [] } = useCategories();
@@ -85,6 +95,14 @@ export default function Transactions() {
   const totalOutflow = filteredTransactions
     .filter((tx) => (tx.type === "expense" || tx.type === "debt") && !isTransferTransaction(tx.note))
     .reduce((sum, tx) => sum + tx.amount, 0);
+
+  const handlePrintInvoice = () => {
+    document.body.classList.add("print-report-active");
+    window.print();
+    window.setTimeout(() => {
+      document.body.classList.remove("print-report-active");
+    }, 150);
+  };
 
   const handleDelete = async (id: number) => {
     if (deleteTransaction.isPending) {
@@ -244,6 +262,15 @@ export default function Transactions() {
                             {tx.date && formatRelativeArabicDate(tx.date)} {tx.date && `• ${formatTime(tx.date)}`}
                           </span>
                         </div>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8 shrink-0 rounded-full"
+                          onClick={() => setSelectedTransaction(tx)}
+                          data-testid={`button-print-${tx.id}`}
+                        >
+                          <Printer className="h-4 w-4" />
+                        </Button>
                         <Button 
                           variant="ghost" 
                           size="icon" 
@@ -271,6 +298,113 @@ export default function Transactions() {
           )}
         </div>
       </div>
+
+      <Dialog open={!!selectedTransaction} onOpenChange={(open) => !open && setSelectedTransaction(null)}>
+        <DialogContent dir="rtl" className="max-w-[calc(100vw-1rem)] overflow-hidden p-0 sm:max-w-4xl">
+          <DialogHeader className="hide-on-print px-4 pt-5 text-right sm:px-6 sm:pt-6">
+            <DialogTitle>فاتورة المعاملة</DialogTitle>
+            <DialogDescription>
+              راجع تفاصيل المعاملة ثم اطبعها أو احفظها كملف PDF بنفس تنسيق الفاتورة.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="hide-on-print flex flex-col gap-3 border-b px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <div className="text-sm text-muted-foreground">
+              {selectedTransaction ? `رقم العملية: #${selectedTransaction.id}` : ""}
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setSelectedTransaction(null)}>
+                إغلاق
+              </Button>
+              <Button type="button" className="w-full sm:w-auto" onClick={handlePrintInvoice}>
+                <Printer className="h-4 w-4" />
+                طباعة / PDF
+              </Button>
+            </div>
+          </div>
+
+          <div className="overflow-y-auto bg-muted/20 p-3 sm:p-6" style={{ maxHeight: "calc(var(--app-viewport-height, 100vh) * 0.8)" }}>
+            {selectedTransaction ? (
+              <div className="print-report-root mx-auto max-w-3xl space-y-4 rounded-[28px] bg-background p-4 sm:space-y-6 sm:rounded-3xl sm:p-8">
+                <div className="print-break-avoid rounded-[28px] border bg-card p-4 sm:rounded-3xl sm:p-6">
+                  <div className="flex flex-col gap-4 border-b pb-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="space-y-2 text-right">
+                      <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs text-muted-foreground">
+                        <Receipt className="h-3.5 w-3.5" />
+                        مستند معاملة مالي
+                      </div>
+                      <h2 className="text-xl font-bold sm:text-2xl">فاتورة معاملة</h2>
+                      <p className="text-sm text-muted-foreground">تفاصيل واضحة للطباعة والمشاركة والحفظ بصيغة PDF</p>
+                    </div>
+                    <div className="text-right text-sm text-muted-foreground sm:text-left">
+                      <p>رقم العملية: #{selectedTransaction.id}</p>
+                      <p>تاريخ الإنشاء: {new Date().toLocaleString("ar-OM")}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl border p-4">
+                      <p className="text-xs text-muted-foreground">نوع العملية</p>
+                      <p className="mt-2 font-semibold">{getTransactionTypeLabel(selectedTransaction.type, selectedTransaction.note)}</p>
+                    </div>
+                    <div className="rounded-2xl border p-4">
+                      <p className="text-xs text-muted-foreground">المبلغ</p>
+                      <p className={cn("mt-2 text-lg font-bold", selectedTransaction.type === "income" ? "text-emerald-600" : "text-red-600")}>
+                        {selectedTransaction.type === "income" ? "+" : "-"}{formatCurrency(selectedTransaction.amount, 2)}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border p-4">
+                      <p className="text-xs text-muted-foreground">التصنيف</p>
+                      <p className="mt-2 font-semibold">{isTransferTransaction(selectedTransaction.note) ? "تحويل" : selectedTransaction.categoryName || "بدون تصنيف"}</p>
+                    </div>
+                    <div className="rounded-2xl border p-4">
+                      <p className="text-xs text-muted-foreground">المحفظة / وسيلة الدفع</p>
+                      <p className="mt-2 font-semibold">{selectedTransaction.walletName || "بدون محفظة"}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="print-break-avoid rounded-[28px] border bg-card p-4 sm:rounded-3xl sm:p-6">
+                  <h3 className="text-lg font-bold">تفاصيل الفاتورة</h3>
+                  <div className="mt-4 overflow-hidden rounded-3xl border">
+                    <div className="grid grid-cols-2 border-b bg-muted/40 text-sm font-medium">
+                      <div className="border-l px-4 py-3">البيان</div>
+                      <div className="px-4 py-3">القيمة</div>
+                    </div>
+                    {[
+                      ["التاريخ", `${formatRelativeArabicDate(selectedTransaction.date)} • ${formatTime(selectedTransaction.date)}`],
+                      ["الوصف", getTransferLabel(selectedTransaction.note) || "بدون وصف"],
+                      ["التصنيف", isTransferTransaction(selectedTransaction.note) ? "تحويل بين المحافظ" : selectedTransaction.categoryName || "بدون تصنيف"],
+                      ["المحفظة", selectedTransaction.walletName || "بدون محفظة"],
+                    ].map(([label, value]) => (
+                      <div key={label} className="grid grid-cols-2 border-b last:border-b-0 text-sm">
+                        <div className="border-l bg-background px-4 py-3 font-medium">{label}</div>
+                        <div className="px-4 py-3 text-muted-foreground">{value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="print-break-avoid rounded-[28px] border bg-card p-4 sm:rounded-3xl sm:p-6">
+                  <h3 className="text-lg font-bold">ملخص المبلغ</h3>
+                  <div className="mt-4 rounded-3xl border p-4">
+                    <div className="flex items-center justify-between gap-3 border-b pb-3 text-sm">
+                      <span className="text-muted-foreground">قيمة العملية</span>
+                      <span className={cn("font-bold", selectedTransaction.type === "income" ? "text-emerald-600" : "text-red-600")}>
+                        {selectedTransaction.type === "income" ? "+" : "-"}{formatCurrency(selectedTransaction.amount, 2)}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-3 text-base font-bold">
+                      <span>الإجمالي النهائي</span>
+                      <span>{formatCurrency(selectedTransaction.amount, 2)} ر.ع</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
