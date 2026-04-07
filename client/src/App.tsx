@@ -19,7 +19,37 @@ import Settings from "@/pages/settings";
 import AdminUsers from "@/pages/admin-users";
 import { useUser } from "@/lib/hooks";
 import { Loader2 } from "lucide-react";
-import { useEffect } from "react";
+import React, { useEffect } from "react";
+
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  state = { error: null as Error | null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error("App render error:", error);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="app-min-h-screen flex items-center justify-center p-6" dir="rtl">
+          <div className="w-full max-w-xl rounded-2xl border bg-background p-6 text-center">
+            <p className="mb-2 text-lg font-bold text-red-600">حدث خطأ غير متوقع</p>
+            <p className="text-sm text-muted-foreground">{this.state.error.message || "يرجى المحاولة مرة أخرى"}</p>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 function isEditableElement(target: EventTarget | null): target is HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement {
   return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
@@ -206,7 +236,9 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
-        <Router />
+        <ErrorBoundary>
+          <Router />
+        </ErrorBoundary>
       </TooltipProvider>
     </QueryClientProvider>
   );

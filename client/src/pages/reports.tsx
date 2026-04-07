@@ -56,21 +56,7 @@ export default function Reports() {
     document.body.classList.remove("print-report-active");
   }
 
-  try {
-    return <ReportsContent />;
-  } catch (err) {
-    console.error("Reports component error:", err);
-    return (
-      <div className="p-4 pb-24" dir="rtl">
-        <div className="flex min-h-[50vh] items-center justify-center">
-          <div className="text-center">
-            <p className="text-red-600 mb-2">حدث خطأ في عرض التقارير</p>
-            <p className="text-sm text-muted-foreground">{err instanceof Error ? err.message : "خطأ غير معروف"}</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  return <ReportsContent />;
 }
 
 function ReportsContent() {
