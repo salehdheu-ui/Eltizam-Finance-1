@@ -541,7 +541,7 @@ export default function Reports() {
                 </div>
               </div>
 
-              <div className="print-break-avoid rounded-[28px] border bg-card p-4 sm:rounded-3xl sm:p-6">
+              <div className="rounded-[28px] border bg-card p-4 sm:rounded-3xl sm:p-6">
                 <h3 className="text-lg font-bold">أداء المحافظ</h3>
                 <div className="mt-4 space-y-3">
                   {data.walletBreakdown.length > 0 ? data.walletBreakdown.slice(0, 5).map((wallet) => (
@@ -556,7 +556,7 @@ export default function Reports() {
                 </div>
               </div>
 
-              <div className="print-break-avoid rounded-[28px] border bg-card p-4 sm:rounded-3xl sm:p-6">
+              <div className="rounded-[28px] border bg-card p-4 sm:rounded-3xl sm:p-6">
                 <h3 className="text-lg font-bold">توزيع المصروفات حسب الأقسام</h3>
                 <div className="mt-4 space-y-3">
                   {pieData.length > 0 ? pieData.map((item) => (
@@ -574,7 +574,7 @@ export default function Reports() {
                 </div>
               </div>
 
-              <div className="print-break-avoid rounded-[28px] border bg-card p-4 sm:rounded-3xl sm:p-6">
+              <div className="rounded-[28px] border bg-card p-4 sm:rounded-3xl sm:p-6">
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="text-lg font-bold">التزامات قادمة</h3>
                   <span className="text-xs text-muted-foreground">حتى 6 عناصر</span>
@@ -598,7 +598,7 @@ export default function Reports() {
                 </div>
               </div>
 
-              <div className="print-break-avoid rounded-[28px] border bg-card p-4 sm:rounded-3xl sm:p-6">
+              <div className="rounded-[28px] border bg-card p-4 sm:rounded-3xl sm:p-6">
                 <h3 className="text-lg font-bold">آخر المعاملات</h3>
                 <div className="mt-4 overflow-hidden rounded-3xl border">
                   <div className="grid grid-cols-[1.2fr_.85fr_.8fr_.8fr] border-b bg-muted/40 text-sm font-medium">

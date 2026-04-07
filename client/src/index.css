@@ -254,18 +254,33 @@
     visibility: visible !important;
   }
 
+  /* Neutralize Dialog portals, overlays & scroll containers so
+     print-report-root positions relative to the page, not the Dialog */
+  body.print-report-active *:not(.print-report-root):not(.print-report-root *) {
+    position: static !important;
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+    transform: none !important;
+    contain: none !important;
+    clip: auto !important;
+    clip-path: none !important;
+  }
+
   body.print-report-active .print-report-root {
-    position: absolute;
-    inset: 0;
-    width: 100%;
+    position: absolute !important;
+    inset: 0 !important;
+    z-index: 999999 !important;
+    width: 100% !important;
     max-width: none !important;
-    padding: 0;
-    margin: 0;
-    box-sizing: border-box;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
     background: #ffffff !important;
     color: #1f2937 !important;
     font-size: 11px !important;
     line-height: 1.5 !important;
+    overflow: visible !important;
   }
 
   .hide-on-print {
