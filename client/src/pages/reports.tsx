@@ -10,6 +10,7 @@ import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartToo
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn, formatCurrency, formatPercentage, normalizeArabicText } from "@/lib/utils";
 import { useReportsSummary } from "@/lib/hooks";
+import type { ReportsSummary } from "@/lib/hooks";
 
 function getPeriodName(period: string) {
   switch (period) {
@@ -54,6 +55,7 @@ export default function Reports() {
   const [showAllRecentTransactions, setShowAllRecentTransactions] = useState(false);
   const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
   const [isPrintPortalReady, setIsPrintPortalReady] = useState(false);
+  const [printSnapshot, setPrintSnapshot] = useState<{ data: ReportsSummary; period: typeof period; createdAt: string } | null>(null);
   const isMobile = useIsMobile();
   const { data, isLoading } = useReportsSummary(period);
 
@@ -72,6 +74,21 @@ export default function Reports() {
     }));
   }, [data]);
 
+  const printData = printSnapshot?.data ?? data;
+  const printPeriod = printSnapshot?.period ?? period;
+  const printCreatedAt = printSnapshot?.createdAt ?? new Date().toLocaleString("ar-OM");
+
+  const printPieData = useMemo(() => {
+    const expenses = printData?.expensesByCategory ?? [];
+    const total = expenses.reduce((sum, item) => sum + item.total, 0);
+
+    return expenses.map((item, index) => ({
+      ...item,
+      fill: expenseCategoryColors[index % expenseCategoryColors.length],
+      percentValue: total > 0 ? Math.round((item.total / total) * 100) : 0,
+    }));
+  }, [printData]);
+
   if (isLoading || !data) {
     return (
       <div className="p-4 pb-24" dir="rtl">
@@ -86,8 +103,17 @@ export default function Reports() {
   const visibleRecentTransactions = showAllRecentTransactions
     ? data.recentTransactions
     : data.recentTransactions.slice(0, 4);
-  const printRecentTransactions = data.recentTransactions.slice(0, 6);
-  const printUpcomingObligations = data.upcomingObligations.slice(0, 4);
+  const printRecentTransactions = printData.recentTransactions.slice(0, 6);
+  const printUpcomingObligations = printData.upcomingObligations.slice(0, 4);
+
+  const openPrintPreview = () => {
+    setPrintSnapshot({
+      data,
+      period,
+      createdAt: new Date().toLocaleString("ar-OM"),
+    });
+    setIsPrintPreviewOpen(true);
+  };
 
   const handlePrint = async () => {
     document.body.classList.add("print-report-active");
@@ -127,15 +153,15 @@ export default function Reports() {
           <div className="grid gap-2 text-right text-sm text-muted-foreground sm:min-w-[220px] sm:text-left">
             <div className="flex items-center justify-between gap-3 border-b pb-2">
               <span>الفترة</span>
-              <span className="font-medium text-foreground">{getPeriodName(period)}</span>
+              <span className="font-medium text-foreground">{getPeriodName(printPeriod)}</span>
             </div>
             <div className="flex items-center justify-between gap-3 border-b pb-2">
               <span>تاريخ الإنشاء</span>
-              <span className="font-medium text-foreground">{new Date().toLocaleString("ar-OM")}</span>
+              <span className="font-medium text-foreground">{printCreatedAt}</span>
             </div>
             <div className="flex items-center justify-between gap-3">
               <span>مرجع التقرير</span>
-              <span className="font-medium text-foreground">RPT-{period.toUpperCase()}-{data.summary.transactionCount}</span>
+              <span className="font-medium text-foreground">RPT-{printPeriod.toUpperCase()}-{printData.summary.transactionCount}</span>
             </div>
           </div>
         </div>
@@ -158,32 +184,32 @@ export default function Reports() {
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-2xl border p-4">
             <p className="text-xs text-muted-foreground">إجمالي الدخل</p>
-            <p className="mt-2 text-lg font-bold text-emerald-600 sm:text-xl">+{formatCurrency(data.summary.totalIncome, 2)}</p>
+            <p className="mt-2 text-lg font-bold text-emerald-600 sm:text-xl">+{formatCurrency(printData.summary.totalIncome, 2)}</p>
             <p className="mt-1 text-xs text-muted-foreground">كل الإيرادات المسجلة</p>
           </div>
           <div className="rounded-2xl border p-4">
             <p className="text-xs text-muted-foreground">إجمالي المصروفات</p>
-            <p className="mt-2 text-lg font-bold text-red-600 sm:text-xl">-{formatCurrency(data.summary.totalExpenses, 2)}</p>
+            <p className="mt-2 text-lg font-bold text-red-600 sm:text-xl">-{formatCurrency(printData.summary.totalExpenses, 2)}</p>
             <p className="mt-1 text-xs text-muted-foreground">جميع المصروفات للفترة</p>
           </div>
           <div className="rounded-2xl border p-4">
             <p className="text-xs text-muted-foreground">صافي التدفق</p>
-            <p className={cn("mt-2 text-lg font-bold sm:text-xl", data.summary.netFlow >= 0 ? "text-emerald-600" : "text-red-600")}>
-              {data.summary.netFlow >= 0 ? "+" : ""}{formatCurrency(data.summary.netFlow, 2)}
+            <p className={cn("mt-2 text-lg font-bold sm:text-xl", printData.summary.netFlow >= 0 ? "text-emerald-600" : "text-red-600")}>
+              {printData.summary.netFlow >= 0 ? "+" : ""}{formatCurrency(printData.summary.netFlow, 2)}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">الفرق بين الدخل والمصروفات</p>
           </div>
           <div className="rounded-2xl border p-4">
             <p className="text-xs text-muted-foreground">نسبة الادخار</p>
-            <p className="mt-2 text-lg font-bold sm:text-xl">{formatPercentage(data.summary.savingsRate)}</p>
+            <p className="mt-2 text-lg font-bold sm:text-xl">{formatPercentage(printData.summary.savingsRate)}</p>
             <p className="mt-1 text-xs text-muted-foreground">مقارنة بإجمالي الدخل</p>
           </div>
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
-          <span className="rounded-full border px-3 py-1">عدد الحركات: {data.summary.transactionCount}</span>
-          <span className="rounded-full border px-3 py-1">الرواتب المهيأة: {data.summary.salarySourceCount}</span>
-          <span className="rounded-full border px-3 py-1">الأقساط القادمة: {data.upcomingObligations.length}</span>
+          <span className="rounded-full border px-3 py-1">عدد الحركات: {printData.summary.transactionCount}</span>
+          <span className="rounded-full border px-3 py-1">الرواتب المهيأة: {printData.summary.salarySourceCount}</span>
+          <span className="rounded-full border px-3 py-1">الأقساط القادمة: {printData.upcomingObligations.length}</span>
         </div>
       </div>
 
@@ -197,7 +223,7 @@ export default function Reports() {
             <div className="border-l px-4 py-3">البند</div>
             <div className="px-4 py-3">التفاصيل</div>
           </div>
-          {data.insights.length > 0 ? data.insights.map((insight, index) => (
+          {printData.insights.length > 0 ? printData.insights.map((insight, index) => (
             <div key={insight} className="grid grid-cols-[160px_1fr] border-b last:border-b-0 text-sm">
               <div className="border-l bg-background px-4 py-3 font-medium">ملاحظة {index + 1}</div>
               <div className="px-4 py-3 text-muted-foreground">{insight}</div>
@@ -221,7 +247,7 @@ export default function Reports() {
             <div className="border-l px-4 py-3">المصروف</div>
             <div className="px-4 py-3">الرصيد</div>
           </div>
-          {data.walletBreakdown.length > 0 ? data.walletBreakdown.slice(0, 4).map((wallet) => (
+          {printData.walletBreakdown.length > 0 ? printData.walletBreakdown.slice(0, 4).map((wallet) => (
             <div key={wallet.id} className="grid grid-cols-[1.2fr_.7fr_.7fr_.7fr_.7fr] border-b last:border-b-0 text-sm">
               <div className="border-l bg-background px-4 py-3 font-medium">{wallet.name}</div>
               <div className="border-l px-4 py-3 text-muted-foreground">{wallet.transactionCount}</div>
@@ -244,7 +270,7 @@ export default function Reports() {
             <div className="border-l px-4 py-3">المبلغ</div>
             <div className="px-4 py-3">النسبة</div>
           </div>
-          {pieData.length > 0 ? pieData.map((item) => (
+          {printPieData.length > 0 ? printPieData.map((item) => (
             <div key={`${item.categoryId}-${item.categoryName}-print`} className="grid grid-cols-[1.2fr_.8fr_.6fr] border-b last:border-b-0 text-sm">
               <div className="border-l bg-background px-4 py-3 font-medium">{item.categoryName}</div>
               <div className="border-l px-4 py-3">{formatCurrency(item.total, 2)}</div>
@@ -340,7 +366,7 @@ export default function Reports() {
           <h1 className="text-xl font-bold sm:text-2xl">التقارير المالية</h1>
           <p className="mt-1 text-sm text-muted-foreground sm:text-base">لوحة تحليل احترافية توضّح أين يذهب دخلك وكيف يتحرك صرفك</p>
         </div>
-        <Button type="button" className="hide-on-print h-11 w-full rounded-2xl sm:w-auto sm:self-start" onClick={() => setIsPrintPreviewOpen(true)}>
+        <Button type="button" className="hide-on-print h-11 w-full rounded-2xl sm:w-auto sm:self-start" onClick={openPrintPreview}>
           <Printer className="h-4 w-4" />
           طباعة / PDF
         </Button>
@@ -700,7 +726,12 @@ export default function Reports() {
         </CardContent>
       </Card>
 
-      <Dialog open={isPrintPreviewOpen} onOpenChange={setIsPrintPreviewOpen}>
+      <Dialog open={isPrintPreviewOpen} onOpenChange={(open) => {
+        setIsPrintPreviewOpen(open);
+        if (!open) {
+          setPrintSnapshot(null);
+        }
+      }}>
         <DialogContent dir="rtl" className="max-w-[calc(100vw-1rem)] overflow-hidden p-0 sm:max-w-4xl">
           <DialogHeader className="hide-on-print px-4 pt-5 text-right sm:px-6 sm:pt-6">
             <DialogTitle>معاينة تقرير التقارير المالية</DialogTitle>
@@ -711,7 +742,7 @@ export default function Reports() {
 
           <div className="hide-on-print flex flex-col gap-3 border-b px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
             <div className="text-sm text-muted-foreground">
-              الفترة المحددة: <span className="font-medium text-foreground">{getPeriodName(period)}</span>
+              الفترة المحددة: <span className="font-medium text-foreground">{getPeriodName(printPeriod)}</span>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setIsPrintPreviewOpen(false)}>
