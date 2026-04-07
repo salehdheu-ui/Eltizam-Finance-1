@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useTransactions, useWallets } from "@/lib/hooks";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { cn, formatCurrency, parseNumericInput } from "@/lib/utils";
 import { ArrowRight, CheckCircle2, PiggyBank, Sparkles, Target, TrendingUp, Wallet } from "lucide-react";
 
@@ -131,6 +133,7 @@ function getPlanBadge(plan: SavingsPlan) {
 export default function SavingsPlans() {
   const { data: transactions = [] } = useTransactions();
   const { data: wallets = [] } = useWallets();
+  const isMobile = useIsMobile();
 
   const [planYears, setPlanYears] = useState<3 | 5 | 10>(5);
   const [targetAmount, setTargetAmount] = useState("");
@@ -139,6 +142,7 @@ export default function SavingsPlans() {
   const [manualWants, setManualWants] = useState("");
   const [manualFixedObligations, setManualFixedObligations] = useState("");
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  const [openPlanDetailsId, setOpenPlanDetailsId] = useState<string | null>(null);
 
   const totalBalance = wallets.reduce((sum, wallet) => sum + wallet.balance, 0);
 
@@ -521,84 +525,151 @@ export default function SavingsPlans() {
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span>{plan.title}</span>
-                    <Popover modal>
-                      <PopoverTrigger asChild>
-                        <button type="button" className="rounded-full border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" aria-label={`شرح مفصل لخطة ${plan.title}`}>
+                    {isMobile ? (
+                      <Dialog open={openPlanDetailsId === plan.id} onOpenChange={(open) => setOpenPlanDetailsId(open ? plan.id : null)}>
+                        <button
+                          type="button"
+                          onClick={() => setOpenPlanDetailsId(plan.id)}
+                          className="rounded-full border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          aria-label={`شرح مفصل لخطة ${plan.title}`}
+                        >
                           تفاصيل الخطة
                         </button>
-                      </PopoverTrigger>
-                      <PopoverContent
-                        align="start"
-                        className="w-80 text-right sm:w-96"
-                        onOpenAutoFocus={(event) => event.preventDefault()}
-                        onCloseAutoFocus={(event) => event.preventDefault()}
-                      >
-                        <div className="space-y-3">
-                          <div>
-                            <p className="font-bold text-foreground">{plan.title}</p>
-                            <p className="text-sm text-muted-foreground">{plan.subtitle}</p>
+                        <DialogContent className="max-w-[92vw] rounded-2xl p-0" dir="rtl">
+                          <div className="px-4 py-4">
+                            <DialogHeader>
+                              <DialogTitle className="text-right">{plan.title}</DialogTitle>
+                            </DialogHeader>
+                            <p className="mt-1 text-sm text-muted-foreground text-right">{plan.subtitle}</p>
                           </div>
-                          <div className="rounded-lg bg-muted/40 p-3 text-sm leading-6 text-slate-700">
-                            {plan.description}
+                          <div className="max-h-[70vh] overflow-y-auto px-4 pb-6">
+                            <div className="space-y-3">
+                              <div className="rounded-lg bg-muted/40 p-3 text-sm leading-6 text-slate-700">
+                                {plan.description}
+                              </div>
+                              <div className="space-y-2 text-sm">
+                                <p className="font-medium">كيف تعمل؟</p>
+                                <ul className="space-y-2 text-muted-foreground">
+                                  {plan.detailedPoints.map((point) => (
+                                    <li key={point} className="flex items-start gap-2"><ArrowRight className="mt-0.5 h-4 w-4 text-primary" /><span>{point}</span></li>
+                                  ))}
+                                </ul>
+                              </div>
+                              <div className="rounded-lg border p-3 text-sm">
+                                <p className="font-medium text-foreground">التوزيع المقترح</p>
+                                <p className="mt-1 text-muted-foreground">{getSavingsDistributionLabel(plan)}</p>
+                              </div>
+                              <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
+                                <p className="font-medium text-foreground">كيف يحسبها النظام؟</p>
+                                <ul className="mt-2 space-y-2 text-muted-foreground leading-6">
+                                  <li>
+                                    <span className="font-medium text-foreground">الدخل المعتمد في الحساب: </span>
+                                    {formatCurrency(effectiveIncome, 2)} ر.ع
+                                  </li>
+                                  <li>
+                                    <span className="font-medium text-foreground">الادخار الشهري: </span>
+                                    {formatCurrency(effectiveIncome, 2)} × {Math.round(plan.savingsRate * 100)}% = {formatCurrency(monthlySavingsAmount, 2)} ر.ع
+                                  </li>
+                                  <li>
+                                    <span className="font-medium text-foreground">إجمالي الادخار خلال {planYears} سنوات: </span>
+                                    {formatCurrency(monthlySavingsAmount, 2)} × {planYears * 12} شهر = {formatCurrency(monthlySavingsAmount * planYears * 12, 2)} ر.ع
+                                  </li>
+                                  <li>
+                                    <span className="font-medium text-foreground">الرصيد المتوقع بعد {planYears} سنوات: </span>
+                                    {formatCurrency(totalBalance, 2)} + {formatCurrency(monthlySavingsAmount * planYears * 12, 2)} = {formatCurrency(projectedBalance, 2)} ر.ع
+                                  </li>
+                                  <li>
+                                    <span className="font-medium text-foreground">مع افتراض استثمار بعائد 8%: </span>
+                                    يحسب النظام نمواً مركباً على الرصيد الحالي مع إضافة الادخار الشهري ليصل تقريباً إلى {formatCurrency(investmentProjection, 2)} ر.ع
+                                  </li>
+                                  <li>
+                                    <span className="font-medium text-foreground">الوقت التقريبي لتحقيق الهدف: </span>
+                                    {targetNum > totalBalance && monthlySavingsAmount > 0
+                                      ? `${formatCurrency(targetNum - totalBalance, 2)} ÷ ${formatCurrency(monthlySavingsAmount, 2)} = ${monthsToGoal} شهر تقريباً`
+                                      : "يظهر عندما يكون لديك هدف ادخاري أكبر من رصيدك الحالي وادخار شهري موجب."}
+                                  </li>
+                                </ul>
+                              </div>
+                              <div className="space-y-2 text-sm">
+                                <p><span className="font-medium text-foreground">تناسب من؟ </span><span className="text-muted-foreground">{plan.bestFor}</span></p>
+                                <p><span className="font-medium text-foreground">انتبه إلى: </span><span className="text-muted-foreground">{plan.caution}</span></p>
+                              </div>
+                            </div>
                           </div>
-                          <div className="space-y-2 text-sm">
-                            <p className="font-medium">كيف تعمل؟</p>
-                            <ul className="space-y-2 text-muted-foreground">
-                              {plan.detailedPoints.map((point) => (
-                                <li key={point} className="flex items-start gap-2"><ArrowRight className="mt-0.5 h-4 w-4 text-primary" /><span>{point}</span></li>
-                              ))}
-                            </ul>
+                        </DialogContent>
+                      </Dialog>
+                    ) : (
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <button type="button" className="rounded-full border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" aria-label={`شرح مفصل لخطة ${plan.title}`}>
+                            تفاصيل الخطة
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          align="start"
+                          className="w-80 text-right sm:w-96"
+                          onOpenAutoFocus={(event) => event.preventDefault()}
+                          onCloseAutoFocus={(event) => event.preventDefault()}
+                        >
+                          <div className="space-y-3">
+                            <div>
+                              <p className="font-bold text-foreground">{plan.title}</p>
+                              <p className="text-sm text-muted-foreground">{plan.subtitle}</p>
+                            </div>
+                            <div className="rounded-lg bg-muted/40 p-3 text-sm leading-6 text-slate-700">
+                              {plan.description}
+                            </div>
+                            <div className="space-y-2 text-sm">
+                              <p className="font-medium">كيف تعمل؟</p>
+                              <ul className="space-y-2 text-muted-foreground">
+                                {plan.detailedPoints.map((point) => (
+                                  <li key={point} className="flex items-start gap-2"><ArrowRight className="mt-0.5 h-4 w-4 text-primary" /><span>{point}</span></li>
+                                ))}
+                              </ul>
+                            </div>
+                            <div className="rounded-lg border p-3 text-sm">
+                              <p className="font-medium text-foreground">التوزيع المقترح</p>
+                              <p className="mt-1 text-muted-foreground">{getSavingsDistributionLabel(plan)}</p>
+                            </div>
+                            <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
+                              <p className="font-medium text-foreground">كيف يحسبها النظام؟</p>
+                              <ul className="mt-2 space-y-2 text-muted-foreground leading-6">
+                                <li>
+                                  <span className="font-medium text-foreground">الدخل المعتمد في الحساب: </span>
+                                  {formatCurrency(effectiveIncome, 2)} ر.ع
+                                </li>
+                                <li>
+                                  <span className="font-medium text-foreground">الادخار الشهري: </span>
+                                  {formatCurrency(effectiveIncome, 2)} × {Math.round(plan.savingsRate * 100)}% = {formatCurrency(monthlySavingsAmount, 2)} ر.ع
+                                </li>
+                                <li>
+                                  <span className="font-medium text-foreground">إجمالي الادخار خلال {planYears} سنوات: </span>
+                                  {formatCurrency(monthlySavingsAmount, 2)} × {planYears * 12} شهر = {formatCurrency(monthlySavingsAmount * planYears * 12, 2)} ر.ع
+                                </li>
+                                <li>
+                                  <span className="font-medium text-foreground">الرصيد المتوقع بعد {planYears} سنوات: </span>
+                                  {formatCurrency(totalBalance, 2)} + {formatCurrency(monthlySavingsAmount * planYears * 12, 2)} = {formatCurrency(projectedBalance, 2)} ر.ع
+                                </li>
+                                <li>
+                                  <span className="font-medium text-foreground">مع افتراض استثمار بعائد 8%: </span>
+                                  يحسب النظام نمواً مركباً على الرصيد الحالي مع إضافة الادخار الشهري ليصل تقريباً إلى {formatCurrency(investmentProjection, 2)} ر.ع
+                                </li>
+                                <li>
+                                  <span className="font-medium text-foreground">الوقت التقريبي لتحقيق الهدف: </span>
+                                  {targetNum > totalBalance && monthlySavingsAmount > 0
+                                    ? `${formatCurrency(targetNum - totalBalance, 2)} ÷ ${formatCurrency(monthlySavingsAmount, 2)} = ${monthsToGoal} شهر تقريباً`
+                                    : "يظهر عندما يكون لديك هدف ادخاري أكبر من رصيدك الحالي وادخار شهري موجب."}
+                                </li>
+                              </ul>
+                            </div>
+                            <div className="space-y-2 text-sm">
+                              <p><span className="font-medium text-foreground">تناسب من؟ </span><span className="text-muted-foreground">{plan.bestFor}</span></p>
+                              <p><span className="font-medium text-foreground">انتبه إلى: </span><span className="text-muted-foreground">{plan.caution}</span></p>
+                            </div>
                           </div>
-                          <div className="rounded-lg border p-3 text-sm">
-                            <p className="font-medium text-foreground">التوزيع المقترح</p>
-                            <p className="mt-1 text-muted-foreground">{getSavingsDistributionLabel(plan)}</p>
-                          </div>
-                          <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
-                            <p className="font-medium text-foreground">كيف يحسبها النظام؟</p>
-                            <ul className="mt-2 space-y-2 text-muted-foreground leading-6">
-                              <li>
-                                <span className="font-medium text-foreground">الدخل المعتمد في الحساب: </span>
-                                {formatCurrency(effectiveIncome, 2)} ر.ع
-                              </li>
-                              <li>
-                                <span className="font-medium text-foreground">الادخار الشهري: </span>
-                                {formatCurrency(effectiveIncome, 2)} × {Math.round(plan.savingsRate * 100)}% = {formatCurrency(monthlySavingsAmount, 2)} ر.ع
-                              </li>
-                              <li>
-                                <span className="font-medium text-foreground">الاحتياجات: </span>
-                                {formatCurrency(effectiveIncome, 2)} × {Math.round(plan.needsRate * 100)}% = {formatCurrency(monthlyNeedsAmount, 2)} ر.ع
-                              </li>
-                              <li>
-                                <span className="font-medium text-foreground">الرغبات: </span>
-                                {formatCurrency(effectiveIncome, 2)} × {Math.round(plan.wantsRate * 100)}% = {formatCurrency(monthlyWantsAmount, 2)} ر.ع
-                              </li>
-                              <li>
-                                <span className="font-medium text-foreground">الاحتياطي: </span>
-                                {formatCurrency(effectiveIncome, 2)} × {Math.round(plan.reserveRate * 100)}% = {formatCurrency(monthlyReserveAmount, 2)} ر.ع
-                              </li>
-                              <li>
-                                <span className="font-medium text-foreground">الرصيد المتوقع بعد {planYears} سنوات: </span>
-                                {formatCurrency(totalBalance, 2)} + ({formatCurrency(monthlySavingsAmount, 2)} × {planYears * 12} شهر) = {formatCurrency(projectedBalance, 2)} ر.ع
-                              </li>
-                              <li>
-                                <span className="font-medium text-foreground">مع افتراض استثمار بعائد 8%: </span>
-                                يحسب النظام نمواً مركباً على الرصيد الحالي مع إضافة الادخار الشهري ليصل تقريباً إلى {formatCurrency(investmentProjection, 2)} ر.ع
-                              </li>
-                              <li>
-                                <span className="font-medium text-foreground">الوقت التقريبي لتحقيق الهدف: </span>
-                                {targetNum > totalBalance && monthlySavingsAmount > 0
-                                  ? `${formatCurrency(targetNum - totalBalance, 2)} ÷ ${formatCurrency(monthlySavingsAmount, 2)} = ${monthsToGoal} شهر تقريباً`
-                                  : "يظهر عندما يكون لديك هدف ادخاري أكبر من رصيدك الحالي وادخار شهري موجب."}
-                              </li>
-                            </ul>
-                          </div>
-                          <div className="space-y-2 text-sm">
-                            <p><span className="font-medium text-foreground">تناسب من؟ </span><span className="text-muted-foreground">{plan.bestFor}</span></p>
-                            <p><span className="font-medium text-foreground">انتبه إلى: </span><span className="text-muted-foreground">{plan.caution}</span></p>
-                          </div>
-                        </div>
-                      </PopoverContent>
-                    </Popover>
+                        </PopoverContent>
+                      </Popover>
+                    )}
                   </div>
                   <p className="mt-1 text-sm font-normal text-muted-foreground">{plan.subtitle}</p>
                 </div>
