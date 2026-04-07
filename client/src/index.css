@@ -254,32 +254,21 @@
     visibility: visible !important;
   }
 
-  /* Neutralize Dialog portals, overlays & scroll containers so
-     print-report-root positions relative to the page, not the Dialog */
-  body.print-report-active *:not(.print-report-root):not(.print-report-root *) {
-    position: static !important;
-    overflow: visible !important;
-    max-height: none !important;
-    height: auto !important;
-    transform: none !important;
-    contain: none !important;
-    clip: auto !important;
-    clip-path: none !important;
-  }
-
   body.print-report-active .print-report-root {
     position: absolute !important;
-    inset: 0 !important;
+    top: 0 !important;
+    right: 0 !important;
+    left: 0 !important;
     z-index: 999999 !important;
     width: 100% !important;
     max-width: none !important;
-    padding: 0 !important;
+    padding: 8mm 0 0 !important;
     margin: 0 !important;
     box-sizing: border-box !important;
     background: #ffffff !important;
     color: #1f2937 !important;
-    font-size: 11px !important;
-    line-height: 1.5 !important;
+    font-size: 12px !important;
+    line-height: 1.55 !important;
     overflow: visible !important;
   }
 
@@ -365,7 +354,7 @@
   .print-report-root [class*='rounded-\[28px\]'],
   .print-report-root .rounded-2xl,
   .print-report-root .rounded-xl {
-    border-radius: 6px !important;
+    border-radius: 8px !important;
   }
 
   .print-report-root .rounded-full {
@@ -381,31 +370,31 @@
   }
 
   .print-report-root .p-4 {
-    padding: 7px !important;
+    padding: 8px !important;
   }
 
   .print-report-root .px-4 {
-    padding-left: 7px !important;
-    padding-right: 7px !important;
+    padding-left: 8px !important;
+    padding-right: 8px !important;
   }
 
   .print-report-root .py-3 {
-    padding-top: 5px !important;
-    padding-bottom: 5px !important;
-  }
-
-  .print-report-root .px-3 {
-    padding-left: 6px !important;
-    padding-right: 6px !important;
-  }
-
-  .print-report-root .pb-4 {
+    padding-top: 6px !important;
     padding-bottom: 6px !important;
   }
 
+  .print-report-root .px-3 {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+
+  .print-report-root .pb-4 {
+    padding-bottom: 8px !important;
+  }
+
   /* ── Margins — clean ── */
-  .print-report-root .mt-1 { margin-top: 2px !important; }
-  .print-report-root .mt-2 { margin-top: 3px !important; }
+  .print-report-root .mt-1 { margin-top: 3px !important; }
+  .print-report-root .mt-2 { margin-top: 4px !important; }
   .print-report-root .mt-4 { margin-top: 6px !important; }
   .print-report-root .mt-5 { margin-top: 6px !important; }
   .print-report-root .mt-6 { margin-top: 8px !important; }
@@ -419,30 +408,28 @@
   }
 
   .print-report-root h2 {
-    font-size: 15px !important;
+    font-size: 18px !important;
     font-weight: 700 !important;
-    line-height: 1.3 !important;
-    margin-bottom: 2px !important;
+    line-height: 1.35 !important;
   }
 
   .print-report-root h3 {
-    font-size: 12.5px !important;
+    font-size: 14px !important;
     font-weight: 700 !important;
     line-height: 1.35 !important;
-    margin-bottom: 2px !important;
   }
 
   .print-report-root .text-2xl {
-    font-size: 15px !important;
+    font-size: 18px !important;
   }
 
   .print-report-root .text-xl,
   .print-report-root .sm\:text-xl {
-    font-size: 14px !important;
+    font-size: 16px !important;
   }
 
   .print-report-root .text-lg {
-    font-size: 12.5px !important;
+    font-size: 15px !important;
   }
 
   .print-report-root .text-base {
@@ -450,11 +437,11 @@
   }
 
   .print-report-root .text-sm {
-    font-size: 10.5px !important;
+    font-size: 11.5px !important;
   }
 
   .print-report-root .text-xs {
-    font-size: 9px !important;
+    font-size: 10px !important;
   }
 
   .print-report-root .font-bold {
@@ -482,14 +469,14 @@
   }
 
   /* ── Colors — clean print palette ── */
-  .print-report-root .bg-card {
+  .print-report-root .bg-card,
+  .print-report-root .bg-background {
     background: #ffffff !important;
   }
 
-  .print-report-root .bg-muted\/20,
-  .print-report-root .bg-muted\/30,
-  .print-report-root .bg-muted\/40 {
-    background: #f3f4f6 !important;
+  .print-report-root .bg-muted\/40,
+  .print-report-root .bg-muted\/20 {
+    background: #f8fafc !important;
   }
 
   .print-report-root .bg-emerald-50\/40 {
@@ -497,19 +484,6 @@
   }
 
   .print-report-root .bg-red-50\/40 {
-    background: #fef2f2 !important;
-  }
-
-  .print-report-root .bg-background {
-    background: #ffffff !important;
-  }
-
-  .print-report-root .bg-primary\/5,
-  .print-report-root .bg-primary\/10 {
-    background: #eff6ff !important;
-  }
-
-  .print-report-root .bg-destructive\/5 {
     background: #fef2f2 !important;
   }
 
@@ -543,9 +517,9 @@
 
   /* ── Borders — subtle and consistent ── */
   .print-report-root .border,
-  .print-report-root [class*='border-b'],
-  .print-report-root [class*='border-l'] {
-    border-color: #e5e7eb !important;
+  .print-report-root .border-b,
+  .print-report-root .border-l {
+    border-color: #d1d5db !important;
   }
 
   .print-report-root [class*='border-border'] {
