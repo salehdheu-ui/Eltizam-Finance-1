@@ -1,140 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTransactions, useWallets } from "@/lib/hooks";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { cn, formatCurrency, parseNumericInput } from "@/lib/utils";
 import { ArrowRight, CheckCircle2, PiggyBank, Sparkles, Target, TrendingUp, Wallet } from "lucide-react";
-
-type SavingsPlan = {
-  id: string;
-  title: string;
-  subtitle: string;
-  savingsRate: number;
-  needsRate: number;
-  wantsRate: number;
-  reserveRate: number;
-  description: string;
-  highlights: string[];
-  bestFor: string;
-  caution: string;
-  detailedPoints: string[];
-};
-
-const savingsPlans: SavingsPlan[] = [
-  {
-    id: "babylon",
-    title: "ادفع لنفسك أولاً",
-    subtitle: "مستوحاة من The Richest Man in Babylon",
-    savingsRate: 0.1,
-    needsRate: 0.7,
-    wantsRate: 0.15,
-    reserveRate: 0.05,
-    description: "احجز 10% من دخلك أولاً قبل أي صرف حتى تبني أصل الادخار والانضباط المالي.",
-    highlights: ["بداية ممتازة", "تبني عادة ادخار", "سهلة التطبيق شهرياً"],
-    bestFor: "المبتدئ أو من يريد عادة ادخار سهلة وواضحة.",
-    caution: "قد تكون بطيئة إذا كان هدفك كبيراً وتحتاج الوصول إليه بسرعة.",
-    detailedPoints: [
-      "الفكرة الأساسية أن تخصم جزء الادخار أولاً ثم تتعامل مع بقية الدخل.",
-      "النسبة المقترحة هنا 10% ادخار مع توزيع مريح لبقية المصروفات.",
-      "مناسبة إذا كنت تريد الالتزام بدون ضغط كبير في البداية.",
-    ],
-  },
-  {
-    id: "50-30-20",
-    title: "خطة 50 / 30 / 20",
-    subtitle: "الأشهر عالمياً للتوازن المالي",
-    savingsRate: 0.2,
-    needsRate: 0.5,
-    wantsRate: 0.3,
-    reserveRate: 0,
-    description: "تقسم دخلك بين الاحتياجات والرغبات والادخار بطريقة متوازنة ومناسبة لمعظم الناس.",
-    highlights: ["متوازنة", "واضحة", "مناسبة لمعظم المستخدمين"],
-    bestFor: "من لديه دخل مستقر ويريد توازناً واضحاً بين الاحتياجات والرغبات والادخار.",
-    caution: "قد لا تكون الأنسب إذا كانت التزاماتك الشهرية مرتفعة جداً.",
-    detailedPoints: [
-      "تخصص 50% للاحتياجات، 30% للرغبات، و20% للادخار.",
-      "تساعدك على الاستمرار دون شعور بحرمان كبير.",
-      "تعمل جيداً عندما تكون مصاريفك الأساسية تحت السيطرة.",
-    ],
-  },
-  {
-    id: "70-20-10",
-    title: "خطة 70 / 20 / 10",
-    subtitle: "عملية لمن لديه التزامات واضحة",
-    savingsRate: 0.2,
-    needsRate: 0.7,
-    wantsRate: 0,
-    reserveRate: 0.1,
-    description: "تناسب من يركز على الاستقرار والاحتياطي مع تقليل الهدر في الكماليات.",
-    highlights: ["قوية للأسر", "تعزز الاحتياطي", "تخدم الالتزامات الشهرية"],
-    bestFor: "من لديه مسؤوليات أو أقساط ويريد خطة عملية ومحافظة.",
-    caution: "قد تكون مقيدة إذا كنت تحتاج مساحة أكبر للرغبات أو الترفيه.",
-    detailedPoints: [
-      "تعطي الأولوية للاحتياجات والالتزامات مع ادخار ثابت واحتياطي منفصل.",
-      "مفيدة للأسر أو لمن لديهم التزامات شهرية مستمرة.",
-      "تساعد على تقليل الهدر عندما تكون المصاريف المرتفعة تضغط على الميزانية.",
-    ],
-  },
-  {
-    id: "gradual",
-    title: "خطة التدرج الذكي",
-    subtitle: "ابدأ صغيراً ثم ارفع الادخار تدريجياً",
-    savingsRate: 0.15,
-    needsRate: 0.65,
-    wantsRate: 0.15,
-    reserveRate: 0.05,
-    description: "مناسبة لمن يريد الدخول في الادخار بشكل مريح ثم زيادة النسبة مع الوقت.",
-    highlights: ["مريحة نفسياً", "سهلة الالتزام", "مناسبة بعد التعثر المالي"],
-    bestFor: "من يجد صعوبة في الالتزام بخطة قوية من البداية أو يمر بمرحلة تعافٍ مالي.",
-    caution: "تحتاج متابعة شهرية حتى لا تتوقف عند البداية دون تطوير.",
-    detailedPoints: [
-      "توفر بداية مريحة بدل القفز مباشرة إلى نسبة ادخار عالية.",
-      "مفيدة إذا كان وضعك الحالي لا يتحمل تغييراً حاداً في المصروفات.",
-      "الأفضل أن ترفع الادخار تدريجياً كلما تحسن انضباطك أو دخلك.",
-    ],
-  },
-];
-
-function calculateCompoundInterest(principal: number, monthlyContribution: number, years: number, annualRate: number) {
-  const monthlyRate = annualRate / 12;
-  const totalMonths = years * 12;
-  let total = principal;
-
-  for (let i = 0; i < totalMonths; i++) {
-    total = total * (1 + monthlyRate) + monthlyContribution;
-  }
-
-  return total;
-}
-
-function getSavingsDistributionLabel(plan: SavingsPlan) {
-  return `${Math.round(plan.needsRate * 100)}% احتياجات - ${Math.round(plan.wantsRate * 100)}% رغبات - ${Math.round(plan.savingsRate * 100)}% ادخار${plan.reserveRate > 0 ? ` - ${Math.round(plan.reserveRate * 100)}% احتياطي` : ""}`;
-}
-
-function getPlanBadge(plan: SavingsPlan) {
-  if (plan.id === "50-30-20") {
-    return "الأكثر توازناً";
-  }
-
-  if (plan.id === "gradual") {
-    return "الأكثر راحة للبداية";
-  }
-
-  if (plan.id === "70-20-10") {
-    return "الأفضل لأصحاب الالتزامات";
-  }
-
-  return "الأفضل لبناء العادة";
-}
+import {
+  calculateCompoundInterest,
+  getPlanBadge,
+  getSavingsDistributionLabel,
+  savingsPlans,
+} from "@/lib/savings-plans";
 
 export default function SavingsPlans() {
+  const [, setLocation] = useLocation();
   const { data: transactions = [] } = useTransactions();
   const { data: wallets = [] } = useWallets();
-  const isMobile = useIsMobile();
 
+  const [activeTab, setActiveTab] = useState<"savings" | "plans">("savings");
   const [planYears, setPlanYears] = useState<3 | 5 | 10>(5);
   const [targetAmount, setTargetAmount] = useState("");
   const [manualIncome, setManualIncome] = useState("");
@@ -142,7 +26,6 @@ export default function SavingsPlans() {
   const [manualWants, setManualWants] = useState("");
   const [manualFixedObligations, setManualFixedObligations] = useState("");
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
-  const [openPlanDetailsId, setOpenPlanDetailsId] = useState<string | null>(null);
 
   const totalBalance = wallets.reduce((sum, wallet) => sum + wallet.balance, 0);
 
@@ -525,151 +408,23 @@ export default function SavingsPlans() {
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span>{plan.title}</span>
-                    {isMobile ? (
-                      <Dialog open={openPlanDetailsId === plan.id} onOpenChange={(open) => setOpenPlanDetailsId(open ? plan.id : null)}>
-                        <button
-                          type="button"
-                          onClick={() => setOpenPlanDetailsId(plan.id)}
-                          className="rounded-full border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                          aria-label={`شرح مفصل لخطة ${plan.title}`}
-                        >
-                          تفاصيل الخطة
-                        </button>
-                        <DialogContent className="max-w-[92vw] rounded-2xl p-0" dir="rtl">
-                          <div className="px-4 py-4">
-                            <DialogHeader>
-                              <DialogTitle className="text-right">{plan.title}</DialogTitle>
-                            </DialogHeader>
-                            <p className="mt-1 text-sm text-muted-foreground text-right">{plan.subtitle}</p>
-                          </div>
-                          <div className="max-h-[70vh] overflow-y-auto px-4 pb-6">
-                            <div className="space-y-3">
-                              <div className="rounded-lg bg-muted/40 p-3 text-sm leading-6 text-slate-700">
-                                {plan.description}
-                              </div>
-                              <div className="space-y-2 text-sm">
-                                <p className="font-medium">كيف تعمل؟</p>
-                                <ul className="space-y-2 text-muted-foreground">
-                                  {plan.detailedPoints.map((point) => (
-                                    <li key={point} className="flex items-start gap-2"><ArrowRight className="mt-0.5 h-4 w-4 text-primary" /><span>{point}</span></li>
-                                  ))}
-                                </ul>
-                              </div>
-                              <div className="rounded-lg border p-3 text-sm">
-                                <p className="font-medium text-foreground">التوزيع المقترح</p>
-                                <p className="mt-1 text-muted-foreground">{getSavingsDistributionLabel(plan)}</p>
-                              </div>
-                              <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
-                                <p className="font-medium text-foreground">كيف يحسبها النظام؟</p>
-                                <ul className="mt-2 space-y-2 text-muted-foreground leading-6">
-                                  <li>
-                                    <span className="font-medium text-foreground">الدخل المعتمد في الحساب: </span>
-                                    {formatCurrency(effectiveIncome, 2)} ر.ع
-                                  </li>
-                                  <li>
-                                    <span className="font-medium text-foreground">الادخار الشهري: </span>
-                                    {formatCurrency(effectiveIncome, 2)} × {Math.round(plan.savingsRate * 100)}% = {formatCurrency(monthlySavingsAmount, 2)} ر.ع
-                                  </li>
-                                  <li>
-                                    <span className="font-medium text-foreground">إجمالي الادخار خلال {planYears} سنوات: </span>
-                                    {formatCurrency(monthlySavingsAmount, 2)} × {planYears * 12} شهر = {formatCurrency(monthlySavingsAmount * planYears * 12, 2)} ر.ع
-                                  </li>
-                                  <li>
-                                    <span className="font-medium text-foreground">الرصيد المتوقع بعد {planYears} سنوات: </span>
-                                    {formatCurrency(totalBalance, 2)} + {formatCurrency(monthlySavingsAmount * planYears * 12, 2)} = {formatCurrency(projectedBalance, 2)} ر.ع
-                                  </li>
-                                  <li>
-                                    <span className="font-medium text-foreground">مع افتراض استثمار بعائد 8%: </span>
-                                    يحسب النظام نمواً مركباً على الرصيد الحالي مع إضافة الادخار الشهري ليصل تقريباً إلى {formatCurrency(investmentProjection, 2)} ر.ع
-                                  </li>
-                                  <li>
-                                    <span className="font-medium text-foreground">الوقت التقريبي لتحقيق الهدف: </span>
-                                    {targetNum > totalBalance && monthlySavingsAmount > 0
-                                      ? `${formatCurrency(targetNum - totalBalance, 2)} ÷ ${formatCurrency(monthlySavingsAmount, 2)} = ${monthsToGoal} شهر تقريباً`
-                                      : "يظهر عندما يكون لديك هدف ادخاري أكبر من رصيدك الحالي وادخار شهري موجب."}
-                                  </li>
-                                </ul>
-                              </div>
-                              <div className="space-y-2 text-sm">
-                                <p><span className="font-medium text-foreground">تناسب من؟ </span><span className="text-muted-foreground">{plan.bestFor}</span></p>
-                                <p><span className="font-medium text-foreground">انتبه إلى: </span><span className="text-muted-foreground">{plan.caution}</span></p>
-                              </div>
-                            </div>
-                          </div>
-                        </DialogContent>
-                      </Dialog>
-                    ) : (
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <button type="button" className="rounded-full border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" aria-label={`شرح مفصل لخطة ${plan.title}`}>
-                            تفاصيل الخطة
-                          </button>
-                        </PopoverTrigger>
-                        <PopoverContent
-                          align="start"
-                          className="w-80 text-right sm:w-96"
-                          onOpenAutoFocus={(event) => event.preventDefault()}
-                          onCloseAutoFocus={(event) => event.preventDefault()}
-                        >
-                          <div className="space-y-3">
-                            <div>
-                              <p className="font-bold text-foreground">{plan.title}</p>
-                              <p className="text-sm text-muted-foreground">{plan.subtitle}</p>
-                            </div>
-                            <div className="rounded-lg bg-muted/40 p-3 text-sm leading-6 text-slate-700">
-                              {plan.description}
-                            </div>
-                            <div className="space-y-2 text-sm">
-                              <p className="font-medium">كيف تعمل؟</p>
-                              <ul className="space-y-2 text-muted-foreground">
-                                {plan.detailedPoints.map((point) => (
-                                  <li key={point} className="flex items-start gap-2"><ArrowRight className="mt-0.5 h-4 w-4 text-primary" /><span>{point}</span></li>
-                                ))}
-                              </ul>
-                            </div>
-                            <div className="rounded-lg border p-3 text-sm">
-                              <p className="font-medium text-foreground">التوزيع المقترح</p>
-                              <p className="mt-1 text-muted-foreground">{getSavingsDistributionLabel(plan)}</p>
-                            </div>
-                            <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
-                              <p className="font-medium text-foreground">كيف يحسبها النظام؟</p>
-                              <ul className="mt-2 space-y-2 text-muted-foreground leading-6">
-                                <li>
-                                  <span className="font-medium text-foreground">الدخل المعتمد في الحساب: </span>
-                                  {formatCurrency(effectiveIncome, 2)} ر.ع
-                                </li>
-                                <li>
-                                  <span className="font-medium text-foreground">الادخار الشهري: </span>
-                                  {formatCurrency(effectiveIncome, 2)} × {Math.round(plan.savingsRate * 100)}% = {formatCurrency(monthlySavingsAmount, 2)} ر.ع
-                                </li>
-                                <li>
-                                  <span className="font-medium text-foreground">إجمالي الادخار خلال {planYears} سنوات: </span>
-                                  {formatCurrency(monthlySavingsAmount, 2)} × {planYears * 12} شهر = {formatCurrency(monthlySavingsAmount * planYears * 12, 2)} ر.ع
-                                </li>
-                                <li>
-                                  <span className="font-medium text-foreground">الرصيد المتوقع بعد {planYears} سنوات: </span>
-                                  {formatCurrency(totalBalance, 2)} + {formatCurrency(monthlySavingsAmount * planYears * 12, 2)} = {formatCurrency(projectedBalance, 2)} ر.ع
-                                </li>
-                                <li>
-                                  <span className="font-medium text-foreground">مع افتراض استثمار بعائد 8%: </span>
-                                  يحسب النظام نمواً مركباً على الرصيد الحالي مع إضافة الادخار الشهري ليصل تقريباً إلى {formatCurrency(investmentProjection, 2)} ر.ع
-                                </li>
-                                <li>
-                                  <span className="font-medium text-foreground">الوقت التقريبي لتحقيق الهدف: </span>
-                                  {targetNum > totalBalance && monthlySavingsAmount > 0
-                                    ? `${formatCurrency(targetNum - totalBalance, 2)} ÷ ${formatCurrency(monthlySavingsAmount, 2)} = ${monthsToGoal} شهر تقريباً`
-                                    : "يظهر عندما يكون لديك هدف ادخاري أكبر من رصيدك الحالي وادخار شهري موجب."}
-                                </li>
-                              </ul>
-                            </div>
-                            <div className="space-y-2 text-sm">
-                              <p><span className="font-medium text-foreground">تناسب من؟ </span><span className="text-muted-foreground">{plan.bestFor}</span></p>
-                              <p><span className="font-medium text-foreground">انتبه إلى: </span><span className="text-muted-foreground">{plan.caution}</span></p>
-                            </div>
-                          </div>
-                        </PopoverContent>
-                      </Popover>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const search = new URLSearchParams();
+                        search.set("income", manualIncome);
+                        search.set("needs", manualNeeds);
+                        search.set("wants", manualWants);
+                        search.set("fixed", manualFixedObligations);
+                        search.set("target", targetAmount);
+                        search.set("years", String(planYears));
+                        setLocation(`/financial-plans/${plan.id}?${search.toString()}`);
+                      }}
+                      className="rounded-full border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      aria-label={`شرح مفصل لخطة ${plan.title}`}
+                    >
+                      تفاصيل الخطة
+                    </button>
                   </div>
                   <p className="mt-1 text-sm font-normal text-muted-foreground">{plan.subtitle}</p>
                 </div>
