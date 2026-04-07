@@ -51,14 +51,20 @@ const expenseCategoryColors = [
 ];
 
 export default function Reports() {
+  // Immediate synchronous cleanup to prevent black screen from stale print state
+  if (typeof document !== "undefined") {
+    document.body.classList.remove("print-report-active");
+  }
+
   const [period, setPeriod] = useState<"all" | "1month" | "3months" | "6months" | "1year">("1month");
   const [showAllRecentTransactions, setShowAllRecentTransactions] = useState(false);
   const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
   const [isPrintPortalReady, setIsPrintPortalReady] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
   const [printSnapshot, setPrintSnapshot] = useState<{ data: ReportsSummary; period: typeof period; createdAt: string } | null>(null);
+  const [hasError, setHasError] = useState(false);
   const isMobile = useIsMobile();
-  const { data, isLoading } = useReportsSummary(period);
+  const { data, isLoading, error } = useReportsSummary(period);
 
   useEffect(() => {
     document.body.classList.remove("print-report-active");
@@ -68,6 +74,12 @@ export default function Reports() {
       document.body.classList.remove("print-report-active");
     };
   }, []);
+
+  useEffect(() => {
+    if (error) {
+      setHasError(true);
+    }
+  }, [error]);
 
   const pieData = useMemo(() => {
     const expenses = data?.expensesByCategory ?? [];
@@ -84,7 +96,14 @@ export default function Reports() {
     return (
       <div className="p-4 pb-24" dir="rtl">
         <div className="flex min-h-[50vh] items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          {hasError ? (
+            <div className="text-center">
+              <p className="text-red-600 mb-2">حدث خطأ أثناء تحميل التقارير</p>
+              <p className="text-sm text-muted-foreground">{error?.message || "يرجى المحاولة مرة أخرى"}</p>
+            </div>
+          ) : (
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          )}
         </div>
       </div>
     );
