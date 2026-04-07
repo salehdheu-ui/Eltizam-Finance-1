@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -11,14 +10,6 @@ export default function SavingsPlanDetails() {
   const [, setLocation] = useLocation();
   const [, params] = useRoute("/financial-plans/:id");
   const planId = params?.id ?? "";
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    window.scrollTo({ top: 0, behavior: "auto" });
-  }, [planId]);
 
   const { data: transactions = [] } = useTransactions();
   const { data: wallets = [] } = useWallets();
@@ -55,7 +46,7 @@ export default function SavingsPlanDetails() {
     return (
       <div className="app-page" dir="rtl">
         <div className="flex items-center justify-between">
-          <Button variant="outline" onClick={() => setLocation("/financial-plans")}>عودة</Button>
+          <Button variant="outline" onClick={() => setLocation("/financial-plans?tab=plans&restoreScroll=1")}>عودة</Button>
         </div>
         <div className="mt-6 text-center text-sm text-muted-foreground">الخطة غير موجودة</div>
       </div>
@@ -65,7 +56,7 @@ export default function SavingsPlanDetails() {
   return (
     <div className="app-page" dir="rtl">
       <div className="flex items-center justify-between gap-3">
-        <Button variant="outline" className="rounded-xl" onClick={() => setLocation("/financial-plans")}>عودة</Button>
+        <Button variant="outline" className="rounded-xl" onClick={() => setLocation("/financial-plans?tab=plans&restoreScroll=1")}>عودة</Button>
         <div className="min-w-0 text-right">
           <h1 className="truncate text-lg font-bold sm:text-xl">{plan.title}</h1>
           <p className="truncate text-sm text-muted-foreground">{plan.subtitle}</p>

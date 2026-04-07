@@ -14,11 +14,18 @@ import {
 } from "@/lib/savings-plans";
 
 export default function SavingsPlans() {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { data: transactions = [] } = useTransactions();
   const { data: wallets = [] } = useWallets();
 
-  const [activeTab, setActiveTab] = useState<"savings" | "plans">("savings");
+  const [activeTab, setActiveTab] = useState<"savings" | "plans">(() => {
+    if (typeof window === "undefined") {
+      return "savings";
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    return params.get("tab") === "plans" ? "plans" : "savings";
+  });
   const [planYears, setPlanYears] = useState<3 | 5 | 10>(5);
   const [targetAmount, setTargetAmount] = useState("");
   const [manualIncome, setManualIncome] = useState("");
@@ -198,6 +205,36 @@ export default function SavingsPlans() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const searchString = location.includes("?") ? location.split("?")[1] : "";
+    const params = new URLSearchParams(searchString);
+    const nextTab = params.get("tab") === "plans" ? "plans" : "savings";
+
+    if (nextTab !== activeTab) {
+      setActiveTab(nextTab);
+    }
+
+    if (params.get("restoreScroll") === "1") {
+      const stored = window.sessionStorage.getItem("eltizam-financial-plans-scroll");
+      const storedY = stored ? Number(stored) : NaN;
+
+      if (Number.isFinite(storedY)) {
+        window.requestAnimationFrame(() => {
+          window.scrollTo({ top: storedY, behavior: "auto" });
+        });
+      }
+
+      window.sessionStorage.removeItem("eltizam-financial-plans-scroll");
+      params.delete("restoreScroll");
+      const nextSearch = params.toString();
+      setLocation(`/financial-plans${nextSearch ? `?${nextSearch}` : ""}`);
+    }
+  }, [activeTab, location, setLocation]);
+
+  useEffect(() => {
     if (typeof window === "undefined" || !selectedPlanId) {
       return;
     }
@@ -212,7 +249,15 @@ export default function SavingsPlans() {
         <p className="text-sm text-muted-foreground sm:text-base">شرح أوضح، مقارنة أذكى، وترشيح تلقائي للخطة الأنسب لك</p>
       </div>
 
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "savings" | "plans")} className="space-y-4">
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => {
+          const nextTab = value as "savings" | "plans";
+          setActiveTab(nextTab);
+          setLocation(`/financial-plans?tab=${nextTab}`);
+        }}
+        className="space-y-4"
+      >
         <TabsList className="grid w-full grid-cols-2 rounded-2xl bg-muted p-1">
           <TabsTrigger value="savings" className="rounded-xl">الادخار</TabsTrigger>
           <TabsTrigger value="plans" className="rounded-xl">الخطط</TabsTrigger>
@@ -257,27 +302,27 @@ export default function SavingsPlans() {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">الدخل الشهري</label>
-                  <Input type="text" inputMode="decimal" value={manualIncome} onChange={(e) => setManualIncome(e.target.value)} placeholder={lastMonthIncome ? `${formatCurrency(lastMonthIncome, 2)}` : "مثال: 1200"} dir="ltr" className="app-input text-left" />
+                  <Input type="text" inputMode="decimal" value={manualIncome} onChange={(e) => setManualIncome(e.target.value)} placeholder={lastMonthIncome ? `${formatCurrency(lastMonthIncome, 2)}` : "مثال: 1200"} dir="rtl" className="app-input text-right" />
                   <p className="text-xs text-muted-foreground">أدخل متوسط ما يدخل لك شهرياً إذا أردت حساباً أدق.</p>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">المصاريف الأساسية</label>
-                  <Input type="text" inputMode="decimal" value={manualNeeds} onChange={(e) => setManualNeeds(e.target.value)} placeholder="مثال: 500" dir="ltr" className="app-input text-left" />
+                  <Input type="text" inputMode="decimal" value={manualNeeds} onChange={(e) => setManualNeeds(e.target.value)} placeholder="مثال: 500" dir="rtl" className="app-input text-right" />
                   <p className="text-xs text-muted-foreground">مثل السكن، الفواتير، الطعام، النقل، والتعليم.</p>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">الرغبات والكماليات</label>
-                  <Input type="text" inputMode="decimal" value={manualWants} onChange={(e) => setManualWants(e.target.value)} placeholder="مثال: 150" dir="ltr" className="app-input text-left" />
+                  <Input type="text" inputMode="decimal" value={manualWants} onChange={(e) => setManualWants(e.target.value)} placeholder="مثال: 150" dir="rtl" className="app-input text-right" />
                   <p className="text-xs text-muted-foreground">مثل الترفيه، التسوق غير الضروري، والمطاعم.</p>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">الالتزامات الشهرية الثابتة</label>
-                  <Input type="text" inputMode="decimal" value={manualFixedObligations} onChange={(e) => setManualFixedObligations(e.target.value)} placeholder="مثال: 200" dir="ltr" className="app-input text-left" />
+                  <Input type="text" inputMode="decimal" value={manualFixedObligations} onChange={(e) => setManualFixedObligations(e.target.value)} placeholder="مثال: 200" dir="rtl" className="app-input text-right" />
                   <p className="text-xs text-muted-foreground">مثل الأقساط، الديون، الاشتراكات، أو أي التزام ثابت.</p>
                 </div>
                 <div className="space-y-2 sm:col-span-2">
                   <label className="text-sm font-medium">الهدف الادخاري</label>
-                  <Input type="text" inputMode="decimal" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} placeholder="مثال: 10000" dir="ltr" className="app-input text-left" />
+                  <Input type="text" inputMode="decimal" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} placeholder="مثال: 10000" dir="rtl" className="app-input text-right" />
                   <p className="text-xs text-muted-foreground">أدخل المبلغ الذي تريد الوصول إليه ليحسب النظام أسرع خطة وأقرب خطة واقعية.</p>
                 </div>
               </div>
@@ -465,7 +510,11 @@ export default function SavingsPlans() {
                       onClick={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
+                        if (typeof window !== "undefined") {
+                          window.sessionStorage.setItem("eltizam-financial-plans-scroll", String(window.scrollY));
+                        }
                         const search = new URLSearchParams();
+                        search.set("tab", "plans");
                         search.set("income", manualIncome);
                         search.set("needs", manualNeeds);
                         search.set("wants", manualWants);
