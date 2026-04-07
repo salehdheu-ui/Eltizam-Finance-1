@@ -80,6 +80,8 @@ export default function Reports() {
   const visibleRecentTransactions = showAllRecentTransactions
     ? data.recentTransactions
     : data.recentTransactions.slice(0, 4);
+  const printRecentTransactions = data.recentTransactions.slice(0, 8);
+  const printUpcomingObligations = data.upcomingObligations.slice(0, 6);
 
   const handlePrint = () => {
     document.body.classList.add("print-report-active");
@@ -485,8 +487,12 @@ export default function Reports() {
               <div className="print-break-avoid rounded-[28px] border bg-card p-4 sm:rounded-3xl sm:p-6">
                 <div className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                   <div className="space-y-2 text-right">
+                    <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs text-muted-foreground">
+                      <Printer className="h-3.5 w-3.5" />
+                      تقرير مالي جاهز للطباعة
+                    </div>
                     <h2 className="text-xl font-bold sm:text-2xl">التقارير المالية</h2>
-                    <p className="text-sm text-muted-foreground">تقرير ملخص جاهز للطباعة والمشاركة</p>
+                    <p className="text-sm text-muted-foreground">ملخص احترافي يوضح الأداء المالي خلال الفترة المحددة بصيغة مناسبة للطباعة والحفظ PDF</p>
                   </div>
                   <div className="text-right text-sm text-muted-foreground sm:text-left">
                     <p>الفترة: {getPeriodName(period)}</p>
@@ -494,24 +500,34 @@ export default function Reports() {
                   </div>
                 </div>
 
+                <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                  <span className="rounded-full border px-3 py-1">عدد الحركات: {data.summary.transactionCount}</span>
+                  <span className="rounded-full border px-3 py-1">الرواتب المهيأة: {data.summary.salarySourceCount}</span>
+                  <span className="rounded-full border px-3 py-1">الأقساط القادمة: {data.upcomingObligations.length}</span>
+                </div>
+
                 <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="rounded-2xl border p-4">
+                  <div className="rounded-2xl border bg-emerald-50/40 p-4">
                     <p className="text-xs text-muted-foreground">إجمالي الدخل</p>
                     <p className="mt-2 break-words text-lg font-bold text-emerald-600 sm:text-xl">+{formatCurrency(data.summary.totalIncome, 2)}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">كل الإيرادات المسجلة ضمن الفترة المحددة</p>
                   </div>
-                  <div className="rounded-2xl border p-4">
+                  <div className="rounded-2xl border bg-red-50/40 p-4">
                     <p className="text-xs text-muted-foreground">إجمالي المصروفات</p>
                     <p className="mt-2 break-words text-lg font-bold text-red-600 sm:text-xl">-{formatCurrency(data.summary.totalExpenses, 2)}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">المبالغ الخارجة من المحافظ والتصنيفات</p>
                   </div>
-                  <div className="rounded-2xl border p-4">
+                  <div className="rounded-2xl border bg-primary/5 p-4">
                     <p className="text-xs text-muted-foreground">صافي التدفق</p>
                     <p className={cn("mt-2 break-words text-lg font-bold sm:text-xl", data.summary.netFlow >= 0 ? "text-emerald-600" : "text-red-600")}>
                       {data.summary.netFlow >= 0 ? "+" : ""}{formatCurrency(data.summary.netFlow, 2)}
                     </p>
+                    <p className="mt-1 text-xs text-muted-foreground">الفرق بين الدخل والمصروفات في الفترة</p>
                   </div>
-                  <div className="rounded-2xl border p-4">
+                  <div className="rounded-2xl border bg-muted/20 p-4">
                     <p className="text-xs text-muted-foreground">نسبة الادخار</p>
                     <p className="mt-2 text-lg font-bold sm:text-xl">{formatPercentage(data.summary.savingsRate)}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">نسبة الفائض مقارنةً بإجمالي الدخل</p>
                   </div>
                 </div>
               </div>
@@ -559,19 +575,48 @@ export default function Reports() {
               </div>
 
               <div className="print-break-avoid rounded-[28px] border bg-card p-4 sm:rounded-3xl sm:p-6">
-                <h3 className="text-lg font-bold">آخر المعاملات</h3>
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-lg font-bold">التزامات قادمة</h3>
+                  <span className="text-xs text-muted-foreground">حتى 6 عناصر</span>
+                </div>
                 <div className="mt-4 space-y-3">
-                  {data.recentTransactions.length > 0 ? data.recentTransactions.slice(0, 8).map((tx) => (
-                    <div key={`${tx.id}-print`} className="flex flex-col gap-2 rounded-2xl border p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+                  {printUpcomingObligations.length > 0 ? printUpcomingObligations.map((obligation) => (
+                    <div key={`${obligation.id}-print-obligation`} className="flex items-center justify-between gap-3 rounded-2xl border p-4 text-sm">
                       <div className="min-w-0">
-                        <p className="font-medium">{normalizeArabicText(tx.note) || tx.categoryName || "معاملة"}</p>
-                        <p className="mt-1 text-muted-foreground">{tx.walletName || "بدون محفظة"}</p>
+                        <p className="font-semibold">{obligation.title}</p>
+                        <p className="mt-1 text-muted-foreground">
+                          {obligation.frequency === "monthly"
+                            ? `شهري - يوم ${obligation.dueDay ?? "-"}`
+                            : obligation.frequency === "yearly"
+                              ? `سنوي - ${obligation.dueDay ?? "-"}/${obligation.dueMonth ?? "-"}`
+                              : "مرة واحدة"}
+                        </p>
                       </div>
-                      <span className={cn("shrink-0 font-bold", tx.type === "income" ? "text-emerald-600" : "text-red-600")}>
-                        {tx.type === "income" ? "+" : "-"}{formatCurrency(tx.amount, 2)}
-                      </span>
+                      <span className="shrink-0 font-bold text-destructive">{formatCurrency(obligation.amount, 2)} ر.ع</span>
                     </div>
-                  )) : <p className="text-sm text-muted-foreground">لا توجد معاملات حديثة في هذه الفترة.</p>}
+                  )) : <p className="text-sm text-muted-foreground">لا توجد التزامات قريبة خلال الفترة الحالية.</p>}
+                </div>
+              </div>
+
+              <div className="print-break-avoid rounded-[28px] border bg-card p-4 sm:rounded-3xl sm:p-6">
+                <h3 className="text-lg font-bold">آخر المعاملات</h3>
+                <div className="mt-4 overflow-hidden rounded-3xl border">
+                  <div className="grid grid-cols-[1.2fr_.85fr_.8fr_.8fr] border-b bg-muted/40 text-sm font-medium">
+                    <div className="border-l px-4 py-3">البيان</div>
+                    <div className="border-l px-4 py-3">المحفظة</div>
+                    <div className="border-l px-4 py-3">النوع</div>
+                    <div className="px-4 py-3">المبلغ</div>
+                  </div>
+                  {printRecentTransactions.length > 0 ? printRecentTransactions.map((tx) => (
+                    <div key={`${tx.id}-print`} className="grid grid-cols-[1.2fr_.85fr_.8fr_.8fr] border-b last:border-b-0 text-sm">
+                      <div className="border-l bg-background px-4 py-3 font-medium">{normalizeArabicText(tx.note) || tx.categoryName || "معاملة"}</div>
+                      <div className="border-l px-4 py-3 text-muted-foreground">{tx.walletName || "بدون محفظة"}</div>
+                      <div className="border-l px-4 py-3 text-muted-foreground">{tx.type === "income" ? "دخل" : "مصروف"}</div>
+                      <div className={cn("px-4 py-3 font-bold", tx.type === "income" ? "text-emerald-600" : "text-red-600")}>
+                        {tx.type === "income" ? "+" : "-"}{formatCurrency(tx.amount, 2)}
+                      </div>
+                    </div>
+                  )) : <div className="px-4 py-6 text-center text-sm text-muted-foreground">لا توجد معاملات حديثة في هذه الفترة.</div>}
                 </div>
               </div>
             </div>
