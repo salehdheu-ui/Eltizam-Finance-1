@@ -225,13 +225,16 @@
 @media print {
   @page {
     size: auto;
-    margin: 14mm;
+    margin: 9mm;
   }
 
   html,
   body {
     background: #ffffff !important;
     color: #111827 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
   }
 
   body.print-report-active * {
@@ -247,10 +250,14 @@
     position: absolute;
     inset: 0;
     width: 100%;
+    max-width: none !important;
     padding: 0;
     margin: 0;
+    box-sizing: border-box;
     background: #ffffff !important;
     color: #111827 !important;
+    font-size: 11.5px !important;
+    line-height: 1.45 !important;
   }
 
   .hide-on-print {
@@ -265,6 +272,115 @@
   .print-report-root .shadow-md,
   .print-report-root .shadow-lg {
     box-shadow: none !important;
+  }
+
+  .print-report-root,
+  .print-report-root * {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+    text-shadow: none !important;
+  }
+
+  .print-report-root {
+    page-break-inside: auto;
+  }
+
+  .print-report-root > * {
+    margin-top: 0 !important;
+    margin-bottom: 10px !important;
+  }
+
+  .print-report-root .print-break-avoid {
+    break-inside: avoid-page;
+    page-break-inside: avoid;
+    margin-bottom: 10px !important;
+  }
+
+  .print-report-root .grid,
+  .print-report-root [class*='grid-cols-'] {
+    gap: 8px !important;
+  }
+
+  .print-report-root .space-y-3 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 8px !important;
+  }
+
+  .print-report-root .space-y-4 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 10px !important;
+  }
+
+  .print-report-root .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 12px !important;
+  }
+
+  .print-report-root .rounded-3xl,
+  .print-report-root [class*='rounded-[28px]'],
+  .print-report-root .rounded-2xl {
+    border-radius: 10px !important;
+  }
+
+  .print-report-root .p-6,
+  .print-report-root .sm\:p-6,
+  .print-report-root .sm\:p-8 {
+    padding: 12px !important;
+  }
+
+  .print-report-root .p-4,
+  .print-report-root .px-4,
+  .print-report-root .py-4,
+  .print-report-root .px-3,
+  .print-report-root .py-3 {
+    padding: 8px !important;
+  }
+
+  .print-report-root .pb-4,
+  .print-report-root .mt-4,
+  .print-report-root .mt-5,
+  .print-report-root .mt-6 {
+    margin-top: 8px !important;
+    padding-bottom: 8px !important;
+  }
+
+  .print-report-root h1,
+  .print-report-root h2,
+  .print-report-root h3 {
+    line-height: 1.25 !important;
+    page-break-after: avoid;
+    break-after: avoid-page;
+    margin-bottom: 4px !important;
+  }
+
+  .print-report-root h1 {
+    font-size: 18px !important;
+  }
+
+  .print-report-root h2 {
+    font-size: 16px !important;
+  }
+
+  .print-report-root h3 {
+    font-size: 14px !important;
+  }
+
+  .print-report-root p,
+  .print-report-root span,
+  .print-report-root div {
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  .print-report-root table,
+  .print-report-root .overflow-hidden,
+  .print-report-root .overflow-x-auto,
+  .print-report-root .overflow-y-auto {
+    overflow: visible !important;
+  }
+
+  .print-report-root .text-lg,
+  .print-report-root .sm\:text-xl,
+  .print-report-root .text-xl,
+  .print-report-root .text-2xl {
+    font-size: inherit !important;
   }
 
   .print-report-root .bg-card,
@@ -287,5 +403,13 @@
 
   .print-report-root .recharts-wrapper {
     max-width: 100% !important;
+    height: auto !important;
+  }
+
+  .print-report-root svg,
+  .print-report-root canvas,
+  .print-report-root img {
+    max-width: 100% !important;
+    height: auto !important;
   }
 }
