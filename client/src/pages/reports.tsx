@@ -118,12 +118,24 @@ export default function Reports() {
   const handlePrint = async () => {
     document.body.classList.add("print-report-active");
 
+    let cleanedUp = false;
     const cleanup = () => {
+      if (cleanedUp) {
+        return;
+      }
+
+      cleanedUp = true;
       document.body.classList.remove("print-report-active");
       window.removeEventListener("afterprint", cleanup);
+      window.removeEventListener("focus", handleWindowFocus);
+    };
+
+    const handleWindowFocus = () => {
+      window.setTimeout(cleanup, 150);
     };
 
     window.addEventListener("afterprint", cleanup);
+    window.addEventListener("focus", handleWindowFocus);
 
     await new Promise<void>((resolve) => {
       window.requestAnimationFrame(() => {
@@ -135,7 +147,7 @@ export default function Reports() {
 
     window.print();
 
-    window.setTimeout(cleanup, 1000);
+    window.setTimeout(cleanup, 60000);
   };
 
   const printReportContent = (
