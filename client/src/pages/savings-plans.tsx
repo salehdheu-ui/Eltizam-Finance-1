@@ -206,91 +206,143 @@ export default function SavingsPlans() {
   }, [selectedPlanId]);
 
   return (
-      <div className="app-page" dir="rtl">
+    <div className="app-page" dir="rtl">
       <div className="text-center py-2 sm:py-4 space-y-1">
         <h1 className="text-xl font-bold sm:text-2xl">خطط الادخار</h1>
         <p className="text-sm text-muted-foreground sm:text-base">شرح أوضح، مقارنة أذكى، وترشيح تلقائي للخطة الأنسب لك</p>
       </div>
 
-      <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-            <Wallet className="h-5 w-5 text-primary" />
-            وضعك المالي الحالي
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-2 gap-3">
-          <div className="p-3 bg-white rounded-xl border">
-            <p className="text-xs text-muted-foreground">الرصيد الحالي</p>
-            <p className="break-words text-base font-bold text-primary sm:text-lg">{formatCurrency(totalBalance, 2)} ر.ع</p>
-          </div>
-          <div className="p-3 bg-white rounded-xl border">
-            <p className="text-xs text-muted-foreground">الدخل الشهري المرصود</p>
-            <p className="break-words text-base font-bold text-emerald-600 sm:text-lg">{formatCurrency(lastMonthIncome, 2)} ر.ع</p>
-          </div>
-          <div className="p-3 bg-white rounded-xl border col-span-2">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-muted-foreground">الادخار الشهري الحالي</span>
-              <span className={cn("font-bold", currentSavings >= 0 ? "text-emerald-600" : "text-red-600")}>
-                {formatCurrency(currentSavings, 2)} ر.ع
-              </span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "savings" | "plans")} className="space-y-4">
+        <TabsList className="grid w-full grid-cols-2 rounded-2xl bg-muted p-1">
+          <TabsTrigger value="savings" className="rounded-xl">الادخار</TabsTrigger>
+          <TabsTrigger value="plans" className="rounded-xl">الخطط</TabsTrigger>
+        </TabsList>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-            <Target className="h-5 w-5 text-primary" />
-            قياس الخطة المناسبة
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">الدخل الشهري</label>
-              <Input type="text" inputMode="decimal" value={manualIncome} onChange={(e) => setManualIncome(e.target.value)} placeholder={lastMonthIncome ? `${formatCurrency(lastMonthIncome, 2)}` : "مثال: 1200"} dir="ltr" className="app-input text-left" />
-              <p className="text-xs text-muted-foreground">أدخل متوسط ما يدخل لك شهرياً إذا أردت حساباً أدق.</p>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">المصاريف الأساسية</label>
-              <Input type="text" inputMode="decimal" value={manualNeeds} onChange={(e) => setManualNeeds(e.target.value)} placeholder="مثال: 500" dir="ltr" className="app-input text-left" />
-              <p className="text-xs text-muted-foreground">مثل السكن، الفواتير، الطعام، النقل، والتعليم.</p>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">الرغبات والكماليات</label>
-              <Input type="text" inputMode="decimal" value={manualWants} onChange={(e) => setManualWants(e.target.value)} placeholder="مثال: 150" dir="ltr" className="app-input text-left" />
-              <p className="text-xs text-muted-foreground">مثل الترفيه، التسوق غير الضروري، والمطاعم.</p>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">الالتزامات الشهرية الثابتة</label>
-              <Input type="text" inputMode="decimal" value={manualFixedObligations} onChange={(e) => setManualFixedObligations(e.target.value)} placeholder="مثال: 200" dir="ltr" className="app-input text-left" />
-              <p className="text-xs text-muted-foreground">مثل الأقساط، الديون، الاشتراكات، أو أي التزام ثابت.</p>
-            </div>
-            <div className="space-y-2 sm:col-span-2">
-              <label className="text-sm font-medium">الهدف الادخاري</label>
-              <Input type="text" inputMode="decimal" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} placeholder="مثال: 10000" dir="ltr" className="app-input text-left" />
-              <p className="text-xs text-muted-foreground">أدخل المبلغ الذي تريد الوصول إليه ليحسب النظام أسرع خطة وأقرب خطة واقعية.</p>
-            </div>
-          </div>
+        <TabsContent value="savings" className="space-y-4">
+          <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+                <Wallet className="h-5 w-5 text-primary" />
+                وضعك المالي الحالي
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-2 gap-3">
+              <div className="p-3 bg-white rounded-xl border">
+                <p className="text-xs text-muted-foreground">الرصيد الحالي</p>
+                <p className="break-words text-base font-bold text-primary sm:text-lg">{formatCurrency(totalBalance, 2)} ر.ع</p>
+              </div>
+              <div className="p-3 bg-white rounded-xl border">
+                <p className="text-xs text-muted-foreground">الدخل الشهري المرصود</p>
+                <p className="break-words text-base font-bold text-emerald-600 sm:text-lg">{formatCurrency(lastMonthIncome, 2)} ر.ع</p>
+              </div>
+              <div className="p-3 bg-white rounded-xl border col-span-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">الادخار الشهري الحالي</span>
+                  <span className={cn("font-bold", currentSavings >= 0 ? "text-emerald-600" : "text-red-600")}>
+                    {formatCurrency(currentSavings, 2)} ر.ع
+                  </span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
-          <div className="flex gap-2">
-            {[3, 5, 10].map((years) => (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+                <Target className="h-5 w-5 text-primary" />
+                بيانات حساب الادخار
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">الدخل الشهري</label>
+                  <Input type="text" inputMode="decimal" value={manualIncome} onChange={(e) => setManualIncome(e.target.value)} placeholder={lastMonthIncome ? `${formatCurrency(lastMonthIncome, 2)}` : "مثال: 1200"} dir="ltr" className="app-input text-left" />
+                  <p className="text-xs text-muted-foreground">أدخل متوسط ما يدخل لك شهرياً إذا أردت حساباً أدق.</p>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">المصاريف الأساسية</label>
+                  <Input type="text" inputMode="decimal" value={manualNeeds} onChange={(e) => setManualNeeds(e.target.value)} placeholder="مثال: 500" dir="ltr" className="app-input text-left" />
+                  <p className="text-xs text-muted-foreground">مثل السكن، الفواتير، الطعام، النقل، والتعليم.</p>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">الرغبات والكماليات</label>
+                  <Input type="text" inputMode="decimal" value={manualWants} onChange={(e) => setManualWants(e.target.value)} placeholder="مثال: 150" dir="ltr" className="app-input text-left" />
+                  <p className="text-xs text-muted-foreground">مثل الترفيه، التسوق غير الضروري، والمطاعم.</p>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">الالتزامات الشهرية الثابتة</label>
+                  <Input type="text" inputMode="decimal" value={manualFixedObligations} onChange={(e) => setManualFixedObligations(e.target.value)} placeholder="مثال: 200" dir="ltr" className="app-input text-left" />
+                  <p className="text-xs text-muted-foreground">مثل الأقساط، الديون، الاشتراكات، أو أي التزام ثابت.</p>
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <label className="text-sm font-medium">الهدف الادخاري</label>
+                  <Input type="text" inputMode="decimal" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} placeholder="مثال: 10000" dir="ltr" className="app-input text-left" />
+                  <p className="text-xs text-muted-foreground">أدخل المبلغ الذي تريد الوصول إليه ليحسب النظام أسرع خطة وأقرب خطة واقعية.</p>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                {[3, 5, 10].map((years) => (
+                  <button
+                    key={years}
+                    onClick={() => setPlanYears(years as 3 | 5 | 10)}
+                    className={cn(
+                      "flex-1 py-3 rounded-xl text-sm font-bold transition-all",
+                      planYears === years ? "bg-primary text-primary-foreground shadow-lg" : "bg-muted text-muted-foreground hover:bg-muted/80"
+                    )}
+                  >
+                    {years} سنوات
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+                <PiggyBank className="h-5 w-5 text-amber-600" />
+                ملخص سريع
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border bg-white p-3">
+                <p className="text-xs text-muted-foreground">الدخل المعتمد</p>
+                <p className="break-words text-base font-bold text-slate-800">{formatCurrency(effectiveIncome, 2)} ر.ع</p>
+              </div>
+              <div className="rounded-xl border bg-white p-3">
+                <p className="text-xs text-muted-foreground">المصاريف المعتمدة</p>
+                <p className="break-words text-base font-bold text-slate-800">{formatCurrency(effectiveExpenses, 2)} ر.ع</p>
+              </div>
+              <div className="rounded-xl border bg-white p-3">
+                <p className="text-xs text-muted-foreground">نسبة الادخار الحالية</p>
+                <p className={cn("break-words text-base font-bold", currentSavingsRate >= 0.2 ? "text-emerald-700" : currentSavingsRate >= 0.1 ? "text-amber-700" : "text-slate-800")}>
+                  {effectiveIncome > 0 ? `${Math.round(currentSavingsRate * 100)}%` : "-"}
+                </p>
+              </div>
               <button
-                key={years}
-                onClick={() => setPlanYears(years as 3 | 5 | 10)}
-                className={cn(
-                  "flex-1 py-3 rounded-xl text-sm font-bold transition-all",
-                  planYears === years ? "bg-primary text-primary-foreground shadow-lg" : "bg-muted text-muted-foreground hover:bg-muted/80"
-                )}
+                type="button"
+                onClick={() => setActiveTab("plans")}
+                className="sm:col-span-3 rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white hover:bg-slate-800"
               >
-                {years} سنوات
+                استعرض الخطط المقترحة
               </button>
-            ))}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="plans" className="space-y-4">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm text-muted-foreground">بإمكانك تعديل البيانات من تبويب الادخار لتحسين الترشيح.</p>
+            <button
+              type="button"
+              onClick={() => setActiveTab("savings")}
+              className="rounded-xl border px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted"
+            >
+              تعديل البيانات
+            </button>
           </div>
-        </CardContent>
-      </Card>
 
       <Card className="bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-200">
         <CardHeader className="pb-3">
@@ -547,6 +599,8 @@ export default function SavingsPlans() {
           </Card>
         ))}
       </div>
-      </div>
+        </TabsContent>
+      </Tabs>
+    </div>
   );
 }
