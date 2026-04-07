@@ -1,4 +1,4 @@
-import { Link, useLocation } from "wouter";
+import { useLocation } from "wouter";
 import { Home, ListFilter, Wallet, PieChart, Plus, Settings, Loader2, BarChart3, Menu, X, ChevronLeft, Receipt, Landmark, LogOut, PiggyBank } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { Button } from "./ui/button";
@@ -347,24 +347,26 @@ export default function Layout({ children }: LayoutProps) {
                 const isActive = location === item.href;
                 const Icon = item.icon;
                 return (
-                  <Link key={item.href} href={item.href}>
-                    <div
-                      onClick={() => setIsSidebarOpen(false)}
-                      className={cn(
-                        "flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer",
-                        isActive 
-                          ? "bg-primary text-primary-foreground font-medium" 
-                          : "hover:bg-muted text-foreground"
-                      )}
-                    >
-                      <Icon className={cn("h-5 w-5 flex-shrink-0", isActive && "stroke-[2.5]")} />
-                      <span className="flex-1 text-right">{item.label}</span>
-                      <ChevronLeft className={cn(
-                        "h-4 w-4 flex-shrink-0",
-                        isActive ? "opacity-100" : "opacity-40"
-                      )} />
-                    </div>
-                  </Link>
+                  <div
+                    key={item.href}
+                    onClick={() => {
+                      setIsSidebarOpen(false);
+                      setLocation(item.href);
+                    }}
+                    className={cn(
+                      "flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer",
+                      isActive 
+                        ? "bg-primary text-primary-foreground font-medium" 
+                        : "hover:bg-muted text-foreground"
+                    )}
+                  >
+                    <Icon className={cn("h-5 w-5 flex-shrink-0", isActive && "stroke-[2.5]")} />
+                    <span className="flex-1 text-right">{item.label}</span>
+                    <ChevronLeft className={cn(
+                      "h-4 w-4 flex-shrink-0",
+                      isActive ? "opacity-100" : "opacity-40"
+                    )} />
+                  </div>
                 );
               })}
             </nav>
@@ -417,23 +419,23 @@ export default function Layout({ children }: LayoutProps) {
             const isActive = location === item.href;
             const Icon = item.icon;
             return (
-              <Link key={item.href} href={item.href}>
-                <div
-                  className={cn(
-                    "flex h-full min-w-[70px] cursor-pointer flex-col items-center justify-center gap-1.5 transition-colors duration-200 lg:min-w-[88px] lg:flex-row lg:gap-2 lg:px-3",
-                    isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
-                  )}
-                  data-testid={`nav-${item.href === '/' ? 'home' : item.href.slice(1)}`}
-                >
-                  <div className={cn(
-                    "flex h-10 w-10 items-center justify-center rounded-xl transition-all",
-                    isActive ? "bg-primary/10" : ""
-                  )}>
-                    <Icon className={cn("h-5 w-5", isActive && "stroke-[2.5]")} />
-                  </div>
-                  <span className="whitespace-nowrap text-[10px] font-medium lg:text-xs">{item.label}</span>
+              <div
+                key={item.href}
+                onClick={() => setLocation(item.href)}
+                className={cn(
+                  "flex h-full min-w-[70px] cursor-pointer flex-col items-center justify-center gap-1.5 transition-colors duration-200 lg:min-w-[88px] lg:flex-row lg:gap-2 lg:px-3",
+                  isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
+                )}
+                data-testid={`nav-${item.href === '/' ? 'home' : item.href.slice(1)}`}
+              >
+                <div className={cn(
+                  "flex h-10 w-10 items-center justify-center rounded-xl transition-all",
+                  isActive ? "bg-primary/10" : ""
+                )}>
+                  <Icon className={cn("h-5 w-5", isActive && "stroke-[2.5]")} />
                 </div>
-              </Link>
+                <span className="whitespace-nowrap text-[10px] font-medium lg:text-xs">{item.label}</span>
+              </div>
             );
           })}
         </div>
