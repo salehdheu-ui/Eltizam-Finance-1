@@ -209,6 +209,10 @@
   }
 }
 
+/* ═══════════════════════════════════════════════
+   PRINT SYSTEM — Professional Report & Invoice
+   ═══════════════════════════════════════════════ */
+
 .print-only {
   display: none;
 }
@@ -223,20 +227,24 @@
 }
 
 @media print {
+  /* ── Page Setup ── */
   @page {
-    size: auto;
-    margin: 9mm;
+    size: A4;
+    margin: 12mm 10mm 14mm 10mm;
   }
 
+  /* ── Global Reset ── */
   html,
   body {
     background: #ffffff !important;
-    color: #111827 !important;
+    color: #1f2937 !important;
     margin: 0 !important;
     padding: 0 !important;
     overflow: visible !important;
+    font-family: 'Tajawal', 'Segoe UI', sans-serif !important;
   }
 
+  /* ── Isolate Print Content ── */
   body.print-report-active * {
     visibility: hidden !important;
   }
@@ -251,13 +259,13 @@
     inset: 0;
     width: 100%;
     max-width: none !important;
-    padding: 0;
+    padding: 4px 0 0 0;
     margin: 0;
     box-sizing: border-box;
     background: #ffffff !important;
-    color: #111827 !important;
-    font-size: 11.5px !important;
-    line-height: 1.45 !important;
+    color: #1f2937 !important;
+    font-size: 11px !important;
+    line-height: 1.5 !important;
   }
 
   .hide-on-print {
@@ -268,100 +276,165 @@
     display: block !important;
   }
 
-  .print-report-root .shadow-sm,
-  .print-report-root .shadow-md,
-  .print-report-root .shadow-lg {
-    box-shadow: none !important;
-  }
-
+  /* ── Color Fidelity ── */
   .print-report-root,
   .print-report-root * {
-    print-color-adjust: exact;
-    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
     text-shadow: none !important;
   }
 
+  /* ── Shadows Off ── */
+  .print-report-root .shadow-sm,
+  .print-report-root .shadow-md,
+  .print-report-root .shadow-lg,
+  .print-report-root .shadow-xl {
+    box-shadow: none !important;
+  }
+
+  /* ── Page Break Control ── */
   .print-report-root {
     page-break-inside: auto;
   }
 
-  .print-report-root > * {
-    margin-top: 0 !important;
-    margin-bottom: 10px !important;
-  }
-
   .print-report-root .print-break-avoid {
-    break-inside: avoid-page;
+    break-inside: avoid;
     page-break-inside: avoid;
-    margin-bottom: 10px !important;
-  }
-
-  .print-report-root .grid,
-  .print-report-root [class*='grid-cols-'] {
-    gap: 8px !important;
-  }
-
-  .print-report-root .space-y-3 > :not([hidden]) ~ :not([hidden]) {
-    margin-top: 8px !important;
-  }
-
-  .print-report-root .space-y-4 > :not([hidden]) ~ :not([hidden]) {
-    margin-top: 10px !important;
-  }
-
-  .print-report-root .space-y-6 > :not([hidden]) ~ :not([hidden]) {
-    margin-top: 12px !important;
-  }
-
-  .print-report-root .rounded-3xl,
-  .print-report-root [class*='rounded-[28px]'],
-  .print-report-root .rounded-2xl {
-    border-radius: 10px !important;
-  }
-
-  .print-report-root .p-6,
-  .print-report-root .sm\:p-6,
-  .print-report-root .sm\:p-8 {
-    padding: 12px !important;
-  }
-
-  .print-report-root .p-4,
-  .print-report-root .px-4,
-  .print-report-root .py-4,
-  .print-report-root .px-3,
-  .print-report-root .py-3 {
-    padding: 8px !important;
-  }
-
-  .print-report-root .pb-4,
-  .print-report-root .mt-4,
-  .print-report-root .mt-5,
-  .print-report-root .mt-6 {
-    margin-top: 8px !important;
-    padding-bottom: 8px !important;
   }
 
   .print-report-root h1,
   .print-report-root h2,
   .print-report-root h3 {
-    line-height: 1.25 !important;
     page-break-after: avoid;
-    break-after: avoid-page;
-    margin-bottom: 4px !important;
+    break-after: avoid;
+    orphans: 3;
+    widows: 3;
   }
 
+  /* ── Root Container Spacing ── */
+  .print-report-root > * {
+    margin-top: 0 !important;
+    margin-bottom: 8px !important;
+  }
+
+  /* ── Section Spacing ── */
+  .print-report-root .space-y-3 > :not([hidden]) ~ :not([hidden]),
+  .print-report-root .space-y-4 > :not([hidden]) ~ :not([hidden]),
+  .print-report-root .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 8px !important;
+  }
+
+  /* ── Grid Gaps ── */
+  .print-report-root .grid {
+    gap: 6px !important;
+  }
+
+  /* ── Border Radius — compact for print ── */
+  .print-report-root .rounded-3xl,
+  .print-report-root [class*='rounded-\[28px\]'],
+  .print-report-root .rounded-2xl,
+  .print-report-root .rounded-xl {
+    border-radius: 6px !important;
+  }
+
+  .print-report-root .rounded-full {
+    border-radius: 9999px !important;
+  }
+
+  /* ── Padding — balanced compact ── */
+  .print-report-root .p-6,
+  .print-report-root .p-8,
+  .print-report-root .sm\:p-6,
+  .print-report-root .sm\:p-8 {
+    padding: 10px !important;
+  }
+
+  .print-report-root .p-4 {
+    padding: 7px !important;
+  }
+
+  .print-report-root .px-4 {
+    padding-left: 7px !important;
+    padding-right: 7px !important;
+  }
+
+  .print-report-root .py-3 {
+    padding-top: 5px !important;
+    padding-bottom: 5px !important;
+  }
+
+  .print-report-root .px-3 {
+    padding-left: 6px !important;
+    padding-right: 6px !important;
+  }
+
+  .print-report-root .pb-4 {
+    padding-bottom: 6px !important;
+  }
+
+  /* ── Margins — clean ── */
+  .print-report-root .mt-1 { margin-top: 2px !important; }
+  .print-report-root .mt-2 { margin-top: 3px !important; }
+  .print-report-root .mt-4 { margin-top: 6px !important; }
+  .print-report-root .mt-5 { margin-top: 6px !important; }
+  .print-report-root .mt-6 { margin-top: 8px !important; }
+
+  /* ── Typography — clear hierarchy ── */
   .print-report-root h1 {
-    font-size: 18px !important;
+    font-size: 17px !important;
+    font-weight: 700 !important;
+    line-height: 1.3 !important;
+    margin-bottom: 2px !important;
   }
 
   .print-report-root h2 {
-    font-size: 16px !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+    line-height: 1.3 !important;
+    margin-bottom: 2px !important;
   }
 
   .print-report-root h3 {
+    font-size: 12.5px !important;
+    font-weight: 700 !important;
+    line-height: 1.35 !important;
+    margin-bottom: 2px !important;
+  }
+
+  .print-report-root .text-2xl {
+    font-size: 15px !important;
+  }
+
+  .print-report-root .text-xl,
+  .print-report-root .sm\:text-xl {
     font-size: 14px !important;
   }
 
+  .print-report-root .text-lg {
+    font-size: 12.5px !important;
+  }
+
+  .print-report-root .text-base {
+    font-size: 11px !important;
+  }
+
+  .print-report-root .text-sm {
+    font-size: 10.5px !important;
+  }
+
+  .print-report-root .text-xs {
+    font-size: 9px !important;
+  }
+
+  .print-report-root .font-bold {
+    font-weight: 700 !important;
+  }
+
+  .print-report-root .font-semibold {
+    font-weight: 600 !important;
+  }
+
+  /* ── Word Wrap ── */
   .print-report-root p,
   .print-report-root span,
   .print-report-root div {
@@ -369,6 +442,7 @@
     overflow-wrap: anywhere;
   }
 
+  /* ── Overflow Fix ── */
   .print-report-root table,
   .print-report-root .overflow-hidden,
   .print-report-root .overflow-x-auto,
@@ -376,31 +450,88 @@
     overflow: visible !important;
   }
 
-  .print-report-root .text-lg,
-  .print-report-root .sm\:text-xl,
-  .print-report-root .text-xl,
-  .print-report-root .text-2xl {
-    font-size: inherit !important;
-  }
-
-  .print-report-root .bg-card,
-  .print-report-root .bg-muted\/20,
-  .print-report-root .bg-muted\/30,
-  .print-report-root .bg-primary\/5,
-  .print-report-root .bg-primary\/10,
-  .print-report-root .bg-destructive\/5 {
+  /* ── Colors — clean print palette ── */
+  .print-report-root .bg-card {
     background: #ffffff !important;
   }
 
-  .print-report-root .text-muted-foreground {
-    color: #4b5563 !important;
+  .print-report-root .bg-muted\/20,
+  .print-report-root .bg-muted\/30,
+  .print-report-root .bg-muted\/40 {
+    background: #f3f4f6 !important;
   }
 
+  .print-report-root .bg-background {
+    background: #ffffff !important;
+  }
+
+  .print-report-root .bg-primary\/5,
+  .print-report-root .bg-primary\/10 {
+    background: #eff6ff !important;
+  }
+
+  .print-report-root .bg-destructive\/5 {
+    background: #fef2f2 !important;
+  }
+
+  .print-report-root .text-muted-foreground {
+    color: #6b7280 !important;
+  }
+
+  .print-report-root .text-foreground {
+    color: #1f2937 !important;
+  }
+
+  .print-report-root .text-emerald-600 {
+    color: #059669 !important;
+  }
+
+  .print-report-root .text-red-600 {
+    color: #dc2626 !important;
+  }
+
+  .print-report-root .text-amber-600 {
+    color: #d97706 !important;
+  }
+
+  .print-report-root .text-destructive {
+    color: #dc2626 !important;
+  }
+
+  .print-report-root .text-primary {
+    color: #2563eb !important;
+  }
+
+  /* ── Borders — subtle and consistent ── */
   .print-report-root .border,
-  .print-report-root [class*='border-'] {
+  .print-report-root [class*='border-b'],
+  .print-report-root [class*='border-l'] {
+    border-color: #e5e7eb !important;
+  }
+
+  .print-report-root [class*='border-border'] {
+    border-color: #e5e7eb !important;
+  }
+
+  .print-report-root .border-dashed {
+    border-style: dashed !important;
     border-color: #d1d5db !important;
   }
 
+  /* ── Table Rows — alternating for readability ── */
+  .print-report-root .grid.border-b:nth-child(even) {
+    background: #f9fafb !important;
+  }
+
+  /* ── Icons in print — keep proportional ── */
+  .print-report-root .h-14 { height: 36px !important; }
+  .print-report-root .w-14 { width: 36px !important; }
+  .print-report-root .h-12 { height: 32px !important; }
+  .print-report-root .w-12 { width: 32px !important; }
+  .print-report-root .text-3xl { font-size: 20px !important; }
+  .print-report-root .text-2xl { font-size: 15px !important; }
+
+  /* ── Charts & Media ── */
   .print-report-root .recharts-wrapper {
     max-width: 100% !important;
     height: auto !important;
@@ -412,4 +543,17 @@
     max-width: 100% !important;
     height: auto !important;
   }
+
+  /* ── Chip/Badge pills ── */
+  .print-report-root .rounded-full.border {
+    background: #f3f4f6 !important;
+    border-color: #d1d5db !important;
+    padding: 2px 8px !important;
+    font-size: 9px !important;
+  }
+
+  /* ── Gap between flex items ── */
+  .print-report-root .gap-2 { gap: 4px !important; }
+  .print-report-root .gap-3 { gap: 6px !important; }
+  .print-report-root .gap-4 { gap: 6px !important; }
 }

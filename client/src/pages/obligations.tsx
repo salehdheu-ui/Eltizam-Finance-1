@@ -1293,7 +1293,7 @@ export default function Obligations() {
                     </div>
                   ) : null}
                 </div>
-@@
+
                 {reportScope === "single" && selectedReportObligation ? (() => {
                   const obligation = selectedReportObligation;
                   return (
