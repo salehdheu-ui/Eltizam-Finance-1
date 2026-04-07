@@ -305,8 +305,8 @@
   }
 
   .print-report-root .print-break-avoid {
-    break-inside: avoid;
-    page-break-inside: avoid;
+    break-inside: auto !important;
+    page-break-inside: auto !important;
   }
 
   .print-report-root h1,
