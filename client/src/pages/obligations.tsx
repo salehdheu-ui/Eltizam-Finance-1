@@ -1,4 +1,5 @@
 import { Plus, Loader2, Trash2, Edit2, Power, PowerOff, Calendar, Wallet, AlertCircle, Receipt, Repeat, X, Filter, ArrowLeftRight, Sparkles, Printer } from "lucide-react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -637,10 +638,15 @@ export default function Obligations() {
   const [frequencyFilter, setFrequencyFilter] = useState<"all" | "monthly" | "yearly" | "one_time">("all");
   const [timingFilter, setTimingFilter] = useState<"all" | "upcoming" | "auto">("all");
   const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
+  const [isPrintPortalReady, setIsPrintPortalReady] = useState(false);
   const [reportScope, setReportScope] = useState<"all" | "filtered" | "single">("filtered");
   const [selectedReportObligationId, setSelectedReportObligationId] = useState<number | null>(null);
   const [selectedReportFields, setSelectedReportFields] = useState<ReportFieldKey[]>(["title", "amount", "type", "status", "frequency", "startDate", "endDate", "dueDate", "daysLeft"]);
   const { data: selectedObligationStatuses = [] } = useVariableObligationStatuses(selectedReportObligationId ?? undefined);
+
+  useEffect(() => {
+    setIsPrintPortalReady(true);
+  }, []);
 
   const upcomingObligations = getUpcomingObligations(obligations, 99);
   const upcomingIds = new Set(upcomingObligations.filter((obligation) => obligation.daysLeft <= 30).map((obligation) => obligation.id));
@@ -757,12 +763,39 @@ export default function Obligations() {
     setIsReportDialogOpen(true);
   };
 
-  const handlePrintReport = () => {
+  const handlePrintReport = async () => {
     document.body.classList.add("print-report-active");
-    window.print();
-    window.setTimeout(() => {
+
+    let cleanedUp = false;
+    const cleanup = () => {
+      if (cleanedUp) {
+        return;
+      }
+
+      cleanedUp = true;
       document.body.classList.remove("print-report-active");
-    }, 150);
+      window.removeEventListener("afterprint", cleanup);
+      window.removeEventListener("focus", handleWindowFocus);
+    };
+
+    const handleWindowFocus = () => {
+      window.setTimeout(cleanup, 150);
+    };
+
+    window.addEventListener("afterprint", cleanup);
+    window.addEventListener("focus", handleWindowFocus);
+
+    await new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          resolve();
+        });
+      });
+    });
+
+    window.print();
+
+    window.setTimeout(cleanup, 60000);
   };
 
   const getReportStatus = (obligation: Obligation) => getObligationStatusLabel(obligation);
@@ -787,6 +820,143 @@ export default function Obligations() {
       </div>
     );
   }
+
+  const printReportContent = (
+    <div className="print-report-root mx-auto max-w-3xl space-y-6 rounded-3xl bg-background p-6 sm:p-8">
+      <div className="print-break-avoid rounded-3xl border bg-card p-6">
+        <div className="flex items-start justify-between gap-4 border-b pb-4">
+          <div className="space-y-2 text-right">
+            <h2 className="text-2xl font-bold">{reportScope === "single" ? "فاتورة الالتزام" : "تقرير الالتزامات"}</h2>
+            <p className="text-sm text-muted-foreground">
+              {reportScope === "single" ? "مستند تفصيلي للالتزام والدفعات المرتبطة به" : reportScope === "all" ? "تقرير جميع الالتزامات" : "تقرير الالتزامات المفلترة"}
+            </p>
+          </div>
+          <div className="text-left text-sm text-muted-foreground">
+            <p>عدد السجلات: {reportObligations.length}</p>
+            <p>تاريخ الإنشاء: {new Date().toLocaleString("ar-OM")}</p>
+          </div>
+        </div>
+
+        {reportScope !== "single" ? (
+          <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
+            <span className="rounded-full border px-3 py-1">الحالة: {statusFilter === "all" ? "الكل" : statusFilter === "active" ? "النشطة" : "المتوقفة"}</span>
+            <span className="rounded-full border px-3 py-1">التكرار: {frequencyFilter === "all" ? "الكل" : frequencyLabels[frequencyFilter]}</span>
+            <span className="rounded-full border px-3 py-1">التركيز: {timingFilter === "all" ? "الكل" : timingFilter === "upcoming" ? "القريبة" : "التلقائية"}</span>
+          </div>
+        ) : null}
+      </div>
+
+      {reportScope === "single" && selectedReportObligation ? (() => {
+        const obligation = selectedReportObligation;
+        return (
+          <div className="print-break-avoid rounded-3xl border bg-card p-6">
+            <div className="flex flex-col gap-4 border-b pb-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-center gap-3">
+                <div className={cn("flex h-14 w-14 items-center justify-center rounded-3xl text-3xl", obligationTypeColors[obligation.obligationType])}>
+                  {obligationTypeIcons[obligation.obligationType]}
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold">{obligation.title}</h3>
+                  <p className="text-sm text-muted-foreground">{obligationTypeLabels[obligation.obligationType]} • {obligation.scheduleType === "fixed" ? frequencyLabels[obligation.frequency] : "متغير"}</p>
+                </div>
+              </div>
+              <div className="text-right sm:text-left">
+                <p className="text-xs text-muted-foreground">المبلغ الدوري</p>
+                <p className="mt-1 text-xl font-bold text-destructive">{formatAmount(obligation.amount)}</p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">الحالة</p><p className="mt-2 font-semibold">{getReportStatus(obligation)}</p></div>
+              <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">موعد الاستحقاق</p><p className="mt-2 font-semibold">{formatDueDate(obligation)}</p></div>
+              <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">المحفظة</p><p className="mt-2 font-semibold">{selectedReportWalletName}</p></div>
+              <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">التصنيف</p><p className="mt-2 font-semibold">{selectedReportCategoryName}</p></div>
+              <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">تاريخ البداية</p><p className="mt-2 font-semibold">{formatDate(obligation.startDate)}</p></div>
+              <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">الانتهاء</p><p className="mt-2 font-semibold">{obligation.endDate ? formatDate(obligation.endDate) : "بدون انتهاء"}</p></div>
+            </div>
+          </div>
+        );
+      })() : null}
+
+      {reportScope === "single" && selectedReportObligation ? (
+        <div className="print-break-avoid rounded-3xl border bg-card p-6">
+          <h3 className="text-lg font-bold">الدفعات / حالة السداد</h3>
+          {selectedReportObligation.scheduleType === "variable" ? (
+            <>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">الأشهر المدفوعة</p><p className="mt-2 text-lg font-bold text-emerald-600">{paidStatusesCount}</p></div>
+                <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">الأشهر المتأخرة</p><p className="mt-2 text-lg font-bold text-amber-600">{lateStatusesCount}</p></div>
+                <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">إجمالي المدفوع</p><p className="mt-2 text-lg font-bold">{formatCurrency(totalPaidAmount, 2)} ر.ع</p></div>
+              </div>
+
+              <div className="mt-4 overflow-hidden rounded-3xl border">
+                <div className="grid grid-cols-[1.1fr_1fr_1fr] border-b bg-muted/40 text-sm font-medium">
+                  <div className="border-l px-4 py-3">الشهر</div>
+                  <div className="border-l px-4 py-3">الحالة</div>
+                  <div className="px-4 py-3">تاريخ السداد</div>
+                </div>
+                {printableStatuses.length > 0 ? printableStatuses.map((item) => (
+                  <div key={item.id} className="grid grid-cols-[1.1fr_1fr_1fr] border-b last:border-b-0 text-sm">
+                    <div className="border-l px-4 py-3">{item.monthKey}</div>
+                    <div className="border-l px-4 py-3">{getMonthStatusLabel(item.status)}</div>
+                    <div className="px-4 py-3 text-muted-foreground">{item.paidAt ? formatDate(item.paidAt) : "غير مسجل"}</div>
+                  </div>
+                )) : (
+                  <div className="px-4 py-6 text-center text-sm text-muted-foreground">لا توجد دفعات مسجلة لهذا الالتزام المتغير حتى الآن.</div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="mt-4 rounded-3xl border p-4 text-sm text-muted-foreground">
+              هذا الالتزام من النوع الثابت، لذلك لا توجد قائمة دفعات شهرية مرتبطة محفوظة حاليًا. يمكنك استخدام هذه الفاتورة كمرجع واضح لبيانات الالتزام ومبلغ السداد المتوقع.
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      {reportScope !== "single" && reportObligations.length > 0 ? reportObligations.map((obligation) => {
+        const upcoming = upcomingObligations.find((item) => item.id === obligation.id);
+        const walletName = wallets.find((wallet) => wallet.id === obligation.walletId)?.name;
+        const categoryName = categories.find((category) => category.id === obligation.categoryId)?.name;
+
+        return (
+          <div key={`${obligation.id}-report`} className="print-break-avoid rounded-3xl border bg-card p-6">
+            <div className="flex items-center justify-between gap-4 border-b pb-4">
+              <div className="flex items-center gap-3">
+                <div className={cn("flex h-12 w-12 items-center justify-center rounded-2xl text-2xl", obligationTypeColors[obligation.obligationType])}>
+                  {obligationTypeIcons[obligation.obligationType]}
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold">{obligation.title}</h3>
+                  <p className="text-sm text-muted-foreground">{obligationTypeLabels[obligation.obligationType]}</p>
+                </div>
+              </div>
+              {selectedReportFields.includes("amount") ? <span className="text-lg font-bold text-destructive">{formatAmount(obligation.amount)}</span> : null}
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {selectedReportFields.includes("title") ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">العنوان</p><p className="mt-2 font-semibold">{obligation.title}</p></div> : null}
+              {selectedReportFields.includes("type") ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">النوع</p><p className="mt-2 font-semibold">{obligationTypeLabels[obligation.obligationType]}</p></div> : null}
+              {selectedReportFields.includes("status") ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">الحالة</p><p className="mt-2 font-semibold">{getReportStatus(obligation)}</p></div> : null}
+              {selectedReportFields.includes("frequency") ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">التكرار</p><p className="mt-2 font-semibold">{obligation.scheduleType === "fixed" ? frequencyLabels[obligation.frequency] : "متغير"}</p></div> : null}
+              {selectedReportFields.includes("startDate") ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">تاريخ البداية</p><p className="mt-2 font-semibold">{formatDate(obligation.startDate)}</p></div> : null}
+              {selectedReportFields.includes("endDate") ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">تاريخ الانتهاء</p><p className="mt-2 font-semibold">{obligation.endDate ? formatDate(obligation.endDate) : "بدون انتهاء"}</p></div> : null}
+              {selectedReportFields.includes("dueDate") ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">موعد الاستحقاق</p><p className="mt-2 font-semibold">{formatDueDate(obligation)}</p></div> : null}
+              {selectedReportFields.includes("daysLeft") ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">الأيام المتبقية</p><p className="mt-2 font-semibold">{getReportDaysLeft(obligation)}</p></div> : null}
+              <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">المحفظة</p><p className="mt-2 font-semibold">{walletName || "بدون محفظة"}</p></div>
+              <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">التصنيف</p><p className="mt-2 font-semibold">{categoryName || "بدون تصنيف"}</p></div>
+            </div>
+
+            {upcoming ? <p className="mt-4 text-sm text-amber-600">{upcoming.daysLeft <= 7 ? "هذا الالتزام قريب من الاستحقاق." : "الالتزام مجدول ضمن قائمة الالتزامات القادمة."}</p> : null}
+          </div>
+        );
+      }) : reportScope !== "single" ? (
+        <div className="rounded-3xl border border-dashed bg-card p-8 text-center text-sm text-muted-foreground">
+          لا توجد بيانات مطابقة لإعدادات التقرير الحالية.
+        </div>
+      ) : null}
+    </div>
+  );
 
   return (
     <div className="animate-in fade-in duration-300">
@@ -1270,144 +1440,18 @@ export default function Obligations() {
             </div>
 
             <div className="overflow-y-auto bg-muted/20 p-4 sm:p-6" style={{ maxHeight: "calc(var(--app-viewport-height, 100vh) * 0.8)" }}>
-              <div className="print-report-root mx-auto max-w-3xl space-y-6 rounded-3xl bg-background p-6 sm:p-8">
-                <div className="print-break-avoid rounded-3xl border bg-card p-6">
-                  <div className="flex items-start justify-between gap-4 border-b pb-4">
-                    <div className="space-y-2 text-right">
-                      <h2 className="text-2xl font-bold">{reportScope === "single" ? "فاتورة الالتزام" : "تقرير الالتزامات"}</h2>
-                      <p className="text-sm text-muted-foreground">
-                        {reportScope === "single" ? "مستند تفصيلي للالتزام والدفعات المرتبطة به" : reportScope === "all" ? "تقرير جميع الالتزامات" : "تقرير الالتزامات المفلترة"}
-                      </p>
-                    </div>
-                    <div className="text-left text-sm text-muted-foreground">
-                      <p>عدد السجلات: {reportObligations.length}</p>
-                      <p>تاريخ الإنشاء: {new Date().toLocaleString("ar-OM")}</p>
-                    </div>
-                  </div>
-
-                  {reportScope !== "single" ? (
-                    <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                      <span className="rounded-full border px-3 py-1">الحالة: {statusFilter === "all" ? "الكل" : statusFilter === "active" ? "النشطة" : "المتوقفة"}</span>
-                      <span className="rounded-full border px-3 py-1">التكرار: {frequencyFilter === "all" ? "الكل" : frequencyLabels[frequencyFilter]}</span>
-                      <span className="rounded-full border px-3 py-1">التركيز: {timingFilter === "all" ? "الكل" : timingFilter === "upcoming" ? "القريبة" : "التلقائية"}</span>
-                    </div>
-                  ) : null}
-                </div>
-
-                {reportScope === "single" && selectedReportObligation ? (() => {
-                  const obligation = selectedReportObligation;
-                  return (
-                    <div className="print-break-avoid rounded-3xl border bg-card p-6">
-                      <div className="flex flex-col gap-4 border-b pb-4 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className={cn("flex h-14 w-14 items-center justify-center rounded-3xl text-3xl", obligationTypeColors[obligation.obligationType])}>
-                            {obligationTypeIcons[obligation.obligationType]}
-                          </div>
-                          <div>
-                            <h3 className="text-xl font-bold">{obligation.title}</h3>
-                            <p className="text-sm text-muted-foreground">{obligationTypeLabels[obligation.obligationType]} • {obligation.scheduleType === "fixed" ? frequencyLabels[obligation.frequency] : "متغير"}</p>
-                          </div>
-                        </div>
-                        <div className="text-right sm:text-left">
-                          <p className="text-xs text-muted-foreground">المبلغ الدوري</p>
-                          <p className="mt-1 text-xl font-bold text-destructive">{formatAmount(obligation.amount)}</p>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                        <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">الحالة</p><p className="mt-2 font-semibold">{getReportStatus(obligation)}</p></div>
-                        <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">موعد الاستحقاق</p><p className="mt-2 font-semibold">{formatDueDate(obligation)}</p></div>
-                        <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">المحفظة</p><p className="mt-2 font-semibold">{selectedReportWalletName}</p></div>
-                        <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">التصنيف</p><p className="mt-2 font-semibold">{selectedReportCategoryName}</p></div>
-                        <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">تاريخ البداية</p><p className="mt-2 font-semibold">{formatDate(obligation.startDate)}</p></div>
-                        <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">الانتهاء</p><p className="mt-2 font-semibold">{obligation.endDate ? formatDate(obligation.endDate) : "بدون انتهاء"}</p></div>
-                      </div>
-                    </div>
-                  );
-                })() : null}
-
-                {reportScope === "single" && selectedReportObligation ? (
-                  <div className="print-break-avoid rounded-3xl border bg-card p-6">
-                    <h3 className="text-lg font-bold">الدفعات / حالة السداد</h3>
-                    {selectedReportObligation.scheduleType === "variable" ? (
-                      <>
-                        <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                          <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">الأشهر المدفوعة</p><p className="mt-2 text-lg font-bold text-emerald-600">{paidStatusesCount}</p></div>
-                          <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">الأشهر المتأخرة</p><p className="mt-2 text-lg font-bold text-amber-600">{lateStatusesCount}</p></div>
-                          <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">إجمالي المدفوع</p><p className="mt-2 text-lg font-bold">{formatCurrency(totalPaidAmount, 2)} ر.ع</p></div>
-                        </div>
-
-                        <div className="mt-4 overflow-hidden rounded-3xl border">
-                          <div className="grid grid-cols-[1.1fr_1fr_1fr] border-b bg-muted/40 text-sm font-medium">
-                            <div className="border-l px-4 py-3">الشهر</div>
-                            <div className="border-l px-4 py-3">الحالة</div>
-                            <div className="px-4 py-3">تاريخ السداد</div>
-                          </div>
-                          {printableStatuses.length > 0 ? printableStatuses.map((item) => (
-                            <div key={item.id} className="grid grid-cols-[1.1fr_1fr_1fr] border-b last:border-b-0 text-sm">
-                              <div className="border-l px-4 py-3">{item.monthKey}</div>
-                              <div className="border-l px-4 py-3">{getMonthStatusLabel(item.status)}</div>
-                              <div className="px-4 py-3 text-muted-foreground">{item.paidAt ? formatDate(item.paidAt) : "غير مسجل"}</div>
-                            </div>
-                          )) : (
-                            <div className="px-4 py-6 text-center text-sm text-muted-foreground">لا توجد دفعات مسجلة لهذا الالتزام المتغير حتى الآن.</div>
-                          )}
-                        </div>
-                      </>
-                    ) : (
-                      <div className="mt-4 rounded-3xl border p-4 text-sm text-muted-foreground">
-                        هذا الالتزام من النوع الثابت، لذلك لا توجد قائمة دفعات شهرية مرتبطة محفوظة حاليًا. يمكنك استخدام هذه الفاتورة كمرجع واضح لبيانات الالتزام ومبلغ السداد المتوقع.
-                      </div>
-                    )}
-                  </div>
-                ) : null}
-
-                {reportScope !== "single" && reportObligations.length > 0 ? reportObligations.map((obligation) => {
-                  const upcoming = upcomingObligations.find((item) => item.id === obligation.id);
-                  const walletName = wallets.find((wallet) => wallet.id === obligation.walletId)?.name;
-                  const categoryName = categories.find((category) => category.id === obligation.categoryId)?.name;
-
-                  return (
-                    <div key={`${obligation.id}-report`} className="print-break-avoid rounded-3xl border bg-card p-6">
-                      <div className="flex items-center justify-between gap-4 border-b pb-4">
-                        <div className="flex items-center gap-3">
-                          <div className={cn("flex h-12 w-12 items-center justify-center rounded-2xl text-2xl", obligationTypeColors[obligation.obligationType])}>
-                            {obligationTypeIcons[obligation.obligationType]}
-                          </div>
-                          <div>
-                            <h3 className="text-lg font-bold">{obligation.title}</h3>
-                            <p className="text-sm text-muted-foreground">{obligationTypeLabels[obligation.obligationType]}</p>
-                          </div>
-                        </div>
-                        {selectedReportFields.includes("amount") ? <span className="text-lg font-bold text-destructive">{formatAmount(obligation.amount)}</span> : null}
-                      </div>
-
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                        {selectedReportFields.includes("title") ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">العنوان</p><p className="mt-2 font-semibold">{obligation.title}</p></div> : null}
-                        {selectedReportFields.includes("type") ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">النوع</p><p className="mt-2 font-semibold">{obligationTypeLabels[obligation.obligationType]}</p></div> : null}
-                        {selectedReportFields.includes("status") ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">الحالة</p><p className="mt-2 font-semibold">{getReportStatus(obligation)}</p></div> : null}
-                        {selectedReportFields.includes("frequency") ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">التكرار</p><p className="mt-2 font-semibold">{obligation.scheduleType === "fixed" ? frequencyLabels[obligation.frequency] : "متغير"}</p></div> : null}
-                        {selectedReportFields.includes("startDate") ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">تاريخ البداية</p><p className="mt-2 font-semibold">{formatDate(obligation.startDate)}</p></div> : null}
-                        {selectedReportFields.includes("endDate") ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">تاريخ الانتهاء</p><p className="mt-2 font-semibold">{obligation.endDate ? formatDate(obligation.endDate) : "بدون انتهاء"}</p></div> : null}
-                        {selectedReportFields.includes("dueDate") ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">موعد الاستحقاق</p><p className="mt-2 font-semibold">{formatDueDate(obligation)}</p></div> : null}
-                        {selectedReportFields.includes("daysLeft") ? <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">الأيام المتبقية</p><p className="mt-2 font-semibold">{getReportDaysLeft(obligation)}</p></div> : null}
-                        <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">المحفظة</p><p className="mt-2 font-semibold">{walletName || "بدون محفظة"}</p></div>
-                        <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">التصنيف</p><p className="mt-2 font-semibold">{categoryName || "بدون تصنيف"}</p></div>
-                      </div>
-
-                      {upcoming ? <p className="mt-4 text-sm text-amber-600">{upcoming.daysLeft <= 7 ? "هذا الالتزام قريب من الاستحقاق." : "الالتزام مجدول ضمن قائمة الالتزامات القادمة."}</p> : null}
-                    </div>
-                  );
-                }) : reportScope !== "single" ? (
-                  <div className="rounded-3xl border border-dashed bg-card p-8 text-center text-sm text-muted-foreground">
-                    لا توجد بيانات مطابقة لإعدادات التقرير الحالية.
-                  </div>
-                ) : null}
-              </div>
+              {printReportContent}
             </div>
           </div>
         </DialogContent>
       </Dialog>
+
+      {isPrintPortalReady ? createPortal(
+        <div className="print-only-portal" dir="rtl">
+          {printReportContent}
+        </div>,
+        document.body,
+      ) : null}
     </div>
   );
 }

@@ -248,7 +248,7 @@
     font-family: 'Tajawal', 'Segoe UI', sans-serif !important;
   }
 
-  body.print-report-active #root {
+  body.print-report-active > :not(.print-only-portal) {
     display: none !important;
   }
 
