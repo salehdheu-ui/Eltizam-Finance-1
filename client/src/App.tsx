@@ -49,6 +49,10 @@ function Router() {
   const isSystemAdmin = user?.role === "system_admin";
   const isPublicAuthRoute = location === "/login" || location === "/forgot-password" || location === "/reset-password";
 
+  useEffect(() => {
+    document.body.classList.remove("print-report-active");
+  }, [location]);
+
   if (isLoading) {
     return (
       <div className="app-min-h-screen flex items-center justify-center">
