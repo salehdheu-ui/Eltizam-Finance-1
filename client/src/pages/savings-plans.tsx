@@ -274,17 +274,17 @@ export default function SavingsPlans() {
             <CardContent className="grid grid-cols-2 gap-3">
               <div className="p-3 bg-white rounded-xl border">
                 <p className="text-xs text-muted-foreground">الرصيد الحالي</p>
-                <p dir="ltr" className="break-words text-base font-bold text-primary sm:text-lg whitespace-nowrap">{formatCurrency(totalBalance, 2)} ر.ع</p>
+                <p dir="ltr" className="break-words text-base font-bold text-primary sm:text-lg whitespace-nowrap">ر.ع {formatCurrency(totalBalance, 2)}</p>
               </div>
               <div className="p-3 bg-white rounded-xl border">
                 <p className="text-xs text-muted-foreground">الدخل الشهري المرصود</p>
-                <p dir="ltr" className="break-words text-base font-bold text-emerald-600 sm:text-lg whitespace-nowrap">{formatCurrency(lastMonthIncome, 2)} ر.ع</p>
+                <p dir="ltr" className="break-words text-base font-bold text-emerald-600 sm:text-lg whitespace-nowrap">ر.ع {formatCurrency(lastMonthIncome, 2)}</p>
               </div>
               <div className="p-3 bg-white rounded-xl border col-span-2">
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">الادخار الشهري الحالي</span>
                   <span dir="ltr" className={cn("font-bold whitespace-nowrap", currentSavings >= 0 ? "text-emerald-600" : "text-red-600")}>
-                    {formatCurrency(currentSavings, 2)} ر.ع
+                    ر.ع {formatCurrency(currentSavings, 2)}
                   </span>
                 </div>
               </div>
@@ -423,8 +423,8 @@ export default function SavingsPlans() {
               </ul>
             </div>
             <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
-              <li dir="ltr" className="flex w-full flex-row-reverse items-start justify-end gap-2"><ArrowRight className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5" /><span className="flex-1 text-right">الادخار المقترح شهرياً: <span dir="ltr" className="whitespace-nowrap">{formatCurrency(effectiveIncome * recommendedPlan.savingsRate, 2)} ر.ع</span></span></li>
-              <li dir="ltr" className="flex w-full flex-row-reverse items-start justify-end gap-2"><ArrowRight className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5" /><span className="flex-1 text-right">الزيادة المطلوبة عن وضعك الحالي: <span dir="ltr" className="whitespace-nowrap">{formatCurrency(improvementGap, 2)} ر.ع</span> شهرياً</span></li>
+              <li dir="ltr" className="flex w-full flex-row-reverse items-start justify-end gap-2"><ArrowRight className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5" /><span className="flex-1 text-right">الادخار المقترح شهرياً: <span dir="ltr" className="whitespace-nowrap">ر.ع {formatCurrency(effectiveIncome * recommendedPlan.savingsRate, 2)}</span></span></li>
+              <li dir="ltr" className="flex w-full flex-row-reverse items-start justify-end gap-2"><ArrowRight className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5" /><span className="flex-1 text-right">الزيادة المطلوبة عن وضعك الحالي: <span dir="ltr" className="whitespace-nowrap">ر.ع {formatCurrency(improvementGap, 2)}</span> شهرياً</span></li>
               <li dir="ltr" className="flex w-full flex-row-reverse items-start justify-end gap-2"><ArrowRight className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5" /><span className="flex-1 text-right">توزيع الخطة: {getSavingsDistributionLabel(recommendedPlan)}</span></li>
             </ul>
           </div>
@@ -481,7 +481,7 @@ export default function SavingsPlans() {
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-muted-foreground">الادخار الشهري</span>
-                  <span dir="ltr" className="font-medium whitespace-nowrap">{formatCurrency(monthlySavingsAmount, 2)} ر.ع</span>
+                  <span dir="ltr" className="font-medium whitespace-nowrap">ر.ع {formatCurrency(monthlySavingsAmount, 2)}</span>
                 </div>
                 {targetNum > totalBalance ? (
                   <div className="flex items-center justify-between gap-3">
@@ -551,33 +551,33 @@ export default function SavingsPlans() {
               </div>
 
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">الادخار</p><p dir="ltr" className="font-bold text-emerald-600 whitespace-nowrap">{formatCurrency(monthlySavingsAmount, 2)} ر.ع</p></div>
-                <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">الاحتياجات</p><p dir="ltr" className="font-bold text-blue-600 whitespace-nowrap">{formatCurrency(monthlyNeedsAmount, 2)} ر.ع</p></div>
-                <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">الرغبات</p><p dir="ltr" className="font-bold text-amber-600 whitespace-nowrap">{formatCurrency(monthlyWantsAmount, 2)} ر.ع</p></div>
-                <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">الاحتياطي</p><p dir="ltr" className="font-bold text-violet-600 whitespace-nowrap">{formatCurrency(monthlyReserveAmount, 2)} ر.ع</p></div>
+                <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">الادخار</p><p dir="ltr" className="font-bold text-emerald-600 whitespace-nowrap">ر.ع {formatCurrency(monthlySavingsAmount, 2)}</p></div>
+                <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">الاحتياجات</p><p dir="ltr" className="font-bold text-blue-600 whitespace-nowrap">ر.ع {formatCurrency(monthlyNeedsAmount, 2)}</p></div>
+                <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">الرغبات</p><p dir="ltr" className="font-bold text-amber-600 whitespace-nowrap">ر.ع {formatCurrency(monthlyWantsAmount, 2)}</p></div>
+                <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">الاحتياطي</p><p dir="ltr" className="font-bold text-violet-600 whitespace-nowrap">ر.ع {formatCurrency(monthlyReserveAmount, 2)}</p></div>
               </div>
 
               <div className="rounded-xl border bg-slate-50 p-4">
                 <div className="flex flex-col gap-1 sm:flex-row-reverse sm:items-center sm:justify-between">
                   <p className="font-medium text-foreground">مثال مباشر على تطبيق الخطة</p>
-                  <p className="text-xs text-muted-foreground">على دخل شهري قدره <span dir="ltr" className="whitespace-nowrap">{formatCurrency(exampleIncome, 2)} ر.ع</span></p>
+                  <p className="text-xs text-muted-foreground">على دخل شهري قدره <span dir="ltr" className="whitespace-nowrap">ر.ع {formatCurrency(exampleIncome, 2)}</span></p>
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <div className="rounded-lg bg-white p-3 border">
                     <p className="text-xs text-muted-foreground">الاحتياجات</p>
-                    <p dir="ltr" className="font-bold text-blue-600 whitespace-nowrap">{formatCurrency(exampleIncome * plan.needsRate, 2)} ر.ع</p>
+                    <p dir="ltr" className="font-bold text-blue-600 whitespace-nowrap">ر.ع {formatCurrency(exampleIncome * plan.needsRate, 2)}</p>
                   </div>
                   <div className="rounded-lg bg-white p-3 border">
                     <p className="text-xs text-muted-foreground">الرغبات</p>
-                    <p dir="ltr" className="font-bold text-amber-600 whitespace-nowrap">{formatCurrency(exampleIncome * plan.wantsRate, 2)} ر.ع</p>
+                    <p dir="ltr" className="font-bold text-amber-600 whitespace-nowrap">ر.ع {formatCurrency(exampleIncome * plan.wantsRate, 2)}</p>
                   </div>
                   <div className="rounded-lg bg-white p-3 border">
                     <p className="text-xs text-muted-foreground">الادخار</p>
-                    <p dir="ltr" className="font-bold text-emerald-600 whitespace-nowrap">{formatCurrency(exampleIncome * plan.savingsRate, 2)} ر.ع</p>
+                    <p dir="ltr" className="font-bold text-emerald-600 whitespace-nowrap">ر.ع {formatCurrency(exampleIncome * plan.savingsRate, 2)}</p>
                   </div>
                   <div className="rounded-lg bg-white p-3 border">
                     <p className="text-xs text-muted-foreground">الاحتياطي</p>
-                    <p dir="ltr" className="font-bold text-violet-600 whitespace-nowrap">{formatCurrency(exampleIncome * plan.reserveRate, 2)} ر.ع</p>
+                    <p dir="ltr" className="font-bold text-violet-600 whitespace-nowrap">ر.ع {formatCurrency(exampleIncome * plan.reserveRate, 2)}</p>
                   </div>
                 </div>
                 <p className="mt-3 text-xs leading-6 text-muted-foreground">
@@ -598,11 +598,11 @@ export default function SavingsPlans() {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="rounded-xl bg-slate-50 p-4 border">
                   <div className="flex items-center gap-2 mb-2"><Target className="h-4 w-4 text-primary" /><span className="font-medium">بعد {planYears} سنوات</span></div>
-                  <p dir="ltr" className="break-words text-xl font-bold text-slate-800 sm:text-2xl whitespace-nowrap">{formatCurrency(projectedBalance, 2)} ر.ع</p>
+                  <p dir="ltr" className="break-words text-xl font-bold text-slate-800 sm:text-2xl whitespace-nowrap">ر.ع {formatCurrency(projectedBalance, 2)}</p>
                 </div>
                 <div className="rounded-xl bg-emerald-50 p-4 border border-emerald-200">
                   <div className="flex items-center gap-2 mb-2"><TrendingUp className="h-4 w-4 text-emerald-600" /><span className="font-medium">مع استثمار 8%</span></div>
-                  <p dir="ltr" className="break-words text-xl font-bold text-emerald-700 sm:text-2xl whitespace-nowrap">{formatCurrency(investmentProjection, 2)} ر.ع</p>
+                  <p dir="ltr" className="break-words text-xl font-bold text-emerald-700 sm:text-2xl whitespace-nowrap">ر.ع {formatCurrency(investmentProjection, 2)}</p>
                 </div>
               </div>
 
