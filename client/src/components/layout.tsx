@@ -347,18 +347,20 @@ export default function Layout({ children }: LayoutProps) {
                 const isActive = location === item.href;
                 const Icon = item.icon;
                 return (
-                  <div
+                  <button
                     key={item.href}
+                    type="button"
                     onClick={() => {
                       setIsSidebarOpen(false);
                       setLocation(item.href);
                     }}
                     className={cn(
-                      "flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer",
+                      "flex w-full items-center gap-3 px-4 py-3 rounded-xl transition-all",
                       isActive 
                         ? "bg-primary text-primary-foreground font-medium" 
                         : "hover:bg-muted text-foreground"
                     )}
+                    aria-current={isActive ? "page" : undefined}
                   >
                     <Icon className={cn("h-5 w-5 flex-shrink-0", isActive && "stroke-[2.5]")} />
                     <span className="flex-1 text-right">{item.label}</span>
@@ -366,7 +368,7 @@ export default function Layout({ children }: LayoutProps) {
                       "h-4 w-4 flex-shrink-0",
                       isActive ? "opacity-100" : "opacity-40"
                     )} />
-                  </div>
+                  </button>
                 );
               })}
             </nav>
