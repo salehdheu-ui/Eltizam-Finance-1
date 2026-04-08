@@ -418,14 +418,14 @@ export default function SavingsPlans() {
               <p className="font-medium">لماذا رشحها لك النظام؟</p>
               <ul className="mt-2 space-y-2 text-emerald-700">
                 {(recommendedPlanAnalysis?.reasons ?? []).map((reason) => (
-                  <li key={reason} className="flex items-start gap-2"><ArrowRight className="mt-0.5 h-4 w-4 text-emerald-600" /><span>{reason}</span></li>
+                  <li key={reason} className="flex w-full items-start gap-2"><ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /><span className="flex-1 text-right">{reason}</span></li>
                 ))}
               </ul>
             </div>
             <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
-              <li className="flex items-start gap-2"><ArrowRight className="h-4 w-4 text-emerald-600 mt-0.5" /><span>الادخار المقترح شهرياً: {formatCurrency(effectiveIncome * recommendedPlan.savingsRate, 2)} ر.ع</span></li>
-              <li className="flex items-start gap-2"><ArrowRight className="h-4 w-4 text-emerald-600 mt-0.5" /><span>الزيادة المطلوبة عن وضعك الحالي: {formatCurrency(improvementGap, 2)} ر.ع شهرياً</span></li>
-              <li className="flex items-start gap-2"><ArrowRight className="h-4 w-4 text-emerald-600 mt-0.5" /><span>توزيع الخطة: {getSavingsDistributionLabel(recommendedPlan)}</span></li>
+              <li className="flex w-full items-start gap-2"><ArrowRight className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5" /><span className="flex-1 text-right">الادخار المقترح شهرياً: {formatCurrency(effectiveIncome * recommendedPlan.savingsRate, 2)} ر.ع</span></li>
+              <li className="flex w-full items-start gap-2"><ArrowRight className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5" /><span className="flex-1 text-right">الزيادة المطلوبة عن وضعك الحالي: {formatCurrency(improvementGap, 2)} ر.ع شهرياً</span></li>
+              <li className="flex w-full items-start gap-2"><ArrowRight className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5" /><span className="flex-1 text-right">توزيع الخطة: {getSavingsDistributionLabel(recommendedPlan)}</span></li>
             </ul>
           </div>
         </CardContent>
@@ -545,7 +545,7 @@ export default function SavingsPlans() {
                 <p className="font-medium text-foreground">لماذا حصلت هذه الخطة على هذا الترتيب؟</p>
                 <ul className="mt-2 space-y-2 text-muted-foreground">
                   {reasons.map((reason) => (
-                    <li key={reason} className="flex items-start gap-2"><ArrowRight className="mt-0.5 h-4 w-4 text-primary" /><span>{reason}</span></li>
+                    <li key={reason} className="flex w-full items-start gap-2"><ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><span className="flex-1 text-right">{reason}</span></li>
                   ))}
                 </ul>
               </div>
@@ -610,7 +610,7 @@ export default function SavingsPlans() {
                 <p className="font-medium mb-2">متى تختار هذه الخطة؟</p>
                 <ul className="space-y-2 text-sm text-muted-foreground">
                   {plan.highlights.map((item) => (
-                    <li key={item} className="flex items-start gap-2"><ArrowRight className="h-4 w-4 text-primary mt-0.5" /><span>{item}</span></li>
+                    <li key={item} className="flex w-full items-start gap-2"><ArrowRight className="h-4 w-4 shrink-0 text-primary mt-0.5" /><span className="flex-1 text-right">{item}</span></li>
                   ))}
                 </ul>
                 {targetNum > 0 ? <div className="mt-4 rounded-lg bg-primary/5 p-3 text-sm"><span className="font-medium">الوقت التقريبي لتحقيق هدفك:</span> {monthsToGoal ? `${monthsToGoal} شهر` : "أدخل دخلاً شهرياً أو ارفع الادخار"}</div> : null}
