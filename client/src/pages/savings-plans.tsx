@@ -209,8 +209,7 @@ export default function SavingsPlans() {
       return;
     }
 
-    const searchString = location.includes("?") ? location.split("?")[1] : "";
-    const params = new URLSearchParams(searchString);
+    const params = new URLSearchParams(window.location.search);
     const nextTab = params.get("tab") === "plans" ? "plans" : "savings";
 
     if (nextTab !== activeTab) {
@@ -233,7 +232,7 @@ export default function SavingsPlans() {
       const nextUrl = `/financial-plans${nextSearch ? `?${nextSearch}` : ""}`;
       window.history.replaceState(window.history.state, "", nextUrl);
     }
-  }, [activeTab, location, setLocation]);
+  }, [activeTab, location]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !selectedPlanId) {
