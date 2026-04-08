@@ -230,7 +230,8 @@ export default function SavingsPlans() {
       window.sessionStorage.removeItem("eltizam-financial-plans-scroll");
       params.delete("restoreScroll");
       const nextSearch = params.toString();
-      setLocation(`/financial-plans${nextSearch ? `?${nextSearch}` : ""}`);
+      const nextUrl = `/financial-plans${nextSearch ? `?${nextSearch}` : ""}`;
+      window.history.replaceState(window.history.state, "", nextUrl);
     }
   }, [activeTab, location, setLocation]);
 
