@@ -378,15 +378,15 @@ export default function SavingsPlans() {
         </TabsContent>
 
         <TabsContent value="plans" className="space-y-4">
-          <div className="flex flex-row-reverse items-center justify-between gap-2">
-            <p className="text-sm text-muted-foreground">بإمكانك تعديل البيانات من تبويب الادخار لتحسين الترشيح.</p>
+          <div className="flex items-center justify-between gap-2">
             <button
               type="button"
               onClick={() => setLocation("/financial-plans?tab=savings")}
-              className="rounded-xl border px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted"
+              className="order-1 rounded-xl border px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted"
             >
               تعديل البيانات
             </button>
+            <p className="order-2 text-sm text-muted-foreground">بإمكانك تعديل البيانات من تبويب الادخار لتحسين الترشيح.</p>
           </div>
 
       <Card className="bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-200">
