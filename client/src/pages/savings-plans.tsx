@@ -368,7 +368,7 @@ export default function SavingsPlans() {
               </div>
               <button
                 type="button"
-                onClick={() => setActiveTab("plans")}
+                onClick={() => setLocation("/financial-plans?tab=plans")}
                 className="sm:col-span-3 rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white hover:bg-slate-800"
               >
                 استعرض الخطط المقترحة
@@ -382,7 +382,7 @@ export default function SavingsPlans() {
             <p className="text-sm text-muted-foreground">بإمكانك تعديل البيانات من تبويب الادخار لتحسين الترشيح.</p>
             <button
               type="button"
-              onClick={() => setActiveTab("savings")}
+              onClick={() => setLocation("/financial-plans?tab=savings")}
               className="rounded-xl border px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted"
             >
               تعديل البيانات
