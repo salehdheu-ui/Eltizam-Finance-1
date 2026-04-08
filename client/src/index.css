@@ -148,6 +148,13 @@
     /* Ensure no text selection highlight on interactive elements */
     -webkit-tap-highlight-color: transparent;
   }
+
+  html[dir="rtl"] input,
+  html[dir="rtl"] textarea,
+  html[dir="rtl"] select {
+    direction: rtl;
+    text-align: right;
+  }
 }
 
 @layer utilities {
