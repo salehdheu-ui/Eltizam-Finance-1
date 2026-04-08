@@ -243,7 +243,7 @@ export default function SavingsPlans() {
   }, [selectedPlanId]);
 
   return (
-    <div className="app-page" dir="rtl">
+    <div className="app-page text-right" dir="rtl">
       <div className="text-center py-2 sm:py-4 space-y-1">
         <h1 className="text-xl font-bold sm:text-2xl">خطط الادخار</h1>
         <p className="text-sm text-muted-foreground sm:text-base">شرح أوضح، مقارنة أذكى، وترشيح تلقائي للخطة الأنسب لك</p>
@@ -259,14 +259,14 @@ export default function SavingsPlans() {
         className="space-y-4"
       >
         <TabsList className="grid w-full grid-cols-2 rounded-2xl bg-muted p-1">
-          <TabsTrigger value="savings" className="rounded-xl">الادخار</TabsTrigger>
           <TabsTrigger value="plans" className="rounded-xl">الخطط</TabsTrigger>
+          <TabsTrigger value="savings" className="rounded-xl">الادخار</TabsTrigger>
         </TabsList>
 
         <TabsContent value="savings" className="space-y-4">
           <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+              <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-end gap-2">
                 <Wallet className="h-5 w-5 text-primary" />
                 وضعك المالي الحالي
               </CardTitle>
@@ -293,7 +293,7 @@ export default function SavingsPlans() {
 
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+              <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-end gap-2">
                 <Target className="h-5 w-5 text-primary" />
                 بيانات حساب الادخار
               </CardTitle>
@@ -327,7 +327,7 @@ export default function SavingsPlans() {
                 </div>
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex flex-row-reverse gap-2">
                 {[3, 5, 10].map((years) => (
                   <button
                     key={years}
@@ -346,7 +346,7 @@ export default function SavingsPlans() {
 
           <Card className="border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50">
             <CardHeader className="pb-3">
-              <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+              <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-end gap-2">
                 <Sparkles className="h-5 w-5 text-amber-600" />
                 ملخص سريع
               </CardTitle>
@@ -378,7 +378,7 @@ export default function SavingsPlans() {
         </TabsContent>
 
         <TabsContent value="plans" className="space-y-4">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-row-reverse items-center justify-between gap-2">
             <p className="text-sm text-muted-foreground">بإمكانك تعديل البيانات من تبويب الادخار لتحسين الترشيح.</p>
             <button
               type="button"
@@ -391,7 +391,7 @@ export default function SavingsPlans() {
 
       <Card className="bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-200">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+          <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-end gap-2">
             <Sparkles className="h-5 w-5 text-emerald-600" />
             الخطة الأنسب لك الآن
           </CardTitle>
@@ -434,7 +434,7 @@ export default function SavingsPlans() {
       {selectedPlan ? (
         <Card className="border-primary/30 bg-gradient-to-br from-primary/5 to-emerald-50">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+            <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-end gap-2">
               <CheckCircle2 className="h-5 w-5 text-primary" />
               خطتك المعتمدة حالياً
             </CardTitle>
@@ -458,7 +458,7 @@ export default function SavingsPlans() {
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+          <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-end gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
             مقارنة سريعة بين أفضل الخيارات
           </CardTitle>
