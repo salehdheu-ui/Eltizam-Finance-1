@@ -243,7 +243,7 @@ export default function SavingsPlans() {
   }, [selectedPlanId]);
 
   return (
-    <div className="app-page" dir="rtl">
+    <div className="app-page" dir="ltr">
       <div className="text-center py-2 sm:py-4 space-y-1">
         <h1 className="text-xl font-bold sm:text-2xl">خطط الادخار</h1>
         <p className="text-sm text-muted-foreground sm:text-base">شرح أوضح، مقارنة أذكى، وترشيح تلقائي للخطة الأنسب لك</p>
@@ -302,27 +302,27 @@ export default function SavingsPlans() {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">الدخل الشهري</label>
-                  <Input type="text" inputMode="decimal" value={manualIncome} onChange={(e) => setManualIncome(e.target.value)} placeholder={lastMonthIncome ? `${formatCurrency(lastMonthIncome, 2)}` : "مثال: 1200"} dir="rtl" className="app-input text-right" />
+                  <Input type="text" inputMode="decimal" value={manualIncome} onChange={(e) => setManualIncome(e.target.value)} placeholder={lastMonthIncome ? `${formatCurrency(lastMonthIncome, 2)}` : "مثال: 1200"} dir="ltr" className="app-input text-left" />
                   <p className="text-xs text-muted-foreground">أدخل متوسط ما يدخل لك شهرياً إذا أردت حساباً أدق.</p>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">المصاريف الأساسية</label>
-                  <Input type="text" inputMode="decimal" value={manualNeeds} onChange={(e) => setManualNeeds(e.target.value)} placeholder="مثال: 500" dir="rtl" className="app-input text-right" />
+                  <Input type="text" inputMode="decimal" value={manualNeeds} onChange={(e) => setManualNeeds(e.target.value)} placeholder="مثال: 500" dir="ltr" className="app-input text-left" />
                   <p className="text-xs text-muted-foreground">مثل السكن، الفواتير، الطعام، النقل، والتعليم.</p>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">الرغبات والكماليات</label>
-                  <Input type="text" inputMode="decimal" value={manualWants} onChange={(e) => setManualWants(e.target.value)} placeholder="مثال: 150" dir="rtl" className="app-input text-right" />
+                  <Input type="text" inputMode="decimal" value={manualWants} onChange={(e) => setManualWants(e.target.value)} placeholder="مثال: 150" dir="ltr" className="app-input text-left" />
                   <p className="text-xs text-muted-foreground">مثل الترفيه، التسوق غير الضروري، والمطاعم.</p>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">الالتزامات الشهرية الثابتة</label>
-                  <Input type="text" inputMode="decimal" value={manualFixedObligations} onChange={(e) => setManualFixedObligations(e.target.value)} placeholder="مثال: 200" dir="rtl" className="app-input text-right" />
+                  <Input type="text" inputMode="decimal" value={manualFixedObligations} onChange={(e) => setManualFixedObligations(e.target.value)} placeholder="مثال: 200" dir="ltr" className="app-input text-left" />
                   <p className="text-xs text-muted-foreground">مثل الأقساط، الديون، الاشتراكات، أو أي التزام ثابت.</p>
                 </div>
                 <div className="space-y-2 sm:col-span-2">
                   <label className="text-sm font-medium">الهدف الادخاري</label>
-                  <Input type="text" inputMode="decimal" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} placeholder="مثال: 10000" dir="rtl" className="app-input text-right" />
+                  <Input type="text" inputMode="decimal" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} placeholder="مثال: 10000" dir="ltr" className="app-input text-left" />
                   <p className="text-xs text-muted-foreground">أدخل المبلغ الذي تريد الوصول إليه ليحسب النظام أسرع خطة وأقرب خطة واقعية.</p>
                 </div>
               </div>
