@@ -1,25 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { OmaniCurrencySymbol } from "@/components/ui/currency-display";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SavingsComparisonCard } from "@/components/savings/SavingsComparisonCard";
+import { SavingsStatusCard } from "@/components/savings/SavingsStatusCard";
+import { SavingsVisualCharts } from "@/components/savings/SavingsVisualCharts";
 import { useTransactions, useWallets } from "@/lib/hooks";
 import { cn, formatCurrency } from "@/lib/utils";
 import { ArrowRight, CheckCircle2, Sparkles, Target, TrendingUp, Wallet } from "lucide-react";
 import { getSavingsDistributionLabel, savingsPlans } from "@/lib/savings-plans";
 import { buildSavingsPlanAnalysis } from "@/lib/savings-plan-analysis";
-import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-
-function OmaniCurrencySymbol({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 372 200" aria-hidden="true" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M51 88H372L348 132H25L51 88Z" fill="currentColor" />
-      <path d="M14 153H338L314 197H-10L14 153Z" fill="currentColor" />
-      <path d="M209 29C201 18 187 8 171 4C152 -1 132 0 118 9C100 20 90 43 90 75V88H123V77C123 56 129 44 140 38C149 33 161 33 173 37C186 42 197 51 205 60L209 29Z" fill="currentColor" />
-      <path d="M131 88H199C211 101 228 113 249 122C265 129 285 136 311 142H243C222 136 204 128 188 118C165 104 146 90 131 88Z" fill="currentColor" />
-    </svg>
-  );
-}
 
 export default function SavingsPlans() {
   const [location, setLocation] = useLocation();
@@ -263,33 +255,14 @@ export default function SavingsPlans() {
             </Card>
           ) : null}
 
-          <Card className={cn("border", statusTone.className)}>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-between gap-3 text-right">
-                <span>{statusTone.title}</span>
-                <span className={cn("rounded-full px-3 py-1 text-xs font-bold", statusTone.badgeClassName)}>
-                  {effectiveIncome > 0 ? `${Math.round(currentSavingsRate * 100)}% ادخار` : "بيانات محدودة"}
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <p>{statusTone.description}</p>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <div className="rounded-xl border bg-white/80 p-3">
-                  <p className="text-xs text-muted-foreground">الفائض الشهري الحالي</p>
-                  <p className={cn("mt-1 font-bold", currentSavings >= 0 ? "text-emerald-700" : "text-red-700")}>{renderCurrency(currentSavings)}</p>
-                </div>
-                <div className="rounded-xl border bg-white/80 p-3">
-                  <p className="text-xs text-muted-foreground">المطلوب للخطة الموصى بها</p>
-                  <p className="mt-1 font-bold text-foreground">{renderCurrency(effectiveIncome * recommendedPlan.savingsRate)}</p>
-                </div>
-                <div className="rounded-xl border bg-white/80 p-3">
-                  <p className="text-xs text-muted-foreground">فجوة التحسين</p>
-                  <p className="mt-1 font-bold text-amber-700">{renderCurrency(improvementGap)}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <SavingsStatusCard
+            statusTone={statusTone}
+            effectiveIncome={effectiveIncome}
+            currentSavingsRate={currentSavingsRate}
+            currentSavings={currentSavings}
+            targetSavingsAmount={effectiveIncome * recommendedPlan.savingsRate}
+            improvementGap={improvementGap}
+          />
 
           <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
             <CardHeader className="pb-3">
@@ -442,121 +415,12 @@ export default function SavingsPlans() {
             </CardContent>
           </Card>
 
-          <div className="rounded-xl border bg-white p-4">
-            <div className="flex flex-col gap-1 sm:flex-row-reverse sm:items-center sm:justify-between">
-              <p className="font-medium text-foreground">مقارنة وضعك الحالي بالخطة المقترحة</p>
-              <p className="text-xs text-muted-foreground">حتى تعرف أين تحتاج التعديل تحديداً</p>
-            </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              {comparisonItems.map((item) => {
-                const rateDifference = item.targetRate - item.currentRate;
-                const amountDifference = item.targetAmount - item.currentAmount;
-                const differenceLabel = amountDifference > 0
-                  ? `تحتاج زيادة ${renderCurrency(amountDifference)}`
-                  : amountDifference < 0
-                    ? `يمكنك خفض ${renderCurrency(Math.abs(amountDifference))}`
-                    : "أنت قريب جداً من النسبة المقترحة";
+          <SavingsComparisonCard items={comparisonItems} />
 
-                return (
-                  <div key={item.key} className="rounded-xl border bg-slate-50 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className={cn("font-bold", item.accentClassName)}>{item.label}</p>
-                      <span className="text-xs text-muted-foreground">
-                        الآن {Math.round(item.currentRate * 100)}% / المستهدف {Math.round(item.targetRate * 100)}%
-                      </span>
-                    </div>
-                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
-                      <div className={cn("h-full rounded-full", item.accentClassName.replace("text", "bg"))} style={{ width: `${Math.min(Math.max(item.currentRate * 100, 0), 100)}%` }} />
-                    </div>
-                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
-                      <div className={cn("h-full rounded-full opacity-70", item.accentClassName.replace("text", "bg"))} style={{ width: `${Math.min(Math.max(item.targetRate * 100, 0), 100)}%` }} />
-                    </div>
-                    <div className="mt-3 flex items-center justify-between gap-3 text-sm">
-                      <span className="text-muted-foreground">الوضع الحالي</span>
-                      <span className="font-medium">{renderCurrency(item.currentAmount)}</span>
-                    </div>
-                    <div className="mt-1 flex items-center justify-between gap-3 text-sm">
-                      <span className="text-muted-foreground">المستهدف</span>
-                      <span className="font-medium">{renderCurrency(item.targetAmount)}</span>
-                    </div>
-                    <p className={cn("mt-3 text-sm font-medium", rateDifference > 0 ? "text-amber-700" : rateDifference < 0 ? "text-sky-700" : "text-emerald-700")}>
-                      {differenceLabel}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-center gap-2 text-center">
-                <TrendingUp className="h-5 w-5 text-primary" />
-                عرض بصري للوضع الحالي مقابل المستهدف
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="h-80 w-full" dir="ltr">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={comparisonChartData} barGap={8}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="name" tickLine={false} axisLine={false} />
-                    <YAxis tickLine={false} axisLine={false} />
-                    <Tooltip formatter={(value: number) => formatCurrency(Number(value), 2)} />
-                    <Bar dataKey="current" name="الحالي" radius={[8, 8, 0, 0]} fill="#94a3b8" />
-                    <Bar dataKey="target" name="المستهدف" radius={[8, 8, 0, 0]}>
-                      {comparisonChartData.map((entry, index) => (
-                        <Cell key={`${entry.name}-${index}`} fill={entry.color} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground sm:grid-cols-4">
-                <div className="rounded-lg bg-slate-50 p-3 text-center">الرمادي: الوضع الحالي</div>
-                <div className="rounded-lg bg-blue-50 p-3 text-center text-blue-700">الأزرق: الاحتياجات المستهدفة</div>
-                <div className="rounded-lg bg-amber-50 p-3 text-center text-amber-700">البرتقالي: الرغبات المستهدفة</div>
-                <div className="rounded-lg bg-emerald-50 p-3 text-center text-emerald-700">الأخضر/البنفسجي: الادخار والاحتياطي</div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-center gap-2 text-center">
-                <Target className="h-5 w-5 text-primary" />
-                كيف تنمو الخطة الموصى بها عبر الزمن؟
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                {projectionChartData.map((item) => (
-                  <div key={item.years} className={cn("rounded-xl border p-3", item.isActive ? "border-primary bg-primary/5" : "bg-white")}>
-                    <p className="text-xs text-muted-foreground">{item.years}</p>
-                    <p className="mt-1 font-bold text-foreground">{renderCurrency(item.balance)}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="h-72 w-full" dir="ltr">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={projectionChartData}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="years" tickLine={false} axisLine={false} />
-                    <YAxis tickLine={false} axisLine={false} />
-                    <Tooltip formatter={(value: number) => formatCurrency(Number(value), 2)} />
-                    <Bar dataKey="balance" name="الرصيد المتوقع" radius={[8, 8, 0, 0]}>
-                      {projectionChartData.map((entry, index) => (
-                        <Cell key={`${entry.years}-${index}`} fill={entry.isActive ? "#059669" : "#93c5fd"} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                هذا العرض يوضح الرصيد المتوقع للخطة الموصى بها عبر ثلاث مدد زمنية، مع تمييز المدة المختارة حالياً.
-              </p>
-            </CardContent>
-          </Card>
+          <SavingsVisualCharts
+            comparisonChartData={comparisonChartData}
+            projectionChartData={projectionChartData}
+          />
         </TabsContent>
 
         <TabsContent value="plans" className="space-y-4">
