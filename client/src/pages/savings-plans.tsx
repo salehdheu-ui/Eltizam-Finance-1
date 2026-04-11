@@ -8,6 +8,7 @@ import { cn, formatCurrency } from "@/lib/utils";
 import { ArrowRight, CheckCircle2, Sparkles, Target, TrendingUp, Wallet } from "lucide-react";
 import { getSavingsDistributionLabel, savingsPlans } from "@/lib/savings-plans";
 import { buildSavingsPlanAnalysis } from "@/lib/savings-plan-analysis";
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 function OmaniCurrencySymbol({ className }: { className?: string }) {
   return (
@@ -74,8 +75,8 @@ export default function SavingsPlans() {
 
   const renderCurrency = (amount: number) => (
     <span dir="ltr" className="inline-flex items-center gap-1 whitespace-nowrap align-baseline">
-      <span>{formatCurrency(amount, 2)}</span>
       <OmaniCurrencySymbol className="h-[0.9em] w-auto shrink-0" />
+      <span>{formatCurrency(amount, 2)}</span>
     </span>
   );
 
@@ -199,6 +200,26 @@ export default function SavingsPlans() {
       accentClassName: "text-violet-700",
     },
   ];
+
+  const comparisonColorMap: Record<string, string> = {
+    "الاحتياجات": "#2563eb",
+    "الرغبات": "#d97706",
+    "الادخار": "#059669",
+    "الاحتياطي": "#7c3aed",
+  };
+
+  const comparisonChartData = comparisonItems.map((item) => ({
+    name: item.label,
+    current: Number(item.currentAmount.toFixed(2)),
+    target: Number(item.targetAmount.toFixed(2)),
+    color: comparisonColorMap[item.label] ?? "#2563eb",
+  }));
+
+  const projectionChartData = [3, 5, 10].map((years) => ({
+    years: `${years} سنوات`,
+    balance: Number((totalBalance + (effectiveIncome * recommendedPlan.savingsRate * years * 12)).toFixed(2)),
+    isActive: years === planYears,
+  }));
 
   return (
     <div className="app-page text-right" dir="rtl">
@@ -327,7 +348,9 @@ export default function SavingsPlans() {
                 <div className="space-y-2 sm:col-span-2">
                   <label className="text-sm font-medium">الهدف الادخاري</label>
                   <Input type="text" inputMode="decimal" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} placeholder="مثال: 10000" dir="rtl" className="app-input text-right" />
-                  <p className="text-xs text-muted-foreground">أدخل المبلغ الذي تريد الوصول إليه ليحسب النظام أسرع خطة وأقرب خطة واقعية.</p>
+                  <p className="text-xs text-muted-foreground">
+                    أدخل المبلغ الذي تريد الوصول إليه ليحسب النظام أسرع خطة وأقرب خطة واقعية.
+                  </p>
                 </div>
               </div>
 
@@ -464,6 +487,76 @@ export default function SavingsPlans() {
               })}
             </div>
           </div>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-center gap-2 text-center">
+                <TrendingUp className="h-5 w-5 text-primary" />
+                عرض بصري للوضع الحالي مقابل المستهدف
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="h-80 w-full" dir="ltr">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={comparisonChartData} barGap={8}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="name" tickLine={false} axisLine={false} />
+                    <YAxis tickLine={false} axisLine={false} />
+                    <Tooltip formatter={(value: number) => formatCurrency(Number(value), 2)} />
+                    <Bar dataKey="current" name="الحالي" radius={[8, 8, 0, 0]} fill="#94a3b8" />
+                    <Bar dataKey="target" name="المستهدف" radius={[8, 8, 0, 0]}>
+                      {comparisonChartData.map((entry, index) => (
+                        <Cell key={`${entry.name}-${index}`} fill={entry.color} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground sm:grid-cols-4">
+                <div className="rounded-lg bg-slate-50 p-3 text-center">الرمادي: الوضع الحالي</div>
+                <div className="rounded-lg bg-blue-50 p-3 text-center text-blue-700">الأزرق: الاحتياجات المستهدفة</div>
+                <div className="rounded-lg bg-amber-50 p-3 text-center text-amber-700">البرتقالي: الرغبات المستهدفة</div>
+                <div className="rounded-lg bg-emerald-50 p-3 text-center text-emerald-700">الأخضر/البنفسجي: الادخار والاحتياطي</div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-center gap-2 text-center">
+                <Target className="h-5 w-5 text-primary" />
+                كيف تنمو الخطة الموصى بها عبر الزمن؟
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {projectionChartData.map((item) => (
+                  <div key={item.years} className={cn("rounded-xl border p-3", item.isActive ? "border-primary bg-primary/5" : "bg-white")}>
+                    <p className="text-xs text-muted-foreground">{item.years}</p>
+                    <p className="mt-1 font-bold text-foreground">{renderCurrency(item.balance)}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="h-72 w-full" dir="ltr">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={projectionChartData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="years" tickLine={false} axisLine={false} />
+                    <YAxis tickLine={false} axisLine={false} />
+                    <Tooltip formatter={(value: number) => formatCurrency(Number(value), 2)} />
+                    <Bar dataKey="balance" name="الرصيد المتوقع" radius={[8, 8, 0, 0]}>
+                      {projectionChartData.map((entry, index) => (
+                        <Cell key={`${entry.years}-${index}`} fill={entry.isActive ? "#059669" : "#93c5fd"} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                هذا العرض يوضح الرصيد المتوقع للخطة الموصى بها عبر ثلاث مدد زمنية، مع تمييز المدة المختارة حالياً.
+              </p>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="plans" className="space-y-4">
