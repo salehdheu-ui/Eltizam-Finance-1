@@ -2,6 +2,7 @@ import { CreditCard, Landmark, Wallet as WalletIcon, Plus, MoreHorizontal, Trash
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils";
+import { CurrencyDisplay } from "@/components/ui/currency-display";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 import {
@@ -114,7 +115,7 @@ export default function Wallets() {
           <div>
             <p className="text-sm text-muted-foreground mb-1">إجمالي الأرصدة</p>
             <p className="text-2xl font-bold" data-testid="text-total-wallets">
-              {formatCurrency(wallets.reduce((acc, w) => acc + w.balance, 0), 2)} <span className="text-sm text-muted-foreground font-normal">ر.ع</span>
+              <CurrencyDisplay amount={wallets.reduce((acc, w) => acc + w.balance, 0)} fractionDigits={2} symbolClassName="text-sm text-muted-foreground font-normal" />
             </p>
           </div>
           <div className="h-12 w-12 bg-primary/10 text-primary rounded-full flex items-center justify-center">
@@ -163,7 +164,7 @@ export default function Wallets() {
                 <div className="relative z-10">
                   <p className="text-white/70 text-xs mb-1">الرصيد الحالي</p>
                   <p className="text-3xl font-black tracking-tight flex items-baseline gap-1">
-                    {formatCurrency(wallet.balance, 2)} <span className="text-lg font-medium opacity-80">ر.ع</span>
+                    <CurrencyDisplay amount={wallet.balance} fractionDigits={2} symbolClassName="text-lg font-medium opacity-80" />
                   </p>
                 </div>
               </div>

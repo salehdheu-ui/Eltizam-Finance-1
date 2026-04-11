@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { CurrencyDisplay } from "@/components/ui/currency-display";
 import { cn } from "@/lib/utils";
 import { useCategories, useCreateCategory, useDeleteCategory } from "@/lib/hooks";
 import type { Category } from "@shared/schema";
@@ -85,7 +86,7 @@ export default function Categories() {
               <div>
                 <h4 className="font-bold">{cat.name}</h4>
                 {cat.budget && cat.budget > 0 ? (
-                  <p className="text-xs text-muted-foreground mt-0.5">الميزانية: {cat.budget} ر.ع</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">الميزانية: <CurrencyDisplay amount={cat.budget} fractionDigits={2} /></p>
                 ) : null}
               </div>
             </div>

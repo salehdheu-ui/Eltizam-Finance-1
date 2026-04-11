@@ -1,13 +1,16 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { cn, formatCurrency } from "@/lib/utils";
+import { CurrencyDisplay } from "@/components/ui/currency-display";
+import { cn } from "@/lib/utils";
 import { useTransactions, useWallets } from "@/lib/hooks";
 import { useRoute, useLocation } from "wouter";
+import { useMemo } from "react";
 import { ArrowRight, ChevronLeft, Sparkles } from "lucide-react";
-import { calculateCompoundInterest, getSavingsDistributionLabel, savingsPlans } from "@/lib/savings-plans";
+import { getSavingsDistributionLabel, savingsPlans } from "@/lib/savings-plans";
+import { buildSavingsPlanAnalysis } from "@/lib/savings-plan-analysis";
 
 export default function SavingsPlanDetails() {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const [, params] = useRoute("/financial-plans/:id");
   const planId = params?.id ?? "";
 
@@ -16,31 +19,39 @@ export default function SavingsPlanDetails() {
 
   const plan = savingsPlans.find((item) => item.id === planId) ?? null;
 
-  const totalBalance = wallets.reduce((sum, wallet) => sum + wallet.balance, 0);
+  const searchParams = useMemo(() => {
+    const queryStartIndex = location.indexOf("?");
+    return new URLSearchParams(queryStartIndex >= 0 ? location.slice(queryStartIndex) : "");
+  }, [location]);
 
-  const lastMonthIncome = transactions
-    .filter((transaction) => {
-      const transactionDate = new Date(transaction.date);
-      const now = new Date();
-      const diffDays = (now.getTime() - transactionDate.getTime()) / (1000 * 60 * 60 * 24);
-      return transaction.type === "income" && diffDays <= 30;
-    })
-    .reduce((sum, transaction) => sum + transaction.amount, 0);
+  const planYearsParam = Number(searchParams.get("years"));
+  const planYears: 3 | 5 | 10 = planYearsParam === 3 || planYearsParam === 10 ? planYearsParam : 5;
 
-  const lastMonthExpenses = transactions
-    .filter((transaction) => {
-      const transactionDate = new Date(transaction.date);
-      const now = new Date();
-      const diffDays = (now.getTime() - transactionDate.getTime()) / (1000 * 60 * 60 * 24);
-      return transaction.type === "expense" && diffDays <= 30;
-    })
-    .reduce((sum, transaction) => sum + transaction.amount, 0);
+  const analysis = useMemo(() => buildSavingsPlanAnalysis({
+    transactions,
+    wallets,
+    manualIncome: searchParams.get("income"),
+    manualNeeds: searchParams.get("needs"),
+    manualWants: searchParams.get("wants"),
+    manualFixedObligations: searchParams.get("fixed"),
+    targetAmount: searchParams.get("target"),
+    planYears,
+  }), [planYears, searchParams, transactions, wallets]);
 
-  const effectiveIncome = lastMonthIncome;
-  const monthlySavingsAmount = plan ? effectiveIncome * plan.savingsRate : 0;
-  const projectedSavings = monthlySavingsAmount * 60;
-  const projectedBalance = totalBalance + projectedSavings;
-  const investmentProjection = calculateCompoundInterest(totalBalance, monthlySavingsAmount, 5, 0.08);
+  const planCard = analysis.planCards.find((item) => item.plan.id === planId) ?? null;
+  const effectiveIncome = analysis.effectiveIncome;
+  const lastMonthExpenses = analysis.lastMonthExpenses;
+  const monthlySavingsAmount = planCard?.monthlySavingsAmount ?? 0;
+  const projectedSavings = monthlySavingsAmount * planYears * 12;
+  const projectedBalance = planCard?.projectedBalance ?? analysis.totalBalance;
+  const investmentProjection = planCard?.investmentProjection ?? analysis.totalBalance;
+  const currentSavings = analysis.currentSavings;
+  const savingsGap = Math.max(monthlySavingsAmount - Math.max(currentSavings, 0), 0);
+  const planFitTone = currentSavings < 0
+    ? "text-red-700"
+    : savingsGap === 0
+      ? "text-emerald-700"
+      : "text-amber-700";
 
   if (!plan) {
     return (
@@ -74,16 +85,43 @@ export default function SavingsPlanDetails() {
         <CardContent className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-xl border bg-white p-3">
             <p className="text-xs text-muted-foreground">الادخار الشهري</p>
-            <p className="mt-1 text-base font-bold text-emerald-700">{formatCurrency(monthlySavingsAmount, 2)} ر.ع</p>
+            <p className="mt-1 text-base font-bold text-emerald-700"><CurrencyDisplay amount={monthlySavingsAmount} fractionDigits={2} /></p>
           </div>
           <div className="rounded-xl border bg-white p-3">
-            <p className="text-xs text-muted-foreground">إجمالي الادخار (5 سنوات)</p>
-            <p className="mt-1 text-base font-bold text-slate-800">{formatCurrency(projectedSavings, 2)} ر.ع</p>
+            <p className="text-xs text-muted-foreground">إجمالي الادخار ({planYears} سنوات)</p>
+            <p className="mt-1 text-base font-bold text-slate-800"><CurrencyDisplay amount={projectedSavings} fractionDigits={2} /></p>
           </div>
           <div className="rounded-xl border bg-white p-3">
-            <p className="text-xs text-muted-foreground">الرصيد المتوقع (5 سنوات)</p>
-            <p className="mt-1 text-base font-bold text-primary">{formatCurrency(projectedBalance, 2)} ر.ع</p>
+            <p className="text-xs text-muted-foreground">الرصيد المتوقع ({planYears} سنوات)</p>
+            <p className="mt-1 text-base font-bold text-primary"><CurrencyDisplay amount={projectedBalance} fractionDigits={2} /></p>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-4 border-amber-200 bg-amber-50">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">مدى ملاءمة هذه الخطة لوضعك الحالي</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-xl border bg-white p-3">
+            <p className="text-xs text-muted-foreground">ادخارك الحالي شهرياً</p>
+            <p className="mt-1 text-base font-bold text-foreground"><CurrencyDisplay amount={currentSavings} fractionDigits={2} /></p>
+          </div>
+          <div className="rounded-xl border bg-white p-3">
+            <p className="text-xs text-muted-foreground">المطلوب لهذه الخطة</p>
+            <p className="mt-1 text-base font-bold text-foreground"><CurrencyDisplay amount={monthlySavingsAmount} fractionDigits={2} /></p>
+          </div>
+          <div className="rounded-xl border bg-white p-3">
+            <p className="text-xs text-muted-foreground">فجوة التحسين</p>
+            <p className={cn("mt-1 text-base font-bold", planFitTone)}><CurrencyDisplay amount={savingsGap} fractionDigits={2} /></p>
+          </div>
+          <p className={cn("sm:col-span-3 text-sm", planFitTone)}>
+            {currentSavings < 0
+              ? "أنت في عجز شهري حالياً، لذلك الأفضل معالجة العجز أولاً ثم الالتزام بهذه الخطة بشكل تدريجي."
+              : savingsGap === 0
+                ? "مستوى ادخارك الحالي قريب من متطلبات هذه الخطة، وهذا يجعل تطبيقها واقعياً من الآن."
+                : "هذه الخطة ممكنة، لكنها تحتاج رفع الادخار الشهري أو خفض بعض المصروفات حتى تصبح مريحة ومستدامة."}
+          </p>
         </CardContent>
       </Card>
 
@@ -119,12 +157,18 @@ export default function SavingsPlanDetails() {
             <CardTitle className="text-base">كيف يحسبها النظام؟</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
-            <p>الدخل المعتمد: <span className="font-bold text-foreground">{formatCurrency(effectiveIncome, 2)} ر.ع</span></p>
-            <p>مصروفات آخر 30 يوم: <span className="font-bold text-foreground">{formatCurrency(lastMonthExpenses, 2)} ر.ع</span></p>
-            <p>الادخار الشهري: <span className="font-bold text-foreground">{formatCurrency(monthlySavingsAmount, 2)} ر.ع</span></p>
-            <p>إجمالي الادخار 5 سنوات: <span className="font-bold text-foreground">{formatCurrency(projectedSavings, 2)} ر.ع</span></p>
-            <p>الرصيد المتوقع 5 سنوات: <span className={cn("font-bold", "text-foreground")}>{formatCurrency(projectedBalance, 2)} ر.ع</span></p>
-            <p>مع استثمار 8%: <span className="font-bold text-foreground">{formatCurrency(investmentProjection, 2)} ر.ع</span></p>
+            <p>الدخل المعتمد: <span className="font-bold text-foreground"><CurrencyDisplay amount={effectiveIncome} fractionDigits={2} /></span></p>
+            <p>مصروفات آخر 30 يوم: <span className="font-bold text-foreground"><CurrencyDisplay amount={lastMonthExpenses} fractionDigits={2} /></span></p>
+            <p>الادخار الشهري: <span className="font-bold text-foreground"><CurrencyDisplay amount={monthlySavingsAmount} fractionDigits={2} /></span></p>
+            <p>إجمالي الادخار خلال {planYears} سنوات: <span className="font-bold text-foreground"><CurrencyDisplay amount={projectedSavings} fractionDigits={2} /></span></p>
+            <p>الرصيد المتوقع خلال {planYears} سنوات: <span className={cn("font-bold", "text-foreground")}><CurrencyDisplay amount={projectedBalance} fractionDigits={2} /></span></p>
+            <p>مع استثمار 8%: <span className="font-bold text-foreground"><CurrencyDisplay amount={investmentProjection} fractionDigits={2} /></span></p>
+            {analysis.validationMessages.map((message) => (
+              <p key={message} className="text-red-700">{message}</p>
+            ))}
+            {analysis.infoMessages.map((message) => (
+              <p key={message} className="text-sky-700">{message}</p>
+            ))}
           </CardContent>
         </Card>
       </div>

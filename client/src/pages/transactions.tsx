@@ -1,6 +1,7 @@
 import { Filter, Search, Calendar, Loader2, Trash2, Wallet, PieChart, ArrowLeftRight, Printer, Receipt } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { CurrencyDisplay } from "@/components/ui/currency-display";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn, formatCurrency, formatRelativeArabicDate, formatTime, normalizeArabicText, toDate } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -396,7 +397,7 @@ export default function Transactions() {
                     </div>
                     <div className="mt-3 flex items-center justify-between gap-3 text-base font-bold">
                       <span>الإجمالي النهائي</span>
-                      <span>{formatCurrency(selectedTransaction.amount, 2)} ر.ع</span>
+                      <span><CurrencyDisplay amount={selectedTransaction.amount} fractionDigits={2} /></span>
                     </div>
                   </div>
                 </div>

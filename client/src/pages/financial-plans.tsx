@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { CurrencyDisplay } from "@/components/ui/currency-display";
 import { Input } from "@/components/ui/input";
 import { useTransactions, useWallets } from "@/lib/hooks";
 import { cn, formatCurrency, parseNumericInput } from "@/lib/utils";
@@ -131,18 +132,18 @@ export default function FinancialPlans() {
           <div className="grid grid-cols-2 gap-3">
             <div className="p-3 bg-white rounded-xl border">
               <p className="text-xs text-muted-foreground">الرصيد الحالي</p>
-              <p className="text-lg font-bold text-primary">{formatCurrency(totalBalance, 2)} ر.ع</p>
+              <p className="text-lg font-bold text-primary"><CurrencyDisplay amount={totalBalance} fractionDigits={2} /></p>
             </div>
             <div className="p-3 bg-white rounded-xl border">
               <p className="text-xs text-muted-foreground">دخل شهري متوسط</p>
-              <p className="text-lg font-bold text-emerald-600">+{formatCurrency(avgMonthlyIncome, 2)} ر.ع</p>
+              <p className="text-lg font-bold text-emerald-600">+<CurrencyDisplay amount={avgMonthlyIncome} fractionDigits={2} /></p>
             </div>
           </div>
           <div className="p-3 bg-white rounded-xl border">
             <div className="flex justify-between items-center">
               <span className="text-sm text-muted-foreground">ادخار شهري حالي</span>
               <span className={cn("font-bold", monthlySavings >= 0 ? "text-emerald-600" : "text-red-600")}>
-                {monthlySavings >= 0 ? "+" : ""}{formatCurrency(monthlySavings, 2)} ر.ع
+                {monthlySavings >= 0 ? "+" : ""}<CurrencyDisplay amount={Math.abs(monthlySavings) === monthlySavings ? monthlySavings : Math.abs(monthlySavings)} fractionDigits={2} />
               </span>
             </div>
           </div>
@@ -160,9 +161,9 @@ export default function FinancialPlans() {
         <CardContent className="space-y-4">
           <div className="text-center p-4 bg-white rounded-xl border">
             <p className="text-sm text-muted-foreground mb-1">الرصيد المتوقع</p>
-            <p className="text-3xl font-bold text-emerald-600">{formatCurrency(futureBalance, 2)} ر.ع</p>
+            <p className="text-3xl font-bold text-emerald-600"><CurrencyDisplay amount={futureBalance} fractionDigits={2} /></p>
             <p className="text-xs text-muted-foreground mt-2">
-              بناءً على ادخارك الشهري الحالي ({formatCurrency(monthlySavings, 2)} ر.ع)
+              بناءً على ادخارك الشهري الحالي (<CurrencyDisplay amount={monthlySavings} fractionDigits={2} />)
             </p>
           </div>
 
@@ -176,10 +177,10 @@ export default function FinancialPlans() {
                 <div key={scenario.rate} className="p-3 bg-white rounded-xl border">
                   <div className="flex justify-between items-center">
                     <span className="text-sm">{scenario.label}</span>
-                    <span className="font-bold text-emerald-600">{formatCurrency(futureValue, 2)} ر.ع</span>
+                    <span className="font-bold text-emerald-600"><CurrencyDisplay amount={futureValue} fractionDigits={2} /></span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    أرباح إضافية: +{formatCurrency(profit, 2)} ر.ع
+                    أرباح إضافية: +<CurrencyDisplay amount={profit} fractionDigits={2} />
                   </p>
                 </div>
               );
@@ -198,7 +199,7 @@ export default function FinancialPlans() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">المبلغ المستهدف (ر.ع)</label>
+            <label className="text-sm font-medium">المبلغ المستهدف</label>
             <Input
               type="text"
               inputMode="decimal"
@@ -211,7 +212,7 @@ export default function FinancialPlans() {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">الادخار الشهري المستهدف (ر.ع)</label>
+            <label className="text-sm font-medium">الادخار الشهري المستهدف</label>
             <Input
               type="text"
               inputMode="decimal"
@@ -239,13 +240,13 @@ export default function FinancialPlans() {
                     {yearsToTarget} سنة {remainingMonths} شهر
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    (بناءً على ادخارك الحالي {formatCurrency(monthlySavings, 2)} ر.ع/شهر)
+                    (بناءً على ادخارك الحالي <CurrencyDisplay amount={monthlySavings} fractionDigits={2} /> / شهر)
                   </p>
                 </div>
               ) : monthsToTargetWithGoal ? (
                 <div className="space-y-2">
                   <p className="text-sm">
-                    <span className="font-medium">بالادخار {formatCurrency(monthlyGoalNum, 2)} ر.ع/شهر:</span>
+                    <span className="font-medium">بالادخار <CurrencyDisplay amount={monthlyGoalNum} fractionDigits={2} /> / شهر:</span>
                   </p>
                   <p className="text-lg font-bold text-primary">
                     {monthsToTargetWithGoal} شهر
@@ -293,7 +294,7 @@ export default function FinancialPlans() {
                 ⚠️ تنبيه: مصروفاتك أعلى من دخلك
               </p>
               <p className="text-xs text-red-600 mt-1">
-                يجب تقليل المصروفات بـ {formatCurrency(Math.abs(monthlySavings), 2)} ر.ع/شهر على الأقل
+                يجب تقليل المصروفات بـ <CurrencyDisplay amount={Math.abs(monthlySavings)} fractionDigits={2} /> / شهر على الأقل
               </p>
             </div>
           ) : monthlySavings === 0 ? (
@@ -308,7 +309,7 @@ export default function FinancialPlans() {
           ) : (
             <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
               <p className="text-sm text-emerald-700 font-medium">
-                ✓ أداء جيد! أنت توفر {formatCurrency(monthlySavings, 2)} ر.ع شهرياً
+                ✓ أداء جيد! أنت توفر <CurrencyDisplay amount={monthlySavings} fractionDigits={2} /> شهرياً
               </p>
               <p className="text-xs text-emerald-600 mt-1">
                 استمر على هذا المنوال

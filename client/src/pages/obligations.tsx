@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { CurrencyDisplay } from "@/components/ui/currency-display";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -237,7 +238,7 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
             </div>
 
             <div className="app-field">
-              <Label htmlFor="amount" className="text-right">المبلغ (ر.ع) <span className="text-destructive">*</span></Label>
+              <Label htmlFor="amount" className="text-right">المبلغ <span className="text-destructive">*</span></Label>
               <Input
                 id="amount"
                 type="number"
@@ -597,7 +598,7 @@ const obligationTypeColors: Record<string, string> = {
 
 // تنسيق المبلغ
 function formatAmount(amount: number) {
-  return `${formatCurrency(amount)} ر.ع`;
+  return `${formatCurrency(amount)} ﷼`;
 }
 
 // عرض موعد الاستحقاق
@@ -900,7 +901,7 @@ export default function Obligations() {
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
                 <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">الأشهر المدفوعة</p><p className="mt-2 text-lg font-bold text-emerald-600">{paidStatusesCount}</p></div>
                 <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">الأشهر المتأخرة</p><p className="mt-2 text-lg font-bold text-amber-600">{lateStatusesCount}</p></div>
-                <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">إجمالي المدفوع</p><p className="mt-2 text-lg font-bold">{formatCurrency(totalPaidAmount, 2)} ر.ع</p></div>
+                <div className="rounded-2xl border p-4 text-sm"><p className="text-xs text-muted-foreground">إجمالي المدفوع</p><p className="mt-2 text-lg font-bold"><CurrencyDisplay amount={totalPaidAmount} fractionDigits={2} /></p></div>
               </div>
 
               <div className="mt-4 overflow-hidden rounded-3xl border">

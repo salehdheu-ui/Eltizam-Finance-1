@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Drawer, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
+import { CurrencyDisplay } from "@/components/ui/currency-display";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -154,7 +155,7 @@ export default function Income() {
                 <span className="text-xs font-bold text-emerald-700">{recurringIncomes.filter((item) => item.isActive).length} نشط</span>
               </div>
               <p className="text-xs text-emerald-700 font-medium">إجمالي الدخل الشهري الثابت</p>
-              <p className="text-xl font-bold text-emerald-800">{formatCurrency(activeRecurringTotal, 2)} ر.ع</p>
+              <p className="text-xl font-bold text-emerald-800"><CurrencyDisplay amount={activeRecurringTotal} fractionDigits={2} /></p>
             </CardContent>
           </Card>
           <Card className="border-blue-200 bg-blue-50">
@@ -243,7 +244,7 @@ export default function Income() {
                         <p className="text-sm text-muted-foreground mt-1">يُسجل يوم {income.dayOfMonth} من كل شهر</p>
                       </div>
                       <div className="text-left">
-                        <p className="font-bold text-emerald-600">{formatCurrency(income.amount, 2)} ر.ع</p>
+                        <p className="font-bold text-emerald-600"><CurrencyDisplay amount={income.amount} fractionDigits={2} /></p>
                         <p className="text-xs text-muted-foreground mt-1">{income.incomeType === "salary" ? "راتب" : "دخل متكرر"}</p>
                       </div>
                     </div>

@@ -1,8 +1,9 @@
 import { ArrowRight, Calendar, CheckCircle2, Clock3, Loader2, Receipt, XCircle } from "lucide-react";
 import { useLocation, useRoute } from "wouter";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { CurrencyDisplay } from "@/components/ui/currency-display";
 import { Separator } from "@/components/ui/separator";
 import { useObligation, useUpdateVariableObligationMonthStatus, useVariableObligationStatuses } from "@/lib/hooks";
 import { ApiError } from "@/lib/queryClient";
@@ -202,7 +203,7 @@ export default function VariableObligationDetails() {
             </div>
             <div className="text-right sm:text-left">
               <p className="text-xs text-muted-foreground">المبلغ</p>
-              <p className="break-words font-bold text-destructive">{formatCurrency(obligation.amount)} ر.ع</p>
+              <p className="break-words font-bold text-destructive"><CurrencyDisplay amount={obligation.amount} fractionDigits={3} /></p>
             </div>
           </div>
 

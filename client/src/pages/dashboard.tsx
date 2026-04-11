@@ -1,6 +1,7 @@
 import { ArrowDownLeft, ArrowUpRight, Eye, EyeOff, Settings, Loader2, Receipt, Calendar, Wallet, PieChart, ChevronLeft, Sparkles } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { CurrencyDisplay } from "@/components/ui/currency-display";
 import { useEffect, useMemo, useState } from "react";
 import { cn, formatCurrency, formatObligationDueDate, formatRelativeArabicDate, getUpcomingObligations, normalizeArabicText } from "@/lib/utils";
 import { Link } from "wouter";
@@ -137,10 +138,7 @@ export default function Dashboard() {
               {isLoading ? (
                 <Loader2 className="h-8 w-8 animate-spin" />
               ) : showBalance ? (
-                <>
-                  <span>{formatCurrency(dashboard?.totalBalance ?? 0, 2)}</span>
-                  <span className="text-lg font-medium text-primary-foreground/80">ر.ع</span>
-                </>
+                <CurrencyDisplay amount={dashboard?.totalBalance ?? 0} fractionDigits={2} symbolClassName="text-lg font-medium text-primary-foreground/80" />
               ) : (
                 "••••••••"
               )}
@@ -182,8 +180,8 @@ export default function Dashboard() {
                 <p className="text-sm font-semibold text-primary mb-1">ملخص سريع</p>
                 <h3 className="font-bold text-base">وضعك الحالي باختصار</h3>
                 <div className="space-y-1.5 mt-3 text-sm text-muted-foreground">
-                  <p>صافي الحركة: <span className={cn("font-bold", netBalance >= 0 ? "text-emerald-600" : "text-red-600")}>{netBalance >= 0 ? "+" : ""}{formatCurrency(netBalance, 2)} ر.ع</span></p>
-                  <p>الالتزامات القريبة: <span className="font-bold text-amber-600">{formatCurrency(totalUpcomingObligations, 2)} ر.ع</span></p>
+                  <p>صافي الحركة: <span className={cn("font-bold", netBalance >= 0 ? "text-emerald-600" : "text-red-600")}>{netBalance >= 0 ? "+" : ""}<CurrencyDisplay amount={Math.abs(netBalance) === netBalance ? netBalance : Math.abs(netBalance)} fractionDigits={2} /></span></p>
+                  <p>الالتزامات القريبة: <span className="font-bold text-amber-600"><CurrencyDisplay amount={totalUpcomingObligations} fractionDigits={2} /></span></p>
                   <p>المحافظ المتاحة: <span className="font-bold text-foreground">{wallets.length}</span></p>
                   <p>الأقسام المعرفة: <span className="font-bold text-foreground">{categories.length}</span></p>
                 </div>
@@ -265,7 +263,7 @@ export default function Dashboard() {
                     </div>
                     <div className="text-right sm:text-left">
                       <span className="font-bold text-destructive text-sm">
-                        {formatCurrency(obligation.amount)} ر.ع
+                        <CurrencyDisplay amount={obligation.amount} fractionDigits={3} />
                       </span>
                     </div>
                   </div>

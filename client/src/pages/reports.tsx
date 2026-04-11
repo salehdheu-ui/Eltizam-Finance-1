@@ -6,6 +6,7 @@ import { ArrowDownLeft, ArrowUpRight, BarChart3, Landmark, Loader2, Printer, Rec
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CurrencyDisplay } from "@/components/ui/currency-display";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn, formatCurrency, formatPercentage, normalizeArabicText } from "@/lib/utils";
@@ -323,7 +324,7 @@ function ReportsContent() {
               <div className="border-l px-4 py-3 text-muted-foreground">{wallet.transactionCount}</div>
               <div className="border-l px-4 py-3 text-emerald-600">+{formatCurrency(wallet.income, 2)}</div>
               <div className="border-l px-4 py-3 text-red-600">-{formatCurrency(wallet.expenses, 2)}</div>
-              <div className="px-4 py-3 font-bold">{formatCurrency(wallet.balance, 2)} ر.ع</div>
+              <div className="px-4 py-3 font-bold"><CurrencyDisplay amount={wallet.balance} fractionDigits={2} /></div>
             </div>
           )) : <div className="px-4 py-6 text-center text-sm text-muted-foreground">لا توجد بيانات كافية عن المحافظ في هذه الفترة.</div>}
         </div>
@@ -371,7 +372,7 @@ function ReportsContent() {
                     ? `سنوي - ${obligation.dueDay ?? "-"}/${obligation.dueMonth ?? "-"}`
                     : "مرة واحدة"}
               </div>
-              <div className="px-4 py-3 font-bold text-destructive">{formatCurrency(obligation.amount, 2)} ر.ع</div>
+              <div className="px-4 py-3 font-bold text-destructive"><CurrencyDisplay amount={obligation.amount} fractionDigits={2} /></div>
             </div>
           )) : <div className="px-4 py-6 text-center text-sm text-muted-foreground">لا توجد التزامات قريبة خلال الفترة الحالية.</div>}
         </div>
@@ -722,7 +723,7 @@ function ReportsContent() {
                           {wallet.transactionCount} حركة • +{formatCurrency(wallet.income, 2)} / -{formatCurrency(wallet.expenses, 2)}
                         </p>
                       </div>
-                      <span className="break-words text-sm font-bold sm:shrink-0 sm:text-base">{formatCurrency(wallet.balance, 2)} ر.ع</span>
+                      <span className="break-words text-sm font-bold sm:shrink-0 sm:text-base"><CurrencyDisplay amount={wallet.balance} fractionDigits={2} /></span>
                     </div>
                   ))}
                 </div>
@@ -751,7 +752,7 @@ function ReportsContent() {
                         ? `سنوي - ${obligation.dueDay ?? "-"}/${obligation.dueMonth ?? "-"}` : "مرة واحدة"}
                   </p>
                 </div>
-                <span className="break-words text-sm font-bold text-destructive sm:text-base">{formatCurrency(obligation.amount, 2)} ر.ع</span>
+                <span className="break-words text-sm font-bold text-destructive sm:text-base"><CurrencyDisplay amount={obligation.amount} fractionDigits={2} /></span>
               </div>
             )) : <p className="py-6 text-center text-sm text-muted-foreground">لا توجد التزامات قريبة في الوقت الحالي</p>}
           </CardContent>

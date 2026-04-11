@@ -16,11 +16,12 @@ import {
 } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { OmaniCurrencySymbol } from "@/components/ui/currency-display";
 import { cn } from "@/lib/utils";
 import { useUser, useLogout, useUpdateUser, useChangePassword } from "@/lib/hooks";
 
 const currencies = [
-  { id: "OMR", name: "الريال العماني", symbol: "ر.ع" },
+  { id: "OMR", name: "الريال العماني", symbol: "OMR" },
   { id: "SAR", name: "الريال السعودي", symbol: "ر.س" },
   { id: "AED", name: "الدرهم الإماراتي", symbol: "د.إ" },
   { id: "USD", name: "الدولار الأمريكي", symbol: "$" },
@@ -195,7 +196,7 @@ export default function Settings() {
                 <span className="font-medium">العملة الأساسية</span>
               </div>
               <div className="flex items-center gap-2 text-muted-foreground">
-                <span className="text-sm">{selectedCurrency.symbol} ({selectedCurrency.id})</span>
+                <span className="flex items-center gap-2 text-sm">{selectedCurrency.id === "OMR" ? <OmaniCurrencySymbol className="h-4 w-auto" /> : selectedCurrency.symbol} ({selectedCurrency.id})</span>
                 <ChevronLeft className="h-4 w-4" />
               </div>
             </div>
@@ -319,7 +320,7 @@ export default function Settings() {
                   onClick={() => handleSelectCurrency(currency)}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-lg font-semibold">{currency.symbol}</div>
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-lg font-semibold">{currency.id === "OMR" ? <OmaniCurrencySymbol className="h-4 w-auto" /> : currency.symbol}</div>
                     <span>{currency.name}</span>
                   </div>
                   {selectedCurrency.id === currency.id && <Check className="h-5 w-5 text-primary" />}

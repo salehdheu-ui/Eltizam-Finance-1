@@ -1,5 +1,6 @@
 import { useLocation } from "wouter";
 import { Home, ListFilter, Wallet, PieChart, Plus, Settings, Loader2, BarChart3, Menu, X, ChevronLeft, Receipt, Landmark, LogOut, Sparkles } from "lucide-react";
+import { CurrencyDisplay } from "@/components/ui/currency-display";
 import { cn, formatCurrency } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -264,8 +265,8 @@ export default function Layout({ children }: LayoutProps) {
       toast({
         title: "تمت الإضافة بنجاح",
         description: txType === "transfer"
-          ? `تم تحويل ${txAmount} ر.ع بنجاح بين المحافظ`
-          : `تم تسجيل ${txType === 'expense' ? 'مصروف' : txType === 'income' ? 'دخل' : 'دين'} بقيمة ${txAmount} ر.ع${allocationDescription}`,
+          ? `تم تحويل ${formatCurrency(Number(txAmount || 0), 3)} ﷼ بنجاح بين المحافظ`
+          : `تم تسجيل ${txType === 'expense' ? 'مصروف' : txType === 'income' ? 'دخل' : 'دين'} بقيمة ${formatCurrency(Number(txAmount || 0), 3)} ﷼${allocationDescription}`,
       });
 
       blurActiveElement();
@@ -473,7 +474,7 @@ export default function Layout({ children }: LayoutProps) {
               </div>
 
               <div className="flex flex-col gap-2">
-                <Label htmlFor="tx-amount" className="text-base font-semibold">المبلغ (ر.ع)</Label>
+                <Label htmlFor="tx-amount" className="text-base font-semibold">المبلغ</Label>
                 {isVariableObligationQuickPay ? (
                   <div className="rounded-2xl border border-primary/15 bg-gradient-to-b from-primary/5 to-background p-4 shadow-sm space-y-3">
                     <div className="flex items-start justify-between gap-3">
@@ -490,7 +491,7 @@ export default function Layout({ children }: LayoutProps) {
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <p className="text-xs text-muted-foreground">المبلغ المحدد</p>
-                          <p className="text-xl font-bold text-foreground">{txAmount ? `${formatCurrency(Number(txAmount))} ر.ع` : "-"}</p>
+                          <p className="text-xl font-bold text-foreground">{txAmount ? <CurrencyDisplay amount={Number(txAmount)} fractionDigits={3} /> : "-"}</p>
                         </div>
                         <div className="text-left text-xs text-muted-foreground">
                           {quickPayAmountOptions.find((option) => option.amount.toString() === txAmount)?.monthsCount ?? 0} أشهر
@@ -506,7 +507,7 @@ export default function Layout({ children }: LayoutProps) {
                       >
                         {quickPayAmountOptions.map((option) => (
                           <option key={option.monthsCount} value={option.amount.toString()}>
-                            {formatCurrency(option.amount)} ر.ع - {option.monthsCount} {option.monthsCount === 1 ? "شهر" : "أشهر"}
+                            {formatCurrency(option.amount)} ﷼ - {option.monthsCount} {option.monthsCount === 1 ? "شهر" : "أشهر"}
                           </option>
                         ))}
                       </select>
