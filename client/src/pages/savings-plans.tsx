@@ -60,6 +60,8 @@ export default function SavingsPlans() {
     exampleIncome,
     validationMessages,
     infoMessages,
+    analysisWindowLabel,
+    transitionPlan,
   } = analysis;
 
   const selectedPlan = savingsPlans.find((plan) => plan.id === selectedPlanId) ?? recommendedPlan;
@@ -286,6 +288,32 @@ export default function SavingsPlans() {
                   <span className={cn("font-bold", currentSavings >= 0 ? "text-emerald-600" : "text-red-600")}>{renderCurrency(currentSavings)}</span>
                 </div>
               </div>
+              <div className="p-3 bg-white rounded-xl border col-span-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">أساس التحليل الحالي</span>
+                  <span className="font-bold text-primary">{analysisWindowLabel}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-violet-200 bg-violet-50">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base sm:text-lg">ماذا تفعل هذا الشهر؟</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm text-violet-900">
+              <div>
+                <p className="font-bold">{transitionPlan.title}</p>
+                <p className="mt-1 text-violet-800">{transitionPlan.description}</p>
+              </div>
+              <ul className="space-y-2">
+                {transitionPlan.steps.map((step) => (
+                  <li key={step} className="flex items-start gap-2">
+                    <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-violet-700" />
+                    <span>{step}</span>
+                  </li>
+                ))}
+              </ul>
             </CardContent>
           </Card>
 
@@ -657,7 +685,7 @@ export default function SavingsPlans() {
                       <p className="break-words text-xl font-bold text-slate-800 sm:text-2xl">{renderCurrency(projectedBalance)}</p>
                     </div>
                     <div className="rounded-xl bg-emerald-50 p-4 border border-emerald-200">
-                      <div className="flex items-center gap-2 mb-2"><TrendingUp className="h-4 w-4 text-emerald-600" /><span className="font-medium">مع استثمار 8%</span></div>
+                      <div className="flex items-center gap-2 mb-2"><TrendingUp className="h-4 w-4 text-emerald-600" /><span className="font-medium">سيناريو تقديري مع استثمار 8%</span></div>
                       <p className="break-words text-xl font-bold text-emerald-700 sm:text-2xl">{renderCurrency(investmentProjection)}</p>
                     </div>
                   </div>

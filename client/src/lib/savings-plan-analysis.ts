@@ -4,6 +4,12 @@ import { parseNumericInput } from "@/lib/utils";
 
 type NumericLike = string | number | null | undefined;
 
+type MonthlySnapshot = {
+  key: string;
+  income: number;
+  expenses: number;
+};
+
 type SavingsPlanAnalysisInput = {
   transactions: Transaction[];
   wallets: Wallet[];
@@ -45,6 +51,51 @@ function isRecentTransaction(transaction: Transaction) {
   return diffDays <= 30;
 }
 
+function getMonthKey(timestamp: number) {
+  const date = new Date(timestamp);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+}
+
+function buildMonthlySnapshots(transactions: Transaction[]) {
+  const monthlyMap = new Map<string, MonthlySnapshot>();
+
+  for (const transaction of transactions) {
+    const key = getMonthKey(transaction.date);
+    const existing = monthlyMap.get(key) ?? { key, income: 0, expenses: 0 };
+
+    if (transaction.type === "income") {
+      existing.income += transaction.amount;
+    }
+
+    if (transaction.type === "expense") {
+      existing.expenses += transaction.amount;
+    }
+
+    monthlyMap.set(key, existing);
+  }
+
+  return Array.from(monthlyMap.values()).sort((a, b) => b.key.localeCompare(a.key));
+}
+
+function averageByMonths(months: MonthlySnapshot[], windowSize: number) {
+  const selected = months.slice(0, windowSize);
+
+  if (selected.length === 0) {
+    return null;
+  }
+
+  const totalIncome = selected.reduce((sum, month) => sum + month.income, 0);
+  const totalExpenses = selected.reduce((sum, month) => sum + month.expenses, 0);
+
+  return {
+    monthCount: selected.length,
+    income: totalIncome / selected.length,
+    expenses: totalExpenses / selected.length,
+  };
+}
+
 function getInputValidationMessage(label: string, rawValue: NumericLike, parsedValue: number | null) {
   if (typeof rawValue === "string" && rawValue.trim() && parsedValue === null) {
     return `قيمة ${label} غير مفهومة، تأكد من إدخال رقم صحيح.`;
@@ -70,6 +121,14 @@ export function buildSavingsPlanAnalysis({
   const totalBalance = wallets.reduce((sum, wallet) => sum + wallet.balance, 0);
 
   const recentTransactions = transactions.filter(isRecentTransaction);
+  const monthlySnapshots = buildMonthlySnapshots(transactions);
+  const sixMonthAverage = averageByMonths(monthlySnapshots, 6);
+  const threeMonthAverage = averageByMonths(monthlySnapshots, 3);
+  const selectedAverage = sixMonthAverage?.monthCount === 6
+    ? sixMonthAverage
+    : threeMonthAverage?.monthCount === 3
+      ? threeMonthAverage
+      : null;
 
   const lastMonthIncome = recentTransactions
     .filter((transaction) => transaction.type === "income")
@@ -85,7 +144,9 @@ export function buildSavingsPlanAnalysis({
   const parsedFixedObligations = parseNumericInput(manualFixedObligations);
   const parsedTargetAmount = parseNumericInput(targetAmount);
 
-  const effectiveIncome = parsedManualIncome ?? lastMonthIncome;
+  const inferredIncome = selectedAverage?.income ?? lastMonthIncome;
+  const inferredExpenses = selectedAverage?.expenses ?? lastMonthExpenses;
+  const effectiveIncome = parsedManualIncome ?? inferredIncome;
   const hasManualExpenseBreakdown =
     parsedManualNeeds !== null ||
     parsedManualWants !== null ||
@@ -96,13 +157,20 @@ export function buildSavingsPlanAnalysis({
   const fixedObligations = parsedFixedObligations ?? 0;
   const effectiveExpenses = hasManualExpenseBreakdown
     ? effectiveNeeds + effectiveWants + fixedObligations
-    : lastMonthExpenses;
+    : inferredExpenses;
 
   const currentSavings = effectiveIncome - effectiveExpenses;
   const currentSavingsRate = effectiveIncome > 0 ? currentSavings / effectiveIncome : 0;
   const targetNum = parsedTargetAmount ?? 0;
   const obligationsRatio = effectiveIncome > 0 ? (effectiveNeeds + fixedObligations) / effectiveIncome : 0;
   const wantsRatio = effectiveIncome > 0 ? effectiveWants / effectiveIncome : 0;
+  const analysisWindowLabel = parsedManualIncome !== null
+    ? "يدوي"
+    : selectedAverage?.monthCount === 6
+      ? "متوسط 6 أشهر"
+      : selectedAverage?.monthCount === 3
+        ? "متوسط 3 أشهر"
+        : "آخر 30 يوم";
 
   const rankedPlans: RankedSavingsPlan[] = effectiveIncome <= 0
     ? savingsPlans.map((plan, index) => ({
@@ -225,6 +293,12 @@ export function buildSavingsPlanAnalysis({
     infoMessages.push("لا توجد بيانات مالية كافية لآخر 30 يوم، لذلك يعتمد الترشيح الحالي على أقل قدر من المعلومات المتاحة.");
   }
 
+  if (parsedManualIncome === null && selectedAverage?.monthCount === 6) {
+    infoMessages.push("تم احتساب الدخل والمصروفات تلقائياً باستخدام متوسط آخر 6 أشهر لتقليل أثر الأشهر الاستثنائية.");
+  } else if (parsedManualIncome === null && selectedAverage?.monthCount === 3) {
+    infoMessages.push("تم احتساب الدخل والمصروفات تلقائياً باستخدام متوسط آخر 3 أشهر للحصول على قراءة أكثر استقراراً.");
+  }
+
   if (currentSavings < 0) {
     infoMessages.push("وضعك الحالي يشير إلى عجز شهري، لذا قد تكون الخطط المتدرجة أو المحافظة أنسب كبداية.");
   }
@@ -237,11 +311,42 @@ export function buildSavingsPlanAnalysis({
 
   const improvementGap = Math.max((recommendedPlan.savingsRate * effectiveIncome) - Math.max(currentSavings, 0), 0);
   const exampleIncome = effectiveIncome > 0 ? effectiveIncome : 1000;
+  const monthlyStepTarget = improvementGap > 0 ? Math.min(improvementGap, Math.max(effectiveIncome * 0.05, 10)) : 0;
+  const transitionPlan = improvementGap <= 0
+    ? {
+        title: "أنت قريب من الخطة الموصى بها",
+        description: "يمكنك البدء بالخطة الحالية مباشرة مع متابعة الالتزام شهرياً.",
+        steps: [
+          "ثبّت الادخار الحالي في بداية كل شهر قبل الإنفاق المرن.",
+          "راجع الرغبات شهرياً للحفاظ على الاستدامة.",
+        ],
+      }
+    : currentSavings < 0
+      ? {
+          title: "ابدأ بإيقاف العجز أولاً",
+          description: "الأولوية هذا الشهر هي تقليل العجز قبل الانتقال الكامل للخطة الموصى بها.",
+          steps: [
+            `خفّض بند الرغبات أو المصروفات المرنة بما لا يقل عن ${monthlyStepTarget.toFixed(2)} شهرياً.`,
+            "امنع أي التزامات إضافية مؤقتاً حتى يعود الفائض إلى المنطقة الإيجابية.",
+            `بعد معالجة العجز، ارفع الادخار تدريجياً حتى تصل إلى فجوة التحسين الكاملة (${improvementGap.toFixed(2)}).`,
+          ],
+        }
+      : {
+          title: "خطة انتقال تدريجية",
+          description: "الخطة الموصى بها مناسبة، لكن من الأفضل الوصول لها على مراحل قصيرة وواضحة.",
+          steps: [
+            `ابدأ هذا الشهر برفع الادخار بمقدار ${monthlyStepTarget.toFixed(2)}.`,
+            `خفّض بند الرغبات أو الإنفاق المرن بالقيمة نفسها تقريباً للحفاظ على التوازن.`,
+            `كرر الزيادة شهرياً حتى تغلق فجوة التحسين الكاملة (${improvementGap.toFixed(2)}).`,
+          ],
+        };
 
   return {
     totalBalance,
     lastMonthIncome,
     lastMonthExpenses,
+    inferredIncome,
+    inferredExpenses,
     parsedManualIncome,
     parsedManualNeeds,
     parsedManualWants,
@@ -267,6 +372,9 @@ export function buildSavingsPlanAnalysis({
     exampleIncome,
     validationMessages,
     infoMessages,
+    analysisWindowLabel,
+    transitionPlan,
+    monthlySnapshotsCount: monthlySnapshots.length,
     hasRecentTransactions: recentTransactions.length > 0,
   };
 }

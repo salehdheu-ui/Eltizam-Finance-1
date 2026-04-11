@@ -41,6 +41,8 @@ export default function SavingsPlanDetails() {
   const planCard = analysis.planCards.find((item) => item.plan.id === planId) ?? null;
   const effectiveIncome = analysis.effectiveIncome;
   const lastMonthExpenses = analysis.lastMonthExpenses;
+  const analysisWindowLabel = analysis.analysisWindowLabel;
+  const transitionPlan = analysis.transitionPlan;
   const monthlySavingsAmount = planCard?.monthlySavingsAmount ?? 0;
   const projectedSavings = monthlySavingsAmount * planYears * 12;
   const projectedBalance = planCard?.projectedBalance ?? analysis.totalBalance;
@@ -122,6 +124,27 @@ export default function SavingsPlanDetails() {
                 ? "مستوى ادخارك الحالي قريب من متطلبات هذه الخطة، وهذا يجعل تطبيقها واقعياً من الآن."
                 : "هذه الخطة ممكنة، لكنها تحتاج رفع الادخار الشهري أو خفض بعض المصروفات حتى تصبح مريحة ومستدامة."}
           </p>
+          <p className="sm:col-span-3 text-xs text-muted-foreground">أساس التحليل الحالي: {analysisWindowLabel}</p>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-4 border-violet-200 bg-violet-50">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">خطة انتقال عملية</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm text-violet-900">
+          <div>
+            <p className="font-bold">{transitionPlan.title}</p>
+            <p className="mt-1 text-violet-800">{transitionPlan.description}</p>
+          </div>
+          <ul className="space-y-2">
+            {transitionPlan.steps.map((step) => (
+              <li key={step} className="flex items-start gap-2">
+                <ArrowRight className="mt-1 h-4 w-4 text-violet-700" />
+                <span>{step}</span>
+              </li>
+            ))}
+          </ul>
         </CardContent>
       </Card>
 
@@ -162,7 +185,7 @@ export default function SavingsPlanDetails() {
             <p>الادخار الشهري: <span className="font-bold text-foreground"><CurrencyDisplay amount={monthlySavingsAmount} fractionDigits={2} /></span></p>
             <p>إجمالي الادخار خلال {planYears} سنوات: <span className="font-bold text-foreground"><CurrencyDisplay amount={projectedSavings} fractionDigits={2} /></span></p>
             <p>الرصيد المتوقع خلال {planYears} سنوات: <span className={cn("font-bold", "text-foreground")}><CurrencyDisplay amount={projectedBalance} fractionDigits={2} /></span></p>
-            <p>مع استثمار 8%: <span className="font-bold text-foreground"><CurrencyDisplay amount={investmentProjection} fractionDigits={2} /></span></p>
+            <p>سيناريو تقديري مع استثمار 8%: <span className="font-bold text-foreground"><CurrencyDisplay amount={investmentProjection} fractionDigits={2} /></span></p>
             {analysis.validationMessages.map((message) => (
               <p key={message} className="text-red-700">{message}</p>
             ))}
