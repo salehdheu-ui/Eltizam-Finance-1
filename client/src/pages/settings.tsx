@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils";
 import { useUser, useLogout, useUpdateUser, useChangePassword } from "@/lib/hooks";
 
 const currencies = [
-  { id: "OMR", name: "العملة العُمانية", symbol: "ر.ع" },
+  { id: "OMR", name: "الريال العماني", symbol: "OMR" },
   { id: "SAR", name: "الريال السعودي", symbol: "ر.س" },
   { id: "AED", name: "الدرهم الإماراتي", symbol: "د.إ" },
   { id: "USD", name: "الدولار الأمريكي", symbol: "$" },
