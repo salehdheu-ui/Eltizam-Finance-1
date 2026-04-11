@@ -396,7 +396,7 @@ function ReportsContent() {
               <div className="border-l px-4 py-3 text-muted-foreground">{tx.walletName || "بدون محفظة"}</div>
               <div className="border-l px-4 py-3 text-muted-foreground">{tx.type === "income" ? "دخل" : "مصروف"}</div>
               <div className={cn("px-4 py-3 font-bold", tx.type === "income" ? "text-emerald-600" : "text-red-600")}>
-                {tx.type === "income" ? "+" : "-"}{formatCurrency(tx.amount, 2)}
+                {tx.type === "income" ? "+" : "-"}<CurrencyDisplay amount={tx.amount} fractionDigits={2} />
               </div>
             </div>
           )) : <div className="px-4 py-6 text-center text-sm text-muted-foreground">لا توجد معاملات حديثة في هذه الفترة.</div>}
@@ -788,7 +788,7 @@ function ReportsContent() {
                     <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{tx.walletName || "بدون محفظة"}</p>
                   </div>
                   <span className={cn("shrink-0 text-sm font-bold sm:text-base", tx.type === "income" ? "text-emerald-600" : "text-red-600")}>
-                    {tx.type === "income" ? "+" : "-"}{formatCurrency(tx.amount, 2)}
+                    {tx.type === "income" ? "+" : "-"}<CurrencyDisplay amount={tx.amount} fractionDigits={2} />
                   </span>
                 </div>
               ))}

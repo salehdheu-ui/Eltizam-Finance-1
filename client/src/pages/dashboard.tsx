@@ -315,7 +315,7 @@ export default function Dashboard() {
                     "shrink-0 text-left font-bold text-lg",
                     tx.type === 'income' ? "text-emerald-500" : tx.type === 'expense' ? "text-red-500" : ""
                   )}>
-                    {tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount, 2)}
+                    {tx.type === 'income' ? '+' : '-'}<CurrencyDisplay amount={tx.amount} fractionDigits={2} />
                   </div>
                 </div>
               );
