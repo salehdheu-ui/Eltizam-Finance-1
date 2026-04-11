@@ -18,6 +18,20 @@ export default function SavingsPlans() {
   const { data: transactions = [] } = useTransactions();
   const { data: wallets = [] } = useWallets();
 
+  const buildPlansSearchParams = (overrides?: Partial<{ tab: "savings" | "plans"; restoreScroll: "1" }>) => {
+    const params = new URLSearchParams();
+    const tabValue = overrides?.tab ?? activeTab;
+    params.set("tab", tabValue);
+    if (manualIncome.trim()) params.set("income", manualIncome);
+    if (manualNeeds.trim()) params.set("needs", manualNeeds);
+    if (manualWants.trim()) params.set("wants", manualWants);
+    if (manualFixedObligations.trim()) params.set("fixed", manualFixedObligations);
+    if (targetAmount.trim()) params.set("target", targetAmount);
+    params.set("years", String(planYears));
+    if (overrides?.restoreScroll) params.set("restoreScroll", overrides.restoreScroll);
+    return params;
+  };
+
   const [activeTab, setActiveTab] = useState<"savings" | "plans">(() => {
     if (typeof window === "undefined") {
       return "savings";
@@ -94,9 +108,24 @@ export default function SavingsPlans() {
     const params = new URLSearchParams(window.location.search);
     const nextTab = params.get("tab") === "plans" ? "plans" : "savings";
 
+    const nextIncome = params.get("income") ?? "";
+    const nextNeeds = params.get("needs") ?? "";
+    const nextWants = params.get("wants") ?? "";
+    const nextFixed = params.get("fixed") ?? "";
+    const nextTarget = params.get("target") ?? "";
+    const yearsParam = Number(params.get("years"));
+    const nextYears: 3 | 5 | 10 = yearsParam === 3 || yearsParam === 10 ? yearsParam : 5;
+
     if (nextTab !== activeTab) {
       setActiveTab(nextTab);
     }
+
+    if (nextIncome !== manualIncome) setManualIncome(nextIncome);
+    if (nextNeeds !== manualNeeds) setManualNeeds(nextNeeds);
+    if (nextWants !== manualWants) setManualWants(nextWants);
+    if (nextFixed !== manualFixedObligations) setManualFixedObligations(nextFixed);
+    if (nextTarget !== targetAmount) setTargetAmount(nextTarget);
+    if (nextYears !== planYears) setPlanYears(nextYears);
 
     if (params.get("restoreScroll") === "1") {
       const stored = window.sessionStorage.getItem("eltizam-financial-plans-scroll");
@@ -227,7 +256,8 @@ export default function SavingsPlans() {
         onValueChange={(value) => {
           const nextTab = value as "savings" | "plans";
           setActiveTab(nextTab);
-          setLocation(`/financial-plans?tab=${nextTab}`);
+          const nextSearch = buildPlansSearchParams({ tab: nextTab }).toString();
+          setLocation(`/financial-plans?${nextSearch}`);
         }}
         className="space-y-4"
       >
@@ -396,7 +426,10 @@ export default function SavingsPlans() {
               </div>
               <button
                 type="button"
-                onClick={() => setLocation("/financial-plans?tab=plans")}
+                onClick={() => {
+                  const nextSearch = buildPlansSearchParams({ tab: "plans" }).toString();
+                  setLocation(`/financial-plans?${nextSearch}`);
+                }}
                 className="sm:col-span-3 rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white hover:bg-slate-800"
               >
                 استعرض الخطط المقترحة
@@ -465,7 +498,10 @@ export default function SavingsPlans() {
           <div className="flex items-center justify-between gap-2">
             <button
               type="button"
-              onClick={() => setLocation("/financial-plans?tab=savings")}
+              onClick={() => {
+                const nextSearch = buildPlansSearchParams({ tab: "savings" }).toString();
+                setLocation(`/financial-plans?${nextSearch}`);
+              }}
               className="order-1 rounded-xl border px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted"
             >
               تعديل البيانات
