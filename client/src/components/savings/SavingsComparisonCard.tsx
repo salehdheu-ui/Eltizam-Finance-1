@@ -18,12 +18,12 @@ type SavingsComparisonCardProps = {
 
 export function SavingsComparisonCard({ items }: SavingsComparisonCardProps) {
   return (
-    <Card>
+    <Card dir="rtl" className="text-right">
       <CardHeader className="pb-3">
-        <CardTitle className="text-base sm:text-lg text-right">مقارنة وضعك الحالي بالخطة المقترحة</CardTitle>
+        <CardTitle className="text-base sm:text-lg text-center sm:text-right">مقارنة وضعك الحالي بالخطة المقترحة</CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="flex flex-col gap-1 sm:flex-row-reverse sm:items-center sm:justify-between">
+      <CardContent className="text-right">
+        <div className="flex flex-col gap-1 text-center sm:flex-row-reverse sm:items-center sm:justify-between sm:text-right">
           <p className="font-medium text-foreground">حتى تعرف أين تحتاج التعديل تحديداً</p>
           <p className="text-xs text-muted-foreground">الحالي مقابل المستهدف لكل بند</p>
         </div>
@@ -34,7 +34,7 @@ export function SavingsComparisonCard({ items }: SavingsComparisonCardProps) {
 
             return (
               <div key={item.key} className="rounded-xl border bg-slate-50 p-4">
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-col gap-2 text-center sm:flex-row sm:items-center sm:justify-between sm:text-right">
                   <p className={cn("font-bold", item.accentClassName)}>{item.label}</p>
                   <span className="text-xs text-muted-foreground">
                     الآن {Math.round(item.currentRate * 100)}% / المستهدف {Math.round(item.targetRate * 100)}%
@@ -46,11 +46,11 @@ export function SavingsComparisonCard({ items }: SavingsComparisonCardProps) {
                 <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
                   <div className={cn("h-full rounded-full opacity-70", item.accentClassName.replace("text", "bg"))} style={{ width: `${Math.min(Math.max(item.targetRate * 100, 0), 100)}%` }} />
                 </div>
-                <div className="mt-3 flex items-center justify-between gap-3 text-sm">
+                <div className="mt-3 flex items-center justify-between gap-3 text-sm text-right">
                   <span className="text-muted-foreground">الوضع الحالي</span>
                   <span className="font-medium"><CurrencyDisplay amount={item.currentAmount} fractionDigits={2} /></span>
                 </div>
-                <div className="mt-1 flex items-center justify-between gap-3 text-sm">
+                <div className="mt-1 flex items-center justify-between gap-3 text-sm text-right">
                   <span className="text-muted-foreground">المستهدف</span>
                   <span className="font-medium"><CurrencyDisplay amount={item.targetAmount} fractionDigits={2} /></span>
                 </div>

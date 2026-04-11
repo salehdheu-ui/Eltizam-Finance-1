@@ -24,14 +24,14 @@ type SavingsVisualChartsProps = {
 export function SavingsVisualCharts({ comparisonChartData, projectionChartData }: SavingsVisualChartsProps) {
   return (
     <>
-      <Card>
+      <Card dir="rtl" className="text-right">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-center gap-2 text-center">
+          <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-center gap-2 text-center sm:justify-start sm:text-right">
             <TrendingUp className="h-5 w-5 text-primary" />
             عرض بصري للوضع الحالي مقابل المستهدف
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-3 text-right">
           <div className="h-80 w-full" dir="ltr">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={comparisonChartData} barGap={8}>
@@ -57,14 +57,14 @@ export function SavingsVisualCharts({ comparisonChartData, projectionChartData }
         </CardContent>
       </Card>
 
-      <Card>
+      <Card dir="rtl" className="text-right">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-center gap-2 text-center">
+          <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-center gap-2 text-center sm:justify-start sm:text-right">
             <Target className="h-5 w-5 text-primary" />
             كيف تنمو الخطة الموصى بها عبر الزمن؟
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-3 text-right">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {projectionChartData.map((item) => (
               <div key={item.years} className={item.isActive ? "rounded-xl border border-primary bg-primary/5 p-3" : "rounded-xl border bg-white p-3"}>

@@ -27,16 +27,16 @@ export function SavingsStatusCard({
   improvementGap,
 }: SavingsStatusCardProps) {
   return (
-    <Card className={cn("border", statusTone.className)}>
+    <Card className={cn("border text-right", statusTone.className)} dir="rtl">
       <CardHeader className="pb-3">
-        <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-between gap-3 text-right">
+        <CardTitle className="text-base sm:text-lg flex flex-col items-center justify-center gap-3 text-center sm:flex-row-reverse sm:justify-between sm:text-right">
           <span>{statusTone.title}</span>
           <span className={cn("rounded-full px-3 py-1 text-xs font-bold", statusTone.badgeClassName)}>
             {effectiveIncome > 0 ? `${Math.round(currentSavingsRate * 100)}% ادخار` : "بيانات محدودة"}
           </span>
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3 text-sm">
+      <CardContent className="space-y-3 text-sm text-right">
         <p>{statusTone.description}</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="rounded-xl border bg-white/80 p-3">

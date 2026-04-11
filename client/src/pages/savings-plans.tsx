@@ -217,7 +217,7 @@ export default function SavingsPlans() {
 
   return (
     <div className="app-page text-right" dir="rtl">
-      <div className="text-center py-2 sm:py-4 space-y-1">
+      <div className="py-2 sm:py-4 space-y-1 text-center sm:text-right">
         <h1 className="text-xl font-bold sm:text-2xl">خطط الادخار</h1>
         <p className="text-sm text-muted-foreground sm:text-base">شرح أوضح، مقارنة أذكى، وترشيح تلقائي للخطة الأنسب لك</p>
       </div>
@@ -266,14 +266,14 @@ export default function SavingsPlans() {
             improvementGap={improvementGap}
           />
 
-          <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
+          <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200" dir="rtl">
             <CardHeader className="pb-3">
-              <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-center gap-2 text-center">
+              <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-center gap-2 text-center sm:justify-start sm:text-right">
                 <Wallet className="h-5 w-5 text-primary" />
                 وضعك المالي الحالي
               </CardTitle>
             </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-3">
+            <CardContent className="grid grid-cols-2 gap-3 text-right">
               <div className="p-3 bg-white rounded-xl border">
                 <p className="text-xs text-muted-foreground">الرصيد الحالي</p>
                 <p className="break-words text-base font-bold text-primary sm:text-lg">{renderCurrency(totalBalance)}</p>
@@ -283,13 +283,13 @@ export default function SavingsPlans() {
                 <p className="break-words text-base font-bold text-emerald-600 sm:text-lg">{renderCurrency(lastMonthIncome)}</p>
               </div>
               <div className="p-3 bg-white rounded-xl border col-span-2">
-                <div className="flex justify-between items-center">
+                <div className="flex items-center justify-between gap-3 text-right">
                   <span className="text-sm text-muted-foreground">الادخار الشهري الحالي</span>
                   <span className={cn("font-bold", currentSavings >= 0 ? "text-emerald-600" : "text-red-600")}>{renderCurrency(currentSavings)}</span>
                 </div>
               </div>
               <div className="p-3 bg-white rounded-xl border col-span-2">
-                <div className="flex justify-between items-center">
+                <div className="flex items-center justify-between gap-3 text-right">
                   <span className="text-sm text-muted-foreground">أساس التحليل الحالي</span>
                   <span className="font-bold text-primary">{analysisWindowLabel}</span>
                 </div>
@@ -297,9 +297,9 @@ export default function SavingsPlans() {
             </CardContent>
           </Card>
 
-          <Card className="border-violet-200 bg-violet-50">
+          <Card className="border-violet-200 bg-violet-50" dir="rtl">
             <CardHeader className="pb-3">
-              <CardTitle className="text-base sm:text-lg">ماذا تفعل هذا الشهر؟</CardTitle>
+              <CardTitle className="text-base sm:text-lg text-center sm:text-right">ماذا تفعل هذا الشهر؟</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm text-violet-900">
               <div>
@@ -317,14 +317,14 @@ export default function SavingsPlans() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card dir="rtl">
             <CardHeader className="pb-3">
-              <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-center gap-2 text-center">
+              <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-center gap-2 text-center sm:justify-start sm:text-right">
                 <Target className="h-5 w-5 text-primary" />
                 بيانات حساب الادخار
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 text-right">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">الدخل الشهري</label>
@@ -372,9 +372,9 @@ export default function SavingsPlans() {
             </CardContent>
           </Card>
 
-          <Card className="border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50">
+          <Card className="border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50" dir="rtl">
             <CardHeader className="pb-3">
-              <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-center gap-2 text-center">
+              <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-center gap-2 text-center sm:justify-start sm:text-right">
                 <Sparkles className="h-5 w-5 text-amber-600" />
                 ملخص سريع
               </CardTitle>
@@ -404,9 +404,9 @@ export default function SavingsPlans() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card dir="rtl">
             <CardHeader className="pb-3">
-              <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-center gap-2 text-center">
+              <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-center gap-2 text-center sm:justify-start sm:text-right">
                 <Sparkles className="h-5 w-5 text-primary" />
                 مقارنة سريعة بين أفضل الخيارات
               </CardTitle>
