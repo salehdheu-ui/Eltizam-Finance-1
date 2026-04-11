@@ -83,8 +83,8 @@ export default function SavingsPlans() {
 
   const renderCurrency = (amount: number) => (
     <span dir="ltr" className="inline-flex items-center gap-1 whitespace-nowrap align-baseline">
-      <OmaniCurrencySymbol className="h-[0.9em] w-auto shrink-0" />
       <span>{formatCurrency(amount, 2)}</span>
+      <OmaniCurrencySymbol className="h-[0.9em] w-auto shrink-0" />
     </span>
   );
 

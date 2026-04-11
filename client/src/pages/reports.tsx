@@ -28,6 +28,37 @@ function getPeriodName(period: string) {
   }
 }
 
+function renderInsight(insight: string) {
+  const sanitized = insight.replace(/\s*ر\s*\.\s*ع\s*/g, " ").replace(/\s*رع\s*/g, " ").trim();
+
+  if (sanitized === insight) {
+    return <span>{insight}</span>;
+  }
+
+  const match = sanitized.match(/-?\d+(?:\.\d+)?/);
+  if (!match) {
+    return <span>{sanitized}</span>;
+  }
+
+  const rawNumber = match[0];
+  const amount = Number(rawNumber);
+  if (!Number.isFinite(amount)) {
+    return <span>{sanitized}</span>;
+  }
+
+  const index = match.index ?? 0;
+  const before = sanitized.slice(0, index);
+  const after = sanitized.slice(index + rawNumber.length);
+
+  return (
+    <span className="inline-flex flex-wrap items-baseline gap-1">
+      {before ? <span>{before}</span> : null}
+      <CurrencyDisplay amount={amount} fractionDigits={2} />
+      {after ? <span>{after}</span> : null}
+    </span>
+  );
+}
+
 const trendChartConfig = {
   income: { label: "الدخل", color: "#10b981" },
   expenses: { label: "المصروفات", color: "#ef4444" },
@@ -563,7 +594,7 @@ function ReportsContent() {
               <h3 className="text-lg font-bold">ماذا يخبرك التقرير الآن؟</h3>
               <div className="mt-3 space-y-2 text-sm text-muted-foreground">
                 {data.insights.map((insight) => (
-                  <p key={insight}>{insight}</p>
+                  <p key={insight}>{renderInsight(insight)}</p>
                 ))}
               </div>
             </div>

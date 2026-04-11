@@ -37,8 +37,8 @@ export function CurrencyDisplay({
   return (
     <span dir="ltr" className={cn("inline-flex items-center gap-1 whitespace-nowrap align-baseline", className)}>
       {prefix ? <span>{prefix}</span> : null}
-      <OmaniCurrencySymbol className={cn("h-[0.9em] w-auto shrink-0", symbolClassName)} />
       <span className={numberClassName}>{formatCurrency(amount, fractionDigits)}</span>
+      <OmaniCurrencySymbol className={cn("h-[0.9em] w-auto shrink-0", symbolClassName)} />
       {suffix ? <span>{suffix}</span> : null}
     </span>
   );
