@@ -29,8 +29,8 @@ export function SavingsStatusCard({
   return (
     <Card className={cn("border text-right", statusTone.className)} dir="rtl">
       <CardHeader className="pb-3">
-        <CardTitle className="text-base sm:text-lg flex flex-col items-center justify-center gap-3 text-center sm:flex-row-reverse sm:justify-between sm:text-right">
-          <span>{statusTone.title}</span>
+        <CardTitle className="text-base sm:text-lg flex flex-col items-end justify-center gap-3 text-right sm:flex-row-reverse sm:justify-between">
+          <span className="w-full text-right">{statusTone.title}</span>
           <span className={cn("rounded-full px-3 py-1 text-xs font-bold", statusTone.badgeClassName)}>
             {effectiveIncome > 0 ? `${Math.round(currentSavingsRate * 100)}% ادخار` : "بيانات محدودة"}
           </span>

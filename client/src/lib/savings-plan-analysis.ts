@@ -44,15 +44,23 @@ export type SavingsPlanCardAnalysis = {
   isRecommended: boolean;
 };
 
+function toTimestampMs(timestamp: number) {
+  return timestamp < 1_000_000_000_000 ? timestamp * 1000 : timestamp;
+}
+
+function toTransactionDate(timestamp: number) {
+  return new Date(toTimestampMs(timestamp));
+}
+
 function isRecentTransaction(transaction: Transaction) {
-  const transactionDate = new Date(transaction.date);
+  const transactionDate = toTransactionDate(transaction.date);
   const now = new Date();
   const diffDays = (now.getTime() - transactionDate.getTime()) / (1000 * 60 * 60 * 24);
   return diffDays <= 30;
 }
 
 function getMonthKey(timestamp: number) {
-  const date = new Date(timestamp);
+  const date = toTransactionDate(timestamp);
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   return `${year}-${month}`;

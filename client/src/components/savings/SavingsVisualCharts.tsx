@@ -26,7 +26,7 @@ export function SavingsVisualCharts({ comparisonChartData, projectionChartData }
     <>
       <Card dir="rtl" className="text-right">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-center gap-2 text-center sm:justify-start sm:text-right">
+          <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-start gap-2 text-right">
             <TrendingUp className="h-5 w-5 text-primary" />
             عرض بصري للوضع الحالي مقابل المستهدف
           </CardTitle>
@@ -59,7 +59,7 @@ export function SavingsVisualCharts({ comparisonChartData, projectionChartData }
 
       <Card dir="rtl" className="text-right">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-center gap-2 text-center sm:justify-start sm:text-right">
+          <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-start gap-2 text-right">
             <Target className="h-5 w-5 text-primary" />
             كيف تنمو الخطة الموصى بها عبر الزمن؟
           </CardTitle>

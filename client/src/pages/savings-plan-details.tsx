@@ -4,7 +4,7 @@ import { CurrencyDisplay } from "@/components/ui/currency-display";
 import { cn } from "@/lib/utils";
 import { useTransactions, useWallets } from "@/lib/hooks";
 import { useRoute, useLocation } from "wouter";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { ArrowRight, ChevronLeft, Sparkles } from "lucide-react";
 import { getSavingsDistributionLabel, savingsPlans } from "@/lib/savings-plans";
 import { buildSavingsPlanAnalysis } from "@/lib/savings-plan-analysis";
@@ -13,6 +13,14 @@ export default function SavingsPlanDetails() {
   const [location, setLocation] = useLocation();
   const [, params] = useRoute("/financial-plans/:id");
   const planId = params?.id ?? "";
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [planId, location]);
 
   const { data: transactions = [] } = useTransactions();
   const { data: wallets = [] } = useWallets();
@@ -70,7 +78,7 @@ export default function SavingsPlanDetails() {
     <div className="app-page" dir="rtl">
       <div className="flex flex-row-reverse items-center justify-between gap-3 text-right">
         <Button variant="outline" className="rounded-xl" onClick={() => setLocation("/financial-plans?tab=plans&restoreScroll=1")}>عودة</Button>
-        <div className="min-w-0 flex-1 text-center sm:text-right">
+        <div className="min-w-0 flex-1 text-right">
           <h1 className="truncate text-lg font-bold sm:text-xl">{plan.title}</h1>
           <p className="truncate text-sm text-muted-foreground">{plan.subtitle}</p>
         </div>
@@ -79,7 +87,7 @@ export default function SavingsPlanDetails() {
 
       <Card className="mt-4 border-primary/20 bg-primary/5">
         <CardHeader className="pb-3">
-          <CardTitle className="flex flex-row-reverse items-center justify-center gap-2 text-center sm:justify-start sm:text-right text-base">
+          <CardTitle className="flex flex-row-reverse items-center justify-start gap-2 text-right text-base">
             <Sparkles className="h-5 w-5 text-primary" />
             ملخص سريع
           </CardTitle>
@@ -102,7 +110,7 @@ export default function SavingsPlanDetails() {
 
       <Card className="mt-4 border-amber-200 bg-amber-50">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base text-center sm:text-right">مدى ملاءمة هذه الخطة لوضعك الحالي</CardTitle>
+          <CardTitle className="text-base text-right">مدى ملاءمة هذه الخطة لوضعك الحالي</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-xl border bg-white p-3">
@@ -130,7 +138,7 @@ export default function SavingsPlanDetails() {
 
       <Card className="mt-4 border-violet-200 bg-violet-50">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base text-center sm:text-right">خطة انتقال عملية</CardTitle>
+          <CardTitle className="text-base text-right">خطة انتقال عملية</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-violet-900">
           <div>
@@ -151,7 +159,7 @@ export default function SavingsPlanDetails() {
       <div className="mt-4 grid gap-4">
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base text-center sm:text-right">كيف تعمل؟</CardTitle>
+            <CardTitle className="text-base text-right">كيف تعمل؟</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="rounded-xl bg-muted/40 p-3 text-sm leading-7 text-slate-700">{plan.description}</div>
@@ -168,7 +176,7 @@ export default function SavingsPlanDetails() {
 
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base text-center sm:text-right">التوزيع المقترح</CardTitle>
+            <CardTitle className="text-base text-right">التوزيع المقترح</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="rounded-xl border p-3 text-sm text-muted-foreground">{getSavingsDistributionLabel(plan)}</div>
@@ -177,7 +185,7 @@ export default function SavingsPlanDetails() {
 
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base text-center sm:text-right">كيف يحسبها النظام؟</CardTitle>
+            <CardTitle className="text-base text-right">كيف يحسبها النظام؟</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
             <p>الدخل المعتمد: <span className="font-bold text-foreground"><CurrencyDisplay amount={effectiveIncome} fractionDigits={2} /></span></p>
