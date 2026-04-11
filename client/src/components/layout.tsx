@@ -305,7 +305,12 @@ export default function Layout({ children }: LayoutProps) {
           >
             <Menu className="h-5 w-5" />
           </Button>
-          <h1 className="absolute left-1/2 -translate-x-1/2 text-lg font-bold">التزام</h1>
+          <h1 className="absolute left-1/2 -translate-x-1/2">
+            <span className="inline-flex items-center gap-2 text-lg font-bold">
+              <img src="/favicon.png" alt="التزام" className="h-7 w-7" />
+              <span>التزام</span>
+            </span>
+          </h1>
         </div>
       </header>
 
