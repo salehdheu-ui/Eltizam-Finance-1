@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ArrowRight, BookOpen, CheckCircle2, Goal, Landmark, PieChart, Receipt, Sparkles, Wallet } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 
 const USER_GUIDE_STORAGE_KEY = "eltizam-user-guide-seen";
@@ -21,6 +21,7 @@ type GuideStep = {
 export default function UserGuidePage() {
   const [, setLocation] = useLocation();
   const [activeStepIndex, setActiveStepIndex] = useState(0);
+  const actionCardRef = useRef<HTMLDivElement | null>(null);
 
   const guideSteps = useMemo<GuideStep[]>(() => [
     {
@@ -144,6 +145,23 @@ export default function UserGuidePage() {
     setLocation("/");
   };
 
+  const scrollToActionCard = () => {
+    actionCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const handleSelectStep = (index: number) => {
+    if (index === activeStepIndex) {
+      handleNavigateToStep();
+      return;
+    }
+
+    setActiveStepIndex(index);
+
+    window.setTimeout(() => {
+      scrollToActionCard();
+    }, 80);
+  };
+
   return (
     <div className="app-page space-y-4 text-right" dir="rtl">
       <div className="space-y-2">
@@ -170,7 +188,7 @@ export default function UserGuidePage() {
                 <button
                   key={step.title}
                   type="button"
-                  onClick={() => setActiveStepIndex(index)}
+                  onClick={() => handleSelectStep(index)}
                   className={cn(
                     "flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-right transition-colors",
                     isActive ? "border-primary bg-primary/5 text-primary" : "border-border/60 hover:bg-muted"
@@ -190,7 +208,7 @@ export default function UserGuidePage() {
           </CardContent>
         </Card>
 
-        <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-background">
+        <Card ref={actionCardRef} className="border-primary/20 bg-gradient-to-br from-primary/5 to-background">
           <CardContent className="space-y-5 p-5 sm:p-6">
             <div className="flex flex-col gap-3 sm:flex-row-reverse sm:items-start sm:justify-between">
               <div className="min-w-0">
