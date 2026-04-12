@@ -2,10 +2,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ArrowRight, BookOpen, CheckCircle2, Goal, Landmark, PieChart, Receipt, Sparkles, Wallet } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 
 const USER_GUIDE_STORAGE_KEY = "eltizam-user-guide-seen";
+const USER_GUIDE_RETURN_KEY = "eltizam-user-guide-return-visible";
+const USER_GUIDE_STEP_KEY = "eltizam-user-guide-active-step";
 
 type GuideStep = {
   title: string;
@@ -95,6 +97,25 @@ export default function UserGuidePage() {
     },
   ], []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const savedStep = Number(window.localStorage.getItem(USER_GUIDE_STEP_KEY) ?? "0");
+    if (!Number.isNaN(savedStep)) {
+      setActiveStepIndex(Math.min(Math.max(savedStep, 0), guideSteps.length - 1));
+    }
+  }, [guideSteps.length]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(USER_GUIDE_STEP_KEY, activeStepIndex.toString());
+  }, [activeStepIndex]);
+
   const activeStep = guideSteps[activeStepIndex];
   const ActiveIcon = activeStep.icon;
   const isLastStep = activeStepIndex === guideSteps.length - 1;
@@ -107,11 +128,19 @@ export default function UserGuidePage() {
 
   const handleNavigateToStep = () => {
     markGuideSeen();
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(USER_GUIDE_RETURN_KEY, "true");
+      window.localStorage.setItem(USER_GUIDE_STEP_KEY, activeStepIndex.toString());
+    }
     setLocation(activeStep.href);
   };
 
   const handleFinishGuide = () => {
     markGuideSeen();
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(USER_GUIDE_RETURN_KEY);
+      window.localStorage.removeItem(USER_GUIDE_STEP_KEY);
+    }
     setLocation("/");
   };
 

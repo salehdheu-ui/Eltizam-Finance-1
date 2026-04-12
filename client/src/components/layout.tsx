@@ -71,6 +71,7 @@ export default function Layout({ children }: LayoutProps) {
   
   const [isAddTxOpen, setIsAddTxOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [showReturnToGuide, setShowReturnToGuide] = useState(false);
   const [txType, setTxType] = useState<TransactionKind>("expense");
   const [txAmount, setTxAmount] = useState("");
   const [txNote, setTxNote] = useState("");
@@ -177,6 +178,24 @@ export default function Layout({ children }: LayoutProps) {
       requestAnimationFrame(() => window.scrollTo({ top: window.scrollY, behavior: "instant" as ScrollBehavior }));
     }
   }, [isAddTxOpen]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const syncGuideReturnState = () => {
+      const shouldShow = window.localStorage.getItem("eltizam-user-guide-return-visible") === "true" && location !== "/user-guide";
+      setShowReturnToGuide(shouldShow);
+    };
+
+    syncGuideReturnState();
+    window.addEventListener("storage", syncGuideReturnState);
+
+    return () => {
+      window.removeEventListener("storage", syncGuideReturnState);
+    };
+  }, [location]);
 
   // Main bottom navigation (most important)
   const mainNavItems = [
@@ -403,6 +422,19 @@ export default function Layout({ children }: LayoutProps) {
         <div className="mx-auto w-full max-w-7xl px-3 sm:px-4 lg:px-8">
           {children}
         </div>
+
+        {showReturnToGuide ? (
+          <div className="fixed bottom-[9rem] left-3 z-40 sm:bottom-[10.5rem] sm:left-6 lg:bottom-[7.5rem] lg:left-8 xl:left-[max(2rem,calc((100vw-80rem)/2+2rem))]">
+            <Button
+              variant="secondary"
+              className="h-11 rounded-full border border-border/70 bg-background px-4 shadow-lg"
+              onClick={() => setLocation("/user-guide")}
+            >
+              <BookOpen className="h-4 w-4" />
+              الرجوع إلى الدليل
+            </Button>
+          </div>
+        ) : null}
         
         <div className="fixed bottom-[5.5rem] left-3 z-40 sm:bottom-24 sm:left-6 lg:bottom-8 lg:left-8 xl:left-[max(2rem,calc((100vw-80rem)/2+2rem))]">
           <Button 
