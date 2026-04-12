@@ -2,14 +2,26 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { OmaniCurrencySymbol } from "@/components/ui/currency-display";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SavingsStatusCard } from "@/components/savings/SavingsStatusCard";
 import { useTransactions, useWallets } from "@/lib/hooks";
-import { cn, formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency, parseNumericInput } from "@/lib/utils";
 import { ArrowRight, CheckCircle2, Sparkles, Target, TrendingUp, Wallet } from "lucide-react";
 import { getSavingsDistributionLabel, savingsPlans } from "@/lib/savings-plans";
 import { buildSavingsPlanAnalysis } from "@/lib/savings-plan-analysis";
+
+type SavingsGoalDraft = {
+  id: string;
+  planId: string;
+  planTitle: string;
+  title: string;
+  targetAmount: number;
+  monthlyAmount: number;
+  years: 3 | 5 | 10;
+  createdAt: number;
+};
 
 export default function SavingsPlans() {
   const [location, setLocation] = useLocation();
@@ -45,6 +57,12 @@ export default function SavingsPlans() {
   const [manualWants, setManualWants] = useState("");
   const [manualFixedObligations, setManualFixedObligations] = useState("");
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  const [savedGoals, setSavedGoals] = useState<SavingsGoalDraft[]>([]);
+  const [goalDialogPlanId, setGoalDialogPlanId] = useState<string | null>(null);
+  const [goalTitle, setGoalTitle] = useState("");
+  const [goalAmount, setGoalAmount] = useState("");
+  const [goalMonthlyAmount, setGoalMonthlyAmount] = useState("");
+  const [goalError, setGoalError] = useState<string | null>(null);
 
   const analysis = useMemo(() => buildSavingsPlanAnalysis({
     transactions,
@@ -78,6 +96,7 @@ export default function SavingsPlans() {
 
   const selectedPlan = savingsPlans.find((plan) => plan.id === selectedPlanId) ?? recommendedPlan;
   const recommendedPlanCard = planCards.find(({ plan }) => plan.id === recommendedPlan.id) ?? null;
+  const goalDialogPlan = planCards.find(({ plan }) => plan.id === goalDialogPlanId)?.plan ?? null;
 
   const renderCurrency = (amount: number) => (
     <span dir="ltr" className="inline-flex items-center gap-1 whitespace-nowrap align-baseline">
@@ -95,6 +114,18 @@ export default function SavingsPlans() {
 
     if (savedPlanId) {
       setSelectedPlanId(savedPlanId);
+    }
+
+    const savedGoalsRaw = window.localStorage.getItem("eltizam-savings-goals");
+    if (savedGoalsRaw) {
+      try {
+        const parsedGoals = JSON.parse(savedGoalsRaw) as SavingsGoalDraft[];
+        if (Array.isArray(parsedGoals)) {
+          setSavedGoals(parsedGoals);
+        }
+      } catch {
+        window.localStorage.removeItem("eltizam-savings-goals");
+      }
     }
   }, []);
 
@@ -151,6 +182,14 @@ export default function SavingsPlans() {
     window.localStorage.setItem("eltizam-selected-savings-plan", selectedPlanId);
   }, [selectedPlanId]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem("eltizam-savings-goals", JSON.stringify(savedGoals));
+  }, [savedGoals]);
+
   const statusTone = currentSavings < 0
     ? {
         title: "تحتاج إلى معالجة العجز أولاً",
@@ -178,6 +217,65 @@ export default function SavingsPlans() {
             className: "border-slate-200 bg-slate-50 text-slate-800",
             badgeClassName: "bg-slate-200 text-slate-700",
           };
+  const openGoalDialog = (planId: string) => {
+    const plan = planCards.find((item) => item.plan.id === planId);
+    setGoalDialogPlanId(planId);
+    setGoalTitle("");
+    setGoalAmount(targetAmount);
+    setGoalMonthlyAmount(plan ? String(Number(plan.monthlySavingsAmount.toFixed(2))) : "");
+    setGoalError(null);
+  };
+
+  const closeGoalDialog = () => {
+    setGoalDialogPlanId(null);
+    setGoalTitle("");
+    setGoalAmount("");
+    setGoalMonthlyAmount("");
+    setGoalError(null);
+  };
+
+  const handleCreateGoal = () => {
+    if (!goalDialogPlan) {
+      setGoalError("تعذر تحديد الخطة المرتبطة بهذا الهدف.");
+      return;
+    }
+
+    const parsedGoalAmount = parseNumericInput(goalAmount);
+    const parsedGoalMonthlyAmount = parseNumericInput(goalMonthlyAmount);
+
+    if (!goalTitle.trim()) {
+      setGoalError("أدخل اسم الهدف الادخاري.");
+      return;
+    }
+
+    if (parsedGoalAmount === null || parsedGoalAmount <= 0) {
+      setGoalError("أدخل مبلغ هدف صحيح أكبر من صفر.");
+      return;
+    }
+
+    if (parsedGoalMonthlyAmount === null || parsedGoalMonthlyAmount <= 0) {
+      setGoalError("أدخل مبلغ ادخار شهري صحيح أكبر من صفر.");
+      return;
+    }
+
+    const nextGoal: SavingsGoalDraft = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      planId: goalDialogPlan.id,
+      planTitle: goalDialogPlan.title,
+      title: goalTitle.trim(),
+      targetAmount: parsedGoalAmount,
+      monthlyAmount: parsedGoalMonthlyAmount,
+      years: planYears,
+      createdAt: Date.now(),
+    };
+
+    setSavedGoals((current) => [nextGoal, ...current]);
+    closeGoalDialog();
+  };
+
+  const handleDeleteGoal = (goalId: string) => {
+    setSavedGoals((current) => current.filter((goal) => goal.id !== goalId));
+  };
 
   return (
     <div className="app-page text-right" dir="rtl">
@@ -393,7 +491,7 @@ export default function SavingsPlans() {
                       <span className="font-bold text-blue-700">{compatibility}%</span>
                     </div>
                     <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                      <div className={cn("h-full rounded-full", isRecommended ? "bg-emerald-500" : "bg-blue-500")} style={{ width: `${compatibility}%` }} />
+                      <div className={cn("ml-auto h-full rounded-full", isRecommended ? "bg-emerald-500" : "bg-blue-500")} style={{ width: `${compatibility}%` }} />
                     </div>
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-muted-foreground">الادخار الشهري</span>
@@ -428,6 +526,7 @@ export default function SavingsPlans() {
             <button
               type="button"
               onClick={() => {
+                setActiveTab("savings");
                 const nextSearch = buildPlansSearchParams({ tab: "savings" }).toString();
                 setLocation(`/financial-plans?${nextSearch}`);
               }}
@@ -501,6 +600,60 @@ export default function SavingsPlans() {
                   <span className="font-medium text-foreground">التوزيع المعتمد: </span>
                   {getSavingsDistributionLabel(selectedPlan)}
                 </div>
+                <div className="flex flex-col gap-2 sm:flex-row-reverse sm:items-center sm:justify-between">
+                  <p className="text-xs text-muted-foreground">يمكنك إنشاء أكثر من هدف ادخاري من هذه الخطة ومتابعتها لاحقاً.</p>
+                  <button
+                    type="button"
+                    onClick={() => openGoalDialog(selectedPlan.id)}
+                    className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground hover:opacity-90 sm:w-auto"
+                  >
+                    أضف هدفاً من هذه الخطة
+                  </button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {savedGoals.length > 0 ? (
+            <Card className="border-sky-200 bg-sky-50/60">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base sm:text-lg text-right">أهدافك الادخارية من الخطط المعتمدة</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {savedGoals.map((goal) => (
+                  <div key={goal.id} className="rounded-xl border bg-white p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row-reverse sm:items-start sm:justify-between">
+                      <div className="min-w-0 text-right">
+                        <div className="flex flex-wrap items-center justify-end gap-2 text-right">
+                          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">{goal.planTitle}</span>
+                          <p className="font-bold text-foreground">{goal.title}</p>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">مدة الخطة المختارة: {goal.years} سنوات</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteGoal(goal.id)}
+                        className="w-full rounded-xl border px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-muted sm:w-auto"
+                      >
+                        حذف الهدف
+                      </button>
+                    </div>
+                    <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div className="rounded-xl border bg-slate-50 p-3">
+                        <p className="text-xs text-muted-foreground">المبلغ المستهدف</p>
+                        <p className="mt-1 font-bold text-foreground">{renderCurrency(goal.targetAmount)}</p>
+                      </div>
+                      <div className="rounded-xl border bg-slate-50 p-3">
+                        <p className="text-xs text-muted-foreground">الادخار الشهري</p>
+                        <p className="mt-1 font-bold text-emerald-700">{renderCurrency(goal.monthlyAmount)}</p>
+                      </div>
+                      <div className="rounded-xl border bg-slate-50 p-3">
+                        <p className="text-xs text-muted-foreground">الوقت التقريبي</p>
+                        <p className="mt-1 font-bold text-primary">{Math.max(1, Math.ceil(goal.targetAmount / goal.monthlyAmount))} شهر</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </CardContent>
             </Card>
           ) : null}
@@ -594,7 +747,7 @@ export default function SavingsPlans() {
                       <span className="font-medium text-foreground">شريط الملاءمة</span>
                     </div>
                     <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
-                      <div className={cn("h-full rounded-full transition-all", isRecommended ? "bg-emerald-500" : "bg-blue-500")} style={{ width: `${compatibility}%` }} />
+                      <div className={cn("ml-auto h-full rounded-full transition-all", isRecommended ? "bg-emerald-500" : "bg-blue-500")} style={{ width: `${compatibility}%` }} />
                     </div>
                   </div>
 
@@ -633,18 +786,27 @@ export default function SavingsPlans() {
                       {selectedPlanId === plan.id ? "تم اعتماد هذه الخطة" : "اعتمد هذه الخطة"}
                     </button>
                     {selectedPlanId === plan.id ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedPlanId(null);
-                          if (typeof window !== "undefined") {
-                            window.localStorage.removeItem("eltizam-selected-savings-plan");
-                          }
-                        }}
-                        className="w-full rounded-xl border px-4 py-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted sm:w-auto"
-                      >
-                        إلغاء الاعتماد
-                      </button>
+                      <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row-reverse">
+                        <button
+                          type="button"
+                          onClick={() => openGoalDialog(plan.id)}
+                          className="w-full rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 text-sm font-bold text-primary transition-colors hover:bg-primary/10 sm:w-auto"
+                        >
+                          أضف هدفاً من هذه الخطة
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedPlanId(null);
+                            if (typeof window !== "undefined") {
+                              window.localStorage.removeItem("eltizam-selected-savings-plan");
+                            }
+                          }}
+                          className="w-full rounded-xl border px-4 py-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted sm:w-auto"
+                        >
+                          إلغاء الاعتماد
+                        </button>
+                      </div>
                     ) : (
                       <p className="text-xs text-muted-foreground">يمكنك اعتماد الخطة المناسبة لك وسيتم تذكرها عند عودتك لاحقاً.</p>
                     )}
@@ -655,6 +817,49 @@ export default function SavingsPlans() {
           </div>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={Boolean(goalDialogPlan)} onOpenChange={(open) => {
+        if (!open) {
+          closeGoalDialog();
+        }
+      }}>
+        <DialogContent dir="rtl" className="text-right">
+          <DialogHeader className="text-right sm:text-right">
+            <DialogTitle className="text-right">إضافة هدف ادخاري جديد</DialogTitle>
+            <DialogDescription className="text-right">
+              {goalDialogPlan ? `أنشئ هدفاً جديداً بالاعتماد على خطة ${goalDialogPlan.title}. يمكنك إضافة أكثر من هدف لنفس الخطة.` : "أدخل بيانات الهدف الادخاري."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">اسم الهدف</label>
+              <Input value={goalTitle} onChange={(event) => setGoalTitle(event.target.value)} placeholder="مثال: صندوق الطوارئ" dir="rtl" className="app-input text-right" />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">المبلغ المستهدف</label>
+              <Input value={goalAmount} onChange={(event) => setGoalAmount(event.target.value)} placeholder="مثال: 5000" inputMode="decimal" dir="rtl" className="app-input text-right" />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">الادخار الشهري المقترح</label>
+              <Input value={goalMonthlyAmount} onChange={(event) => setGoalMonthlyAmount(event.target.value)} placeholder="مثال: 150" inputMode="decimal" dir="rtl" className="app-input text-right" />
+            </div>
+
+            {goalError ? <p className="text-sm text-red-600">{goalError}</p> : null}
+
+            <div className="flex flex-col gap-2 sm:flex-row-reverse">
+              <button type="button" onClick={handleCreateGoal} className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground hover:opacity-90">
+                حفظ الهدف
+              </button>
+              <button type="button" onClick={closeGoalDialog} className="w-full rounded-xl border px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-muted">
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
