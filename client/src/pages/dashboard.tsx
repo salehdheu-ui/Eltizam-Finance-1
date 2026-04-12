@@ -2,13 +2,11 @@ import { ArrowDownLeft, ArrowUpRight, Eye, EyeOff, Settings, Loader2, Receipt, C
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CurrencyDisplay } from "@/components/ui/currency-display";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useEffect, useMemo, useState } from "react";
 import { calculateSavingsGoalProgress, calculateSavingsGoalSavedAmount, loadSavingsGoals, type SavingsGoalDraft } from "@/lib/savings-goals";
 import { cn, formatCurrency, formatObligationDueDate, formatRelativeArabicDate, getUpcomingObligations, normalizeArabicText } from "@/lib/utils";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useCategories, useDashboard, useUser, useObligations, useWallets } from "@/lib/hooks";
-import { BookOpen } from "lucide-react";
 
 const categoryColors: Record<string, { icon: string; bg: string }> = {
   "طعام": { icon: "🍔", bg: "bg-orange-100 dark:bg-orange-950" },
@@ -24,8 +22,7 @@ export default function Dashboard() {
   const [showBalance, setShowBalance] = useState(true);
   const [isOnboardingDismissed, setIsOnboardingDismissed] = useState(false);
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoalDraft[]>([]);
-  const [isGuideOpen, setIsGuideOpen] = useState(false);
-  const [guideStepIndex, setGuideStepIndex] = useState(0);
+  const [, setLocation] = useLocation();
   const { data: user } = useUser();
   const { data: dashboard, isLoading } = useDashboard();
   const { data: obligations, isLoading: isLoadingObligations } = useObligations();
@@ -58,29 +55,7 @@ export default function Dashboard() {
     },
   ];
   const onboardingStorageKey = useMemo(() => `dashboard-onboarding-dismissed:${user?.id ?? user?.email ?? "guest"}`, [user?.email, user?.id]);
-  const userGuideStorageKey = useMemo(() => `dashboard-user-guide-seen:${user?.id ?? user?.email ?? "guest"}`, [user?.email, user?.id]);
-  const guideSteps = useMemo(() => [
-    {
-      title: "مرحبًا بك في التزام",
-      description: "نظام يساعدك على تنظيم أموالك بسهولة، من خلال متابعة الدخل والمصروفات والمحافظ والالتزامات والأهداف الادخارية.",
-    },
-    {
-      title: "أضف محافظك",
-      description: "ابدأ بإضافة الحسابات أو المحافظ التي تستخدمها حتى تتابع أرصدتك بشكل صحيح.",
-    },
-    {
-      title: "سجل معاملاتك",
-      description: "أضف الدخل والمصروفات أولًا بأول لتظهر لك أرقامك بشكل دقيق وواضح.",
-    },
-    {
-      title: "تابع وضعك المالي",
-      description: "من الصفحة الرئيسية سترى ملخصًا سريعًا لوضعك المالي والالتزامات والأهداف.",
-    },
-    {
-      title: "خطط وادخر",
-      description: "أنشئ هدفًا ادخاريًا وتابع تقدمك خطوة بخطوة حتى تصل إلى هدفك.",
-    },
-  ], []);
+  const userGuideStorageKey = "eltizam-user-guide-seen";
 
   useEffect(() => {
     const storedValue = window.localStorage.getItem(onboardingStorageKey);
@@ -93,8 +68,10 @@ export default function Dashboard() {
     }
 
     const hasSeenGuide = window.localStorage.getItem(userGuideStorageKey) === "true";
-    setIsGuideOpen(!hasSeenGuide);
-  }, [userGuideStorageKey]);
+    if (!hasSeenGuide) {
+      setLocation("/user-guide");
+    }
+  }, [setLocation, userGuideStorageKey]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -137,95 +114,12 @@ export default function Dashboard() {
     setIsOnboardingDismissed(true);
   };
 
-  const handleCloseGuide = () => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(userGuideStorageKey, "true");
-    }
-    setIsGuideOpen(false);
-    setGuideStepIndex(0);
-  };
-
-  const handleOpenGuide = () => {
-    setGuideStepIndex(0);
-    setIsGuideOpen(true);
-  };
-
-  const isLastGuideStep = guideStepIndex === guideSteps.length - 1;
-  const activeGuideStep = guideSteps[guideStepIndex];
-
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 flex flex-col gap-5 px-1 py-4 pb-24 duration-500 sm:gap-6 sm:px-2 sm:py-6 xl:px-0 xl:py-8" dir="rtl">
-      <Dialog open={isGuideOpen} onOpenChange={(open) => {
-        if (!open) {
-          handleCloseGuide();
-          return;
-        }
-
-        setIsGuideOpen(true);
-      }}>
-        <DialogContent dir="rtl" className="text-right sm:max-w-md">
-          <DialogHeader className="text-right sm:text-right">
-            <DialogTitle className="text-right">{activeGuideStep.title}</DialogTitle>
-            <DialogDescription className="text-right leading-7">
-              {activeGuideStep.description}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="flex items-center justify-between rounded-xl bg-primary/5 px-4 py-3 text-sm">
-              <span className="font-bold text-primary">{guideStepIndex + 1} / {guideSteps.length}</span>
-              <span className="text-muted-foreground">دليل الاستخدام</span>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {guideSteps.map((step, index) => (
-                <div key={step.title} className={cn("h-2 flex-1 rounded-full", index <= guideStepIndex ? "bg-primary" : "bg-slate-200")} />
-              ))}
-            </div>
-
-            <div className="grid gap-2 text-sm text-muted-foreground">
-              <div className="rounded-xl border bg-slate-50 p-3">
-                <p className="font-bold text-foreground">كيف تستفيد من النظام؟</p>
-                <p className="mt-1">ابدأ بالمحافظ، ثم سجّل المعاملات، وبعدها راقب الرئيسية والتقارير والأهداف الادخارية.</p>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2 sm:flex-row-reverse">
-              <Button className="w-full sm:w-auto" onClick={() => {
-                if (isLastGuideStep) {
-                  handleCloseGuide();
-                  return;
-                }
-
-                setGuideStepIndex((current) => Math.min(current + 1, guideSteps.length - 1));
-              }}>
-                {isLastGuideStep ? "ابدأ الآن" : "التالي"}
-              </Button>
-              <Button variant="outline" className="w-full sm:w-auto" onClick={() => setGuideStepIndex((current) => Math.max(current - 1, 0))} disabled={guideStepIndex === 0}>
-                السابق
-              </Button>
-              <Button variant="ghost" className="w-full sm:w-auto text-muted-foreground" onClick={handleCloseGuide}>
-                تخطي
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
       <header className="mb-1 flex items-center justify-between gap-4">
-        <div className="flex items-start gap-3">
-          <button
-            type="button"
-            onClick={handleOpenGuide}
-            className="inline-flex h-10 items-center gap-2 rounded-full border border-border/70 bg-background px-3 text-xs font-bold text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <BookOpen className="h-4 w-4" />
-            دليل الاستخدام
-          </button>
-          <div className="min-w-0">
-            <h1 className="text-sm font-medium text-muted-foreground" data-testid="text-greeting">مرحباً بعودتك،</h1>
-            <h2 className="text-xl font-bold sm:text-2xl" data-testid="text-username">{user?.name || "المستخدم"}</h2>
-          </div>
+        <div className="min-w-0">
+          <h1 className="text-sm font-medium text-muted-foreground" data-testid="text-greeting">مرحباً بعودتك،</h1>
+          <h2 className="text-xl font-bold sm:text-2xl" data-testid="text-username">{user?.name || "المستخدم"}</h2>
         </div>
         <div className="shrink-0">
           <Link href="/settings">

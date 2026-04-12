@@ -18,6 +18,7 @@ import VariableObligationDetails from "@/pages/variable-obligation-details";
 import Login from "@/pages/login";
 import SavingsPlans from "@/pages/savings-plans";
 import Settings from "@/pages/settings";
+import UserGuidePage from "@/pages/user-guide";
 import AdminUsers from "@/pages/admin-users";
 import { useUser } from "@/lib/hooks";
 import { Loader2 } from "lucide-react";
@@ -125,6 +126,7 @@ function Router() {
         <Route path="/obligations/:id" component={VariableObligationDetails} />
         <Route path="/obligations" component={Obligations} />
         <Route path="/settings" component={Settings} />
+        <Route path="/user-guide" component={UserGuidePage} />
         {isSystemAdmin ? (
           <Route path="/admin/users" component={AdminUsers} />
         ) : location === "/admin/users" ? (

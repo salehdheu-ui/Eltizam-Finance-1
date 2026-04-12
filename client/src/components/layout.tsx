@@ -1,5 +1,5 @@
 import { useLocation } from "wouter";
-import { Home, ListFilter, Wallet, PieChart, Plus, Settings, Loader2, BarChart3, Menu, X, ChevronLeft, Receipt, Landmark, LogOut, Sparkles, Goal } from "lucide-react";
+import { Home, ListFilter, Wallet, PieChart, Plus, Settings, Loader2, BarChart3, Menu, X, ChevronLeft, Receipt, Landmark, LogOut, Sparkles, Goal, BookOpen } from "lucide-react";
 import { CurrencyDisplay } from "@/components/ui/currency-display";
 import { cn, formatCurrency } from "@/lib/utils";
 import { Button } from "./ui/button";
@@ -194,6 +194,7 @@ export default function Layout({ children }: LayoutProps) {
     { href: "/obligations", icon: Receipt, label: "الالتزامات" },
     { href: "/categories", icon: PieChart, label: "الأقسام" },
     { href: "/settings", icon: Settings, label: "الإعدادات" },
+    { href: "/user-guide", icon: BookOpen, label: "دليل الاستخدام" },
     ...(isSystemAdmin ? [{ href: "/admin/users", icon: Settings, label: "إدارة المستخدمين" }] : []),
   ];
 
