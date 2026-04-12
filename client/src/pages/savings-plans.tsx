@@ -440,14 +440,14 @@ export default function SavingsPlans() {
 
           <Card className="bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-base sm:text-lg flex flex-row items-center justify-start gap-2 text-right">
+              <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-start gap-2 text-right">
                 <Sparkles className="h-5 w-5 text-emerald-600" />
                 الخطة الأنسب لك الآن
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="rounded-xl border bg-white p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex flex-col gap-3 sm:flex-row-reverse sm:items-start sm:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-700">{recommendedPlanCard?.smartBadge ?? "الخطة الأنسب حالياً"}</span>
@@ -467,14 +467,14 @@ export default function SavingsPlans() {
                   <p className="font-medium">لماذا رشحها لك النظام؟</p>
                   <ul className="mt-2 space-y-2 text-emerald-700">
                     {(recommendedPlanAnalysis?.reasons ?? []).map((reason) => (
-                      <li key={reason} dir="rtl" className="flex w-full flex-row items-start justify-end gap-2"><ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /><span className="flex-1 text-right">{reason}</span></li>
+                      <li key={reason} dir="ltr" className="flex w-full flex-row-reverse items-start justify-end gap-2"><ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /><span className="flex-1 text-right">{reason}</span></li>
                     ))}
                   </ul>
                 </div>
                 <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
-                  <li dir="rtl" className="flex w-full flex-row items-start justify-end gap-2"><ArrowRight className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5" /><span className="flex-1 text-right">الادخار المقترح شهرياً: {renderCurrency(effectiveIncome * recommendedPlan.savingsRate)}</span></li>
-                  <li dir="rtl" className="flex w-full flex-row items-start justify-end gap-2"><ArrowRight className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5" /><span className="flex-1 text-right">الزيادة المطلوبة عن وضعك الحالي: {renderCurrency(improvementGap)} شهرياً</span></li>
-                  <li dir="rtl" className="flex w-full flex-row items-start justify-end gap-2"><ArrowRight className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5" /><span className="flex-1 text-right">توزيع الخطة: {getSavingsDistributionLabel(recommendedPlan)}</span></li>
+                  <li dir="ltr" className="flex w-full flex-row-reverse items-start justify-end gap-2"><ArrowRight className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5" /><span className="flex-1 text-right">الادخار المقترح شهرياً: {renderCurrency(effectiveIncome * recommendedPlan.savingsRate)}</span></li>
+                  <li dir="ltr" className="flex w-full flex-row-reverse items-start justify-end gap-2"><ArrowRight className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5" /><span className="flex-1 text-right">الزيادة المطلوبة عن وضعك الحالي: {renderCurrency(improvementGap)} شهرياً</span></li>
+                  <li dir="ltr" className="flex w-full flex-row-reverse items-start justify-end gap-2"><ArrowRight className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5" /><span className="flex-1 text-right">توزيع الخطة: {getSavingsDistributionLabel(recommendedPlan)}</span></li>
                 </ul>
               </div>
             </CardContent>
@@ -483,13 +483,13 @@ export default function SavingsPlans() {
           {selectedPlan ? (
             <Card className="border-primary/30 bg-gradient-to-br from-primary/5 to-emerald-50">
               <CardHeader className="pb-3">
-                <CardTitle className="text-base sm:text-lg flex flex-row items-center justify-start gap-2 text-right">
+                <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-start gap-2 text-right">
                   <CheckCircle2 className="h-5 w-5 text-primary" />
                   خطتك المعتمدة حالياً
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-col gap-2 sm:flex-row-reverse sm:items-center sm:justify-between">
                   <div>
                     <p className="font-bold text-primary">{selectedPlan.title}</p>
                     <p className="text-sm text-muted-foreground">{selectedPlan.subtitle}</p>
@@ -511,7 +511,7 @@ export default function SavingsPlans() {
                 {isRecommended ? <div className="bg-gradient-to-l from-emerald-500 to-teal-500 px-4 py-2 text-center text-sm font-bold text-white">هذه الخطة هي الأنسب لك الآن بناءً على بياناتك الحالية</div> : null}
                 {selectedPlanId === plan.id ? <div className="bg-gradient-to-l from-primary to-blue-600 px-4 py-2 text-center text-sm font-bold text-white">أنت تعتمد هذه الخطة حالياً</div> : null}
                 <CardHeader className="pb-3">
-                  <CardTitle className="flex flex-col gap-3 text-base text-right sm:flex-row sm:items-start sm:justify-between sm:text-lg">
+                  <CardTitle className="flex flex-col gap-3 text-base text-right sm:flex-row-reverse sm:items-start sm:justify-between sm:text-lg">
                     <div className="min-w-0 text-right">
                       <div className="flex flex-wrap items-center justify-end gap-2 text-right">
                         <button
@@ -555,13 +555,13 @@ export default function SavingsPlans() {
                     <p className="font-medium text-foreground">لماذا حصلت هذه الخطة على هذا الترتيب؟</p>
                     <ul className="mt-2 space-y-2 text-muted-foreground">
                       {reasons.map((reason) => (
-                        <li key={reason} dir="rtl" className="flex w-full flex-row items-start justify-end gap-2"><ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><span className="flex-1 text-right">{reason}</span></li>
+                        <li key={reason} dir="ltr" className="flex w-full flex-row-reverse items-start justify-end gap-2"><ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><span className="flex-1 text-right">{reason}</span></li>
                       ))}
                     </ul>
                   </div>
 
                   <div className="rounded-xl border bg-slate-50 p-4">
-                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex flex-col gap-1 sm:flex-row-reverse sm:items-center sm:justify-between">
                       <p className="font-medium text-foreground">مثال مباشر على تطبيق الخطة</p>
                       <p className="text-xs text-muted-foreground">على دخل شهري قدره {renderCurrency(exampleIncome)}</p>
                     </div>
@@ -613,13 +613,13 @@ export default function SavingsPlans() {
                     <p className="font-medium mb-2">متى تختار هذه الخطة؟</p>
                     <ul className="space-y-2 text-sm text-muted-foreground">
                       {plan.highlights.map((item) => (
-                        <li key={item} dir="rtl" className="flex w-full flex-row items-start justify-end gap-2"><ArrowRight className="h-4 w-4 shrink-0 text-primary mt-0.5" /><span className="flex-1 text-right">{item}</span></li>
+                        <li key={item} dir="ltr" className="flex w-full flex-row-reverse items-start justify-end gap-2"><ArrowRight className="h-4 w-4 shrink-0 text-primary mt-0.5" /><span className="flex-1 text-right">{item}</span></li>
                       ))}
                     </ul>
                     {targetNum > 0 ? <div className="mt-4 rounded-lg bg-primary/5 p-3 text-sm"><span className="font-medium">الوقت التقريبي لتحقيق هدفك:</span> {monthsToGoal ? `${monthsToGoal} شهر` : "أدخل دخلاً شهرياً أو ارفع الادخار"}</div> : null}
                   </div>
 
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-col gap-2 sm:flex-row-reverse sm:items-center sm:justify-between">
                     <button
                       type="button"
                       onClick={() => setSelectedPlanId(plan.id)}
