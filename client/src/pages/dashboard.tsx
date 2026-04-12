@@ -18,6 +18,14 @@ const categoryColors: Record<string, { icon: string; bg: string }> = {
   "فواتير": { icon: "📄", bg: "bg-yellow-100 dark:bg-yellow-950" },
 };
 
+function CurrencyBadgeIcon() {
+  return (
+    <svg viewBox="0 0 64 64" className="h-3.5 w-3.5 fill-current" aria-hidden="true">
+      <path d="M25 10c7.8 0 14.9 3.4 20.4 9.8l-4.6 12.7c-4.5-4.4-9.6-6.6-15-6.6-3.8 0-6.6 1.4-6.6 4 0 3 4.5 6.9 12.5 10.7h24.8l-4.8 8.2H38.9c1.6 1.1 3.5 2.2 5.6 3.2 3.2 1.5 6.8 2.9 10.7 4.1l-4.5 7.8c-7.2-1.7-13.8-4.2-19.3-7.6-4.6-2.7-8.5-6-11.4-9.6H2.5l4.8-8.2h8.5c-0.7-1.4-1.1-2.9-1.1-4.4 0-6.5 4.8-11.3 12.3-11.3 4.4 0 8.8 1.3 13.1 4l1.2-3.5C37.2 17.9 31.5 14 25 14c-9.8 0-17.4 6.4-20.8 17.6H0C3.8 18.2 13 10 25 10Z" />
+    </svg>
+  );
+}
+
 export default function Dashboard() {
   const [showBalance, setShowBalance] = useState(true);
   const [isOnboardingDismissed, setIsOnboardingDismissed] = useState(false);
@@ -197,25 +205,45 @@ export default function Dashboard() {
           <div className="grid grid-cols-2 gap-3 border-t border-white/20 pt-4 sm:gap-4">
             <div className="rounded-2xl bg-white/10 p-3 backdrop-blur-sm">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <span className="text-xs text-primary-foreground/70">الدخل</span>
+                <span className="inline-flex items-center gap-1.5 text-xs text-primary-foreground/70">
+                  <CurrencyBadgeIcon />
+                  الدخل
+                </span>
                 <div className="rounded-xl bg-white/15 p-2">
                   <ArrowDownLeft className="h-4 w-4 text-green-300 sm:h-5 sm:w-5" strokeWidth={3} />
                 </div>
               </div>
-              <p className="break-words text-sm font-semibold sm:text-base" data-testid="text-income">
-                {showBalance ? `+${formatCurrency(dashboard?.totalIncome ?? 0, 2)}` : "••••"}
-              </p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="break-words text-sm font-semibold sm:text-base" data-testid="text-income">
+                  {showBalance ? `+${formatCurrency(dashboard?.totalIncome ?? 0, 2)}` : "••••"}
+                </p>
+                {showBalance ? (
+                  <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-white/15 px-2 text-xs font-bold text-primary-foreground/85">
+                    <CurrencyBadgeIcon />
+                  </span>
+                ) : null}
+              </div>
             </div>
             <div className="rounded-2xl bg-white/10 p-3 backdrop-blur-sm">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <span className="text-xs text-primary-foreground/70">المصروفات</span>
+                <span className="inline-flex items-center gap-1.5 text-xs text-primary-foreground/70">
+                  <CurrencyBadgeIcon />
+                  المصروفات
+                </span>
                 <div className="rounded-xl bg-white/15 p-2">
                   <ArrowUpRight className="h-4 w-4 text-red-300 sm:h-5 sm:w-5" strokeWidth={3} />
                 </div>
               </div>
-              <p className="break-words text-sm font-semibold sm:text-base" data-testid="text-expenses">
-                {showBalance ? `-${formatCurrency(dashboard?.totalExpenses ?? 0, 2)}` : "••••"}
-              </p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="break-words text-sm font-semibold sm:text-base" data-testid="text-expenses">
+                  {showBalance ? `-${formatCurrency(dashboard?.totalExpenses ?? 0, 2)}` : "••••"}
+                </p>
+                {showBalance ? (
+                  <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-white/15 px-2 text-xs font-bold text-primary-foreground/85">
+                    <CurrencyBadgeIcon />
+                  </span>
+                ) : null}
+              </div>
             </div>
           </div>
         </CardContent>
@@ -225,14 +253,53 @@ export default function Dashboard() {
         <Card className="border-border/50 shadow-sm bg-card/80">
           <CardContent className="p-4">
             <div className="flex items-start justify-between gap-3">
-              <div>
+              <div className="flex-1">
                 <p className="text-sm font-semibold text-primary mb-1">ملخص سريع</p>
                 <h3 className="font-bold text-base">وضعك الحالي باختصار</h3>
-                <div className="space-y-1.5 mt-3 text-sm text-muted-foreground">
-                  <p>صافي الحركة: <span className={cn("font-bold", netBalance >= 0 ? "text-emerald-600" : "text-red-600")}>{netBalance >= 0 ? "+" : ""}<CurrencyDisplay amount={Math.abs(netBalance) === netBalance ? netBalance : Math.abs(netBalance)} fractionDigits={2} /></span></p>
-                  <p>الالتزامات القريبة: <span className="font-bold text-amber-600"><CurrencyDisplay amount={totalUpcomingObligations} fractionDigits={2} /></span></p>
-                  <p>المحافظ المتاحة: <span className="font-bold text-foreground">{wallets.length}</span></p>
-                  <p>الأقسام المعرفة: <span className="font-bold text-foreground">{categories.length}</span></p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-3">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <span className="text-xs font-medium text-emerald-700">صافي الحركة</span>
+                      <div className="rounded-full bg-emerald-100 p-2 text-emerald-700">
+                        <ArrowDownLeft className="h-4 w-4" />
+                      </div>
+                    </div>
+                    <p className={cn("text-base font-bold", netBalance >= 0 ? "text-emerald-700" : "text-red-600")}>
+                      {netBalance >= 0 ? "+" : "-"}<CurrencyDisplay amount={Math.abs(netBalance)} fractionDigits={2} />
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-3">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <span className="text-xs font-medium text-amber-700">الالتزامات القريبة</span>
+                      <div className="rounded-full bg-amber-100 p-2 text-amber-700">
+                        <Receipt className="h-4 w-4" />
+                      </div>
+                    </div>
+                    <p className="text-base font-bold text-amber-700">
+                      <CurrencyDisplay amount={totalUpcomingObligations} fractionDigits={2} />
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-sky-200 bg-sky-50/70 p-3">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <span className="text-xs font-medium text-sky-700">المحافظ المتاحة</span>
+                      <div className="rounded-full bg-sky-100 p-2 text-sky-700">
+                        <Wallet className="h-4 w-4" />
+                      </div>
+                    </div>
+                    <p className="text-base font-bold text-sky-700">{wallets.length}</p>
+                  </div>
+
+                  <div className="rounded-2xl border border-violet-200 bg-violet-50/70 p-3">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <span className="text-xs font-medium text-violet-700">الأقسام المعرفة</span>
+                      <div className="rounded-full bg-violet-100 p-2 text-violet-700">
+                        <PieChart className="h-4 w-4" />
+                      </div>
+                    </div>
+                    <p className="text-base font-bold text-violet-700">{categories.length}</p>
+                  </div>
                 </div>
               </div>
               <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
