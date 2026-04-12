@@ -4,9 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { OmaniCurrencySymbol } from "@/components/ui/currency-display";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { SavingsComparisonCard } from "@/components/savings/SavingsComparisonCard";
 import { SavingsStatusCard } from "@/components/savings/SavingsStatusCard";
-import { SavingsVisualCharts } from "@/components/savings/SavingsVisualCharts";
 import { useTransactions, useWallets } from "@/lib/hooks";
 import { cn, formatCurrency } from "@/lib/utils";
 import { ArrowRight, CheckCircle2, Sparkles, Target, TrendingUp, Wallet } from "lucide-react";
@@ -153,11 +151,6 @@ export default function SavingsPlans() {
     window.localStorage.setItem("eltizam-selected-savings-plan", selectedPlanId);
   }, [selectedPlanId]);
 
-  const currentNeedsAmount = effectiveIncome > 0 ? Math.max(effectiveExpenses - Math.max(analysis.effectiveWants, 0), 0) : 0;
-  const currentWantsAmount = Math.max(analysis.effectiveWants, 0);
-  const currentNeedsRate = effectiveIncome > 0 ? currentNeedsAmount / effectiveIncome : 0;
-  const currentWantsRate = effectiveIncome > 0 ? currentWantsAmount / effectiveIncome : 0;
-  const currentReserveRate = 0;
   const statusTone = currentSavings < 0
     ? {
         title: "تحتاج إلى معالجة العجز أولاً",
@@ -185,64 +178,6 @@ export default function SavingsPlans() {
             className: "border-slate-200 bg-slate-50 text-slate-800",
             badgeClassName: "bg-slate-200 text-slate-700",
           };
-  const comparisonItems = [
-    {
-      key: "needs",
-      label: "الاحتياجات",
-      currentRate: currentNeedsRate,
-      targetRate: recommendedPlan.needsRate,
-      currentAmount: currentNeedsAmount,
-      targetAmount: effectiveIncome * recommendedPlan.needsRate,
-      accentClassName: "text-blue-700",
-    },
-    {
-      key: "wants",
-      label: "الرغبات",
-      currentRate: currentWantsRate,
-      targetRate: recommendedPlan.wantsRate,
-      currentAmount: currentWantsAmount,
-      targetAmount: effectiveIncome * recommendedPlan.wantsRate,
-      accentClassName: "text-amber-700",
-    },
-    {
-      key: "savings",
-      label: "الادخار",
-      currentRate: Math.max(currentSavingsRate, 0),
-      targetRate: recommendedPlan.savingsRate,
-      currentAmount: Math.max(currentSavings, 0),
-      targetAmount: effectiveIncome * recommendedPlan.savingsRate,
-      accentClassName: "text-emerald-700",
-    },
-    {
-      key: "reserve",
-      label: "الاحتياطي",
-      currentRate: currentReserveRate,
-      targetRate: recommendedPlan.reserveRate,
-      currentAmount: 0,
-      targetAmount: effectiveIncome * recommendedPlan.reserveRate,
-      accentClassName: "text-violet-700",
-    },
-  ];
-
-  const comparisonColorMap: Record<string, string> = {
-    "الاحتياجات": "#2563eb",
-    "الرغبات": "#d97706",
-    "الادخار": "#059669",
-    "الاحتياطي": "#7c3aed",
-  };
-
-  const comparisonChartData = comparisonItems.map((item) => ({
-    name: item.label,
-    current: Number(item.currentAmount.toFixed(2)),
-    target: Number(item.targetAmount.toFixed(2)),
-    color: comparisonColorMap[item.label] ?? "#2563eb",
-  }));
-
-  const projectionChartData = [3, 5, 10].map((years) => ({
-    years: `${years} سنوات`,
-    balance: Number((totalBalance + (effectiveIncome * recommendedPlan.savingsRate * years * 12)).toFixed(2)),
-    isActive: years === planYears,
-  }));
 
   return (
     <div className="app-page text-right" dir="rtl">
@@ -404,7 +339,7 @@ export default function SavingsPlans() {
 
           <Card className="border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50" dir="rtl">
             <CardHeader className="pb-3">
-              <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-start gap-2 text-right">
+              <CardTitle className="text-base sm:text-lg flex flex-row items-center justify-start gap-2 text-right">
                 <Sparkles className="h-5 w-5 text-amber-600" />
                 ملخص سريع
               </CardTitle>
@@ -439,7 +374,7 @@ export default function SavingsPlans() {
 
           <Card dir="rtl">
             <CardHeader className="pb-3">
-              <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-start gap-2 text-right">
+              <CardTitle className="text-base sm:text-lg flex flex-row items-center justify-start gap-2 text-right">
                 <Sparkles className="h-5 w-5 text-primary" />
                 مقارنة سريعة بين أفضل الخيارات
               </CardTitle>
@@ -476,12 +411,6 @@ export default function SavingsPlans() {
             </CardContent>
           </Card>
 
-          <SavingsComparisonCard items={comparisonItems} />
-
-          <SavingsVisualCharts
-            comparisonChartData={comparisonChartData}
-            projectionChartData={projectionChartData}
-          />
         </TabsContent>
 
         <TabsContent value="plans" className="space-y-4">
@@ -576,45 +505,6 @@ export default function SavingsPlans() {
             </Card>
           ) : null}
 
-          <Card dir="rtl">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base sm:text-lg flex flex-row-reverse items-center justify-start gap-2 text-right">
-                <Sparkles className="h-5 w-5 text-primary" />
-                مقارنة سريعة بين أفضل الخيارات
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-3 sm:grid-cols-3">
-              {planCards.slice(0, 3).map(({ plan, compatibility, monthlySavingsAmount, monthsToGoal, smartBadge, isRecommended }) => (
-                <div key={plan.id} className={cn("rounded-xl border p-4", isRecommended ? "border-emerald-300 bg-emerald-50" : "bg-white")}>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-bold text-foreground">{plan.title}</p>
-                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-700">{smartBadge}</span>
-                  </div>
-                  <p className="mt-2 text-xs text-muted-foreground">{getSavingsDistributionLabel(plan)}</p>
-                  <div className="mt-3 space-y-2 text-sm">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-muted-foreground">التوافق</span>
-                      <span className="font-bold text-blue-700">{compatibility}%</span>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                      <div className={cn("h-full rounded-full", isRecommended ? "bg-emerald-500" : "bg-blue-500")} style={{ width: `${compatibility}%` }} />
-                    </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-muted-foreground">الادخار الشهري</span>
-                      <span className="font-medium">{renderCurrency(monthlySavingsAmount)}</span>
-                    </div>
-                    {targetNum > totalBalance ? (
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-muted-foreground">الوصول للهدف</span>
-                        <span className="font-medium">{monthsToGoal ? `${monthsToGoal} شهر` : "غير متاح حالياً"}</span>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
           <div className="grid gap-4">
             {planCards.map(({ plan, rank, compatibility, reasons, monthlySavingsAmount, monthlyNeedsAmount, monthlyWantsAmount, monthlyReserveAmount, projectedBalance, investmentProjection, monthsToGoal, smartBadge, isRecommended }) => (
               <Card key={plan.id} className={cn("overflow-hidden", isRecommended ? "border-emerald-400 shadow-lg ring-2 ring-emerald-200" : "", selectedPlanId === plan.id ? "border-primary shadow-md ring-2 ring-primary/20" : "") }>
@@ -624,7 +514,6 @@ export default function SavingsPlans() {
                   <CardTitle className="flex flex-col gap-3 text-base text-right sm:flex-row-reverse sm:items-start sm:justify-between sm:text-lg">
                     <div className="min-w-0 text-right">
                       <div className="flex flex-wrap items-center justify-end gap-2 text-right">
-                        <span>{plan.title}</span>
                         <button
                           type="button"
                           onClick={(event) => {
@@ -648,6 +537,7 @@ export default function SavingsPlans() {
                         >
                           تفاصيل الخطة
                         </button>
+                        <span>{plan.title}</span>
                       </div>
                       <p className="mt-1 text-sm font-normal text-muted-foreground text-right">{plan.subtitle}</p>
                     </div>
@@ -668,13 +558,6 @@ export default function SavingsPlans() {
                         <li key={reason} dir="ltr" className="flex w-full flex-row-reverse items-start justify-end gap-2"><ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><span className="flex-1 text-right">{reason}</span></li>
                       ))}
                     </ul>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">الادخار</p><p className="font-bold text-emerald-600">{renderCurrency(monthlySavingsAmount)}</p></div>
-                    <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">الاحتياجات</p><p className="font-bold text-blue-600">{renderCurrency(monthlyNeedsAmount)}</p></div>
-                    <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">الرغبات</p><p className="font-bold text-amber-600">{renderCurrency(monthlyWantsAmount)}</p></div>
-                    <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">الاحتياطي</p><p className="font-bold text-violet-600">{renderCurrency(monthlyReserveAmount)}</p></div>
                   </div>
 
                   <div className="rounded-xl border bg-slate-50 p-4">
