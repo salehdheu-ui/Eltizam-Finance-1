@@ -3,7 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CurrencyDisplay } from "@/components/ui/currency-display";
 import { useEffect, useMemo, useState } from "react";
-import { calculateSavingsGoalProgress, loadSavingsGoals, type SavingsGoalDraft } from "@/lib/savings-goals";
+import { calculateSavingsGoalProgress, calculateSavingsGoalSavedAmount, loadSavingsGoals, type SavingsGoalDraft } from "@/lib/savings-goals";
 import { cn, formatCurrency, formatObligationDueDate, formatRelativeArabicDate, getUpcomingObligations, normalizeArabicText } from "@/lib/utils";
 import { Link } from "wouter";
 import { useCategories, useDashboard, useUser, useObligations, useWallets } from "@/lib/hooks";
@@ -83,16 +83,18 @@ export default function Dashboard() {
   const savingsGoalsSummary = useMemo(() => {
     const totalTarget = savingsGoals.reduce((sum, goal) => sum + goal.targetAmount, 0);
     const totalMonthly = savingsGoals.reduce((sum, goal) => sum + goal.monthlyAmount, 0);
+    const totalSaved = savingsGoals.reduce((sum, goal) => sum + calculateSavingsGoalSavedAmount(goal, wallets), 0);
     const averageProgress = savingsGoals.length > 0
-      ? savingsGoals.reduce((sum, goal) => sum + calculateSavingsGoalProgress(goal), 0) / savingsGoals.length
+      ? savingsGoals.reduce((sum, goal) => sum + calculateSavingsGoalProgress(goal, wallets), 0) / savingsGoals.length
       : 0;
 
     return {
       totalTarget,
       totalMonthly,
+      totalSaved,
       averageProgress,
     };
-  }, [savingsGoals]);
+  }, [savingsGoals, wallets]);
 
   const handleDismissOnboarding = () => {
     window.localStorage.setItem(onboardingStorageKey, "true");
@@ -234,6 +236,7 @@ export default function Dashboard() {
               <h3 className="font-bold text-base">متابعة أهدافك من الصفحة الرئيسية</h3>
               <div className="mt-3 space-y-1.5 text-sm text-muted-foreground">
                 <p>عدد الأهداف: <span className="font-bold text-foreground">{savingsGoals.length}</span></p>
+                <p>المحفوظ فعلياً: <span className="font-bold text-emerald-700"><CurrencyDisplay amount={savingsGoalsSummary.totalSaved} fractionDigits={2} /></span></p>
                 <p>إجمالي الادخار الشهري: <span className="font-bold text-emerald-700"><CurrencyDisplay amount={savingsGoalsSummary.totalMonthly} fractionDigits={2} /></span></p>
                 <p>إجمالي المستهدف: <span className="font-bold text-primary"><CurrencyDisplay amount={savingsGoalsSummary.totalTarget} fractionDigits={2} /></span></p>
                 <p>متوسط التقدم: <span className="font-bold text-foreground">{savingsGoalsSummary.averageProgress.toFixed(0)}%</span></p>

@@ -52,6 +52,7 @@ export default function SavingsPlans() {
   const [goalTitle, setGoalTitle] = useState("");
   const [goalAmount, setGoalAmount] = useState("");
   const [goalMonthlyAmount, setGoalMonthlyAmount] = useState("");
+  const [goalWalletId, setGoalWalletId] = useState("");
   const [goalError, setGoalError] = useState<string | null>(null);
 
   const analysis = useMemo(() => buildSavingsPlanAnalysis({
@@ -203,6 +204,7 @@ export default function SavingsPlans() {
     setGoalTitle("");
     setGoalAmount(targetAmount);
     setGoalMonthlyAmount(plan ? String(Number(plan.monthlySavingsAmount.toFixed(2))) : "");
+    setGoalWalletId(wallets[0] ? String(wallets[0].id) : "");
     setGoalError(null);
   };
 
@@ -211,6 +213,7 @@ export default function SavingsPlans() {
     setGoalTitle("");
     setGoalAmount("");
     setGoalMonthlyAmount("");
+    setGoalWalletId("");
     setGoalError(null);
   };
 
@@ -222,6 +225,8 @@ export default function SavingsPlans() {
 
     const parsedGoalAmount = parseNumericInput(goalAmount);
     const parsedGoalMonthlyAmount = parseNumericInput(goalMonthlyAmount);
+    const parsedGoalWalletId = Number(goalWalletId);
+    const selectedWallet = wallets.find((wallet) => wallet.id === parsedGoalWalletId);
 
     if (!goalTitle.trim()) {
       setGoalError("أدخل اسم الهدف الادخاري.");
@@ -238,11 +243,18 @@ export default function SavingsPlans() {
       return;
     }
 
+    if (!selectedWallet) {
+      setGoalError("اختر المحفظة المرتبطة بهذا الهدف.");
+      return;
+    }
+
     const nextGoal: SavingsGoalDraft = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       planId: goalDialogPlan.id,
       planTitle: goalDialogPlan.title,
       title: goalTitle.trim(),
+      walletId: selectedWallet.id,
+      walletName: selectedWallet.name,
       targetAmount: parsedGoalAmount,
       monthlyAmount: parsedGoalMonthlyAmount,
       years: planYears,
@@ -602,36 +614,57 @@ export default function SavingsPlans() {
               <CardContent className="space-y-3">
                 {savedGoals.map((goal) => (
                   <div key={goal.id} className="rounded-xl border bg-white p-4">
-                    <div className="flex flex-col gap-3 sm:flex-row-reverse sm:items-start sm:justify-between">
-                      <div className="min-w-0 text-right">
-                        <div className="flex flex-wrap items-center justify-end gap-2 text-right">
-                          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">{goal.planTitle}</span>
-                          <p className="font-bold text-foreground">{goal.title}</p>
-                        </div>
-                        <p className="mt-1 text-xs text-muted-foreground">مدة الخطة المختارة: {goal.years} سنوات</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteGoal(goal.id)}
-                        className="w-full rounded-xl border px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-muted sm:w-auto"
-                      >
-                        حذف الهدف
-                      </button>
-                    </div>
-                    <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                      <div className="rounded-xl border bg-slate-50 p-3">
-                        <p className="text-xs text-muted-foreground">المبلغ المستهدف</p>
-                        <p className="mt-1 font-bold text-foreground">{renderCurrency(goal.targetAmount)}</p>
-                      </div>
-                      <div className="rounded-xl border bg-slate-50 p-3">
-                        <p className="text-xs text-muted-foreground">الادخار الشهري</p>
-                        <p className="mt-1 font-bold text-emerald-700">{renderCurrency(goal.monthlyAmount)}</p>
-                      </div>
-                      <div className="rounded-xl border bg-slate-50 p-3">
-                        <p className="text-xs text-muted-foreground">الوقت التقريبي</p>
-                        <p className="mt-1 font-bold text-primary">{Math.max(1, Math.ceil(goal.targetAmount / goal.monthlyAmount))} شهر</p>
-                      </div>
-                    </div>
+                    {(() => {
+                      const linkedWallet = wallets.find((wallet) => wallet.id === goal.walletId);
+                      const currentSaved = Math.max(0, linkedWallet?.balance ?? 0);
+                      const remainingAmount = Math.max(0, goal.targetAmount - currentSaved);
+                      const progress = goal.targetAmount > 0 ? Math.min((currentSaved / goal.targetAmount) * 100, 100) : 0;
+
+                      return (
+                        <>
+                          <div className="flex flex-col gap-3 sm:flex-row-reverse sm:items-start sm:justify-between">
+                            <div className="min-w-0 text-right">
+                              <div className="flex flex-wrap items-center justify-end gap-2 text-right">
+                                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">{goal.planTitle}</span>
+                                <p className="font-bold text-foreground">{goal.title}</p>
+                              </div>
+                              <p className="mt-1 text-xs text-muted-foreground">مدة الخطة المختارة: {goal.years} سنوات</p>
+                              <p className="mt-1 text-xs text-muted-foreground">المحفظة المرتبطة: <span className="font-bold text-foreground">{linkedWallet?.name ?? goal.walletName ?? "غير محددة"}</span></p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteGoal(goal.id)}
+                              className="w-full rounded-xl border px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-muted sm:w-auto"
+                            >
+                              حذف الهدف
+                            </button>
+                          </div>
+                          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                            <div className="rounded-lg bg-white p-3 border">
+                              <p className="text-xs text-muted-foreground">المبلغ المستهدف</p>
+                              <p className="font-bold text-foreground">{renderCurrency(goal.targetAmount)}</p>
+                            </div>
+                            <div className="rounded-lg bg-white p-3 border">
+                              <p className="text-xs text-muted-foreground">الرصيد الحالي في المحفظة</p>
+                              <p className="font-bold text-emerald-700">{renderCurrency(currentSaved)}</p>
+                            </div>
+                            <div className="rounded-lg bg-white p-3 border">
+                              <p className="text-xs text-muted-foreground">المتبقي لتحقيق الهدف</p>
+                              <p className="font-bold text-primary">{renderCurrency(remainingAmount)}</p>
+                            </div>
+                          </div>
+                          <div className="mt-3 space-y-2">
+                            <div className="flex items-center justify-between gap-3 text-sm">
+                              <span className="font-bold text-primary">{progress.toFixed(0)}%</span>
+                              <span className="text-muted-foreground">مستوى التقدم الفعلي من المحفظة</span>
+                            </div>
+                            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                              <div className="ml-auto h-full rounded-full bg-primary" style={{ width: `${progress}%` }} />
+                            </div>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 ))}
               </CardContent>
@@ -825,6 +858,17 @@ export default function SavingsPlans() {
             <div className="space-y-2">
               <label className="text-sm font-medium">الادخار الشهري المقترح</label>
               <Input value={goalMonthlyAmount} onChange={(event) => setGoalMonthlyAmount(event.target.value)} placeholder="مثال: 150" inputMode="decimal" dir="rtl" className="app-input text-right" />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">المحفظة المرتبطة بالهدف</label>
+              <select value={goalWalletId} onChange={(event) => setGoalWalletId(event.target.value)} className="app-input flex h-11 w-full rounded-xl border border-input bg-background px-3 text-right" dir="rtl">
+                <option value="">اختر محفظة</option>
+                {wallets.map((wallet) => (
+                  <option key={wallet.id} value={wallet.id}>{wallet.name}</option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">سيتم قياس مستوى التقدم بناءً على رصيد هذه المحفظة.</p>
             </div>
 
             {goalError ? <p className="text-sm text-red-600">{goalError}</p> : null}

@@ -1,13 +1,15 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CurrencyDisplay } from "@/components/ui/currency-display";
-import { calculateSavingsGoalMonths, calculateSavingsGoalProgress, loadSavingsGoals, saveSavingsGoals, type SavingsGoalDraft } from "@/lib/savings-goals";
+import { calculateSavingsGoalMonths, calculateSavingsGoalProgress, calculateSavingsGoalRemaining, calculateSavingsGoalSavedAmount, loadSavingsGoals, saveSavingsGoals, type SavingsGoalDraft } from "@/lib/savings-goals";
+import { useWallets } from "@/lib/hooks";
 import { ArrowRight, Goal, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 
 export default function SavingsGoalsPage() {
   const [goals, setGoals] = useState<SavingsGoalDraft[]>([]);
+  const { data: wallets = [] } = useWallets();
 
   useEffect(() => {
     setGoals(loadSavingsGoals());
@@ -16,16 +18,18 @@ export default function SavingsGoalsPage() {
   const summary = useMemo(() => {
     const totalTarget = goals.reduce((sum, goal) => sum + goal.targetAmount, 0);
     const totalMonthly = goals.reduce((sum, goal) => sum + goal.monthlyAmount, 0);
+    const totalSaved = goals.reduce((sum, goal) => sum + calculateSavingsGoalSavedAmount(goal, wallets), 0);
     const averageProgress = goals.length > 0
-      ? goals.reduce((sum, goal) => sum + calculateSavingsGoalProgress(goal), 0) / goals.length
+      ? goals.reduce((sum, goal) => sum + calculateSavingsGoalProgress(goal, wallets), 0) / goals.length
       : 0;
 
     return {
       totalTarget,
       totalMonthly,
+      totalSaved,
       averageProgress,
     };
-  }, [goals]);
+  }, [goals, wallets]);
 
   const handleDeleteGoal = (goalId: string) => {
     const nextGoals = goals.filter((goal) => goal.id !== goalId);
@@ -47,7 +51,7 @@ export default function SavingsGoalsPage() {
             ملخص الأهداف
           </CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-3">
+        <CardContent className="grid gap-3 sm:grid-cols-4">
           <div className="rounded-xl border bg-white p-3">
             <p className="text-xs text-muted-foreground">عدد الأهداف</p>
             <p className="mt-1 text-lg font-bold text-foreground">{goals.length}</p>
@@ -60,14 +64,21 @@ export default function SavingsGoalsPage() {
             <p className="text-xs text-muted-foreground">إجمالي الادخار الشهري</p>
             <p className="mt-1 text-lg font-bold text-emerald-700"><CurrencyDisplay amount={summary.totalMonthly} fractionDigits={2} /></p>
           </div>
+          <div className="rounded-xl border bg-white p-3">
+            <p className="text-xs text-muted-foreground">الإجمالي المحفوظ فعلياً</p>
+            <p className="mt-1 text-lg font-bold text-emerald-700"><CurrencyDisplay amount={summary.totalSaved} fractionDigits={2} /></p>
+          </div>
         </CardContent>
       </Card>
 
       {goals.length > 0 ? (
         <div className="grid gap-4">
           {goals.map((goal) => {
-            const progress = calculateSavingsGoalProgress(goal);
+            const progress = calculateSavingsGoalProgress(goal, wallets);
             const months = calculateSavingsGoalMonths(goal);
+            const currentSaved = calculateSavingsGoalSavedAmount(goal, wallets);
+            const remainingAmount = calculateSavingsGoalRemaining(goal, wallets);
+            const linkedWallet = wallets.find((wallet) => wallet.id === goal.walletId);
 
             return (
               <Card key={goal.id} className="overflow-hidden">
@@ -79,6 +90,7 @@ export default function SavingsGoalsPage() {
                         <h2 className="text-base font-bold text-foreground sm:text-lg">{goal.title}</h2>
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">خطة على {goal.years} سنوات</p>
+                      <p className="mt-1 text-xs text-muted-foreground">المحفظة المرتبطة: <span className="font-bold text-foreground">{linkedWallet?.name ?? goal.walletName ?? "غير محددة"}</span></p>
                     </div>
                     <Button variant="outline" className="gap-2 text-muted-foreground" onClick={() => handleDeleteGoal(goal.id)}>
                       <Trash2 className="h-4 w-4" />
@@ -92,19 +104,30 @@ export default function SavingsGoalsPage() {
                       <p className="mt-1 font-bold text-foreground"><CurrencyDisplay amount={goal.targetAmount} fractionDigits={2} /></p>
                     </div>
                     <div className="rounded-xl border bg-slate-50 p-3">
-                      <p className="text-xs text-muted-foreground">الادخار الشهري</p>
-                      <p className="mt-1 font-bold text-emerald-700"><CurrencyDisplay amount={goal.monthlyAmount} fractionDigits={2} /></p>
+                      <p className="text-xs text-muted-foreground">الرصيد الحالي في المحفظة</p>
+                      <p className="mt-1 font-bold text-emerald-700"><CurrencyDisplay amount={currentSaved} fractionDigits={2} /></p>
                     </div>
                     <div className="rounded-xl border bg-slate-50 p-3">
-                      <p className="text-xs text-muted-foreground">الوقت التقريبي</p>
-                      <p className="mt-1 font-bold text-primary">{months ? `${months} شهر` : "غير متاح"}</p>
+                      <p className="text-xs text-muted-foreground">المتبقي لتحقيق الهدف</p>
+                      <p className="mt-1 font-bold text-primary"><CurrencyDisplay amount={remainingAmount} fractionDigits={2} /></p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border bg-slate-50 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs text-muted-foreground">الادخار الشهري المخطط</p>
+                      <p className="font-bold text-emerald-700"><CurrencyDisplay amount={goal.monthlyAmount} fractionDigits={2} /></p>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between gap-3">
+                      <p className="text-xs text-muted-foreground">الوقت التقريبي حسب الخطة</p>
+                      <p className="font-bold text-primary">{months ? `${months} شهر` : "غير متاح"}</p>
                     </div>
                   </div>
 
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-3 text-sm">
                       <span className="font-bold text-primary">{progress.toFixed(0)}%</span>
-                      <span className="text-muted-foreground">نسبة التقدم التقديرية</span>
+                      <span className="text-muted-foreground">نسبة التقدم الفعلية من المحفظة</span>
                     </div>
                     <div className="h-2 overflow-hidden rounded-full bg-slate-100">
                       <div className="ml-auto h-full rounded-full bg-primary" style={{ width: `${progress}%` }} />
