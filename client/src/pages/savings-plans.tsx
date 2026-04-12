@@ -7,21 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SavingsStatusCard } from "@/components/savings/SavingsStatusCard";
 import { useTransactions, useWallets } from "@/lib/hooks";
+import { loadSavingsGoals, saveSavingsGoals, type SavingsGoalDraft } from "@/lib/savings-goals";
 import { cn, formatCurrency, parseNumericInput } from "@/lib/utils";
 import { ArrowRight, CheckCircle2, Sparkles, Target, TrendingUp, Wallet } from "lucide-react";
 import { getSavingsDistributionLabel, savingsPlans } from "@/lib/savings-plans";
 import { buildSavingsPlanAnalysis } from "@/lib/savings-plan-analysis";
-
-type SavingsGoalDraft = {
-  id: string;
-  planId: string;
-  planTitle: string;
-  title: string;
-  targetAmount: number;
-  monthlyAmount: number;
-  years: 3 | 5 | 10;
-  createdAt: number;
-};
 
 export default function SavingsPlans() {
   const [location, setLocation] = useLocation();
@@ -116,18 +106,16 @@ export default function SavingsPlans() {
       setSelectedPlanId(savedPlanId);
     }
 
-    const savedGoalsRaw = window.localStorage.getItem("eltizam-savings-goals");
-    if (savedGoalsRaw) {
-      try {
-        const parsedGoals = JSON.parse(savedGoalsRaw) as SavingsGoalDraft[];
-        if (Array.isArray(parsedGoals)) {
-          setSavedGoals(parsedGoals);
-        }
-      } catch {
-        window.localStorage.removeItem("eltizam-savings-goals");
-      }
-    }
+    setSavedGoals(loadSavingsGoals());
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    saveSavingsGoals(savedGoals);
+  }, [savedGoals]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -181,14 +169,6 @@ export default function SavingsPlans() {
 
     window.localStorage.setItem("eltizam-selected-savings-plan", selectedPlanId);
   }, [selectedPlanId]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    window.localStorage.setItem("eltizam-savings-goals", JSON.stringify(savedGoals));
-  }, [savedGoals]);
 
   const statusTone = currentSavings < 0
     ? {

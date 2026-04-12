@@ -1,8 +1,9 @@
-import { ArrowDownLeft, ArrowUpRight, Eye, EyeOff, Settings, Loader2, Receipt, Calendar, Wallet, PieChart, ChevronLeft, Sparkles } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Eye, EyeOff, Settings, Loader2, Receipt, Calendar, Wallet, PieChart, ChevronLeft, Sparkles, Goal } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CurrencyDisplay } from "@/components/ui/currency-display";
 import { useEffect, useMemo, useState } from "react";
+import { calculateSavingsGoalProgress, loadSavingsGoals, type SavingsGoalDraft } from "@/lib/savings-goals";
 import { cn, formatCurrency, formatObligationDueDate, formatRelativeArabicDate, getUpcomingObligations, normalizeArabicText } from "@/lib/utils";
 import { Link } from "wouter";
 import { useCategories, useDashboard, useUser, useObligations, useWallets } from "@/lib/hooks";
@@ -20,6 +21,7 @@ const categoryColors: Record<string, { icon: string; bg: string }> = {
 export default function Dashboard() {
   const [showBalance, setShowBalance] = useState(true);
   const [isOnboardingDismissed, setIsOnboardingDismissed] = useState(false);
+  const [savingsGoals, setSavingsGoals] = useState<SavingsGoalDraft[]>([]);
   const { data: user } = useUser();
   const { data: dashboard, isLoading } = useDashboard();
   const { data: obligations, isLoading: isLoadingObligations } = useObligations();
@@ -58,9 +60,39 @@ export default function Dashboard() {
     setIsOnboardingDismissed(storedValue === "true");
   }, [onboardingStorageKey]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const syncGoals = () => {
+      setSavingsGoals(loadSavingsGoals());
+    };
+
+    syncGoals();
+    window.addEventListener("storage", syncGoals);
+
+    return () => {
+      window.removeEventListener("storage", syncGoals);
+    };
+  }, []);
+
   const hasCompletedInitialSetup = onboardingSteps.every((step) => step.done);
   const nextStep = onboardingSteps.find((step) => !step.done);
   const shouldShowOnboardingCard = !hasCompletedInitialSetup && !isOnboardingDismissed && !!nextStep;
+  const savingsGoalsSummary = useMemo(() => {
+    const totalTarget = savingsGoals.reduce((sum, goal) => sum + goal.targetAmount, 0);
+    const totalMonthly = savingsGoals.reduce((sum, goal) => sum + goal.monthlyAmount, 0);
+    const averageProgress = savingsGoals.length > 0
+      ? savingsGoals.reduce((sum, goal) => sum + calculateSavingsGoalProgress(goal), 0) / savingsGoals.length
+      : 0;
+
+    return {
+      totalTarget,
+      totalMonthly,
+      averageProgress,
+    };
+  }, [savingsGoals]);
 
   const handleDismissOnboarding = () => {
     window.localStorage.setItem(onboardingStorageKey, "true");
@@ -194,7 +226,35 @@ export default function Dashboard() {
         </Card>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 xl:max-w-4xl">
+      <Card className="border-emerald-200 bg-emerald-50/70 shadow-sm">
+        <CardContent className="p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-emerald-700 mb-1">الأهداف الادخارية</p>
+              <h3 className="font-bold text-base">متابعة أهدافك من الصفحة الرئيسية</h3>
+              <div className="mt-3 space-y-1.5 text-sm text-muted-foreground">
+                <p>عدد الأهداف: <span className="font-bold text-foreground">{savingsGoals.length}</span></p>
+                <p>إجمالي الادخار الشهري: <span className="font-bold text-emerald-700"><CurrencyDisplay amount={savingsGoalsSummary.totalMonthly} fractionDigits={2} /></span></p>
+                <p>إجمالي المستهدف: <span className="font-bold text-primary"><CurrencyDisplay amount={savingsGoalsSummary.totalTarget} fractionDigits={2} /></span></p>
+                <p>متوسط التقدم: <span className="font-bold text-foreground">{savingsGoalsSummary.averageProgress.toFixed(0)}%</span></p>
+              </div>
+            </div>
+            <div className="h-10 w-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+              <Goal className="h-5 w-5" />
+            </div>
+          </div>
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row-reverse">
+            <Link href="/savings-goals">
+              <Button className="w-full sm:w-auto">عرض الأهداف الادخارية</Button>
+            </Link>
+            <Link href="/financial-plans?tab=plans">
+              <Button variant="outline" className="w-full sm:w-auto">إضافة هدف جديد</Button>
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:max-w-4xl">
         <Link href="/wallets">
           <div className="bg-card flex min-h-[128px] flex-col justify-between rounded-2xl border border-border/50 p-3 shadow-sm transition-colors hover:bg-muted/30 cursor-pointer sm:p-4">
             <div className="flex items-center justify-between mb-2">
@@ -220,6 +280,20 @@ export default function Dashboard() {
             <div className="space-y-1 text-right">
               <h3 className="font-bold text-sm">الأقسام</h3>
               <p className="text-xs text-muted-foreground">{hasCategories ? `${categories.length} قسمًا` : "أنشئ أقسامك الأساسية"}</p>
+            </div>
+          </div>
+        </Link>
+        <Link href="/savings-goals">
+          <div className="bg-card flex min-h-[128px] flex-col justify-between rounded-2xl border border-border/50 p-3 shadow-sm transition-colors hover:bg-muted/30 cursor-pointer sm:p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="rounded-xl bg-emerald-100 p-2">
+                <Goal className="h-4 w-4 text-emerald-700 sm:h-5 sm:w-5" />
+              </div>
+              <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <div className="space-y-1 text-right">
+              <h3 className="font-bold text-sm">الأهداف الادخارية</h3>
+              <p className="text-xs text-muted-foreground">{savingsGoals.length > 0 ? `${savingsGoals.length} أهداف` : "أضف هدفك الأول"}</p>
             </div>
           </div>
         </Link>

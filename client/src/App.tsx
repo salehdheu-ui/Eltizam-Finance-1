@@ -13,6 +13,7 @@ import Categories from "@/pages/categories";
 import Reports from "@/pages/reports";
 import Obligations from "@/pages/obligations";
 import SavingsPlanDetails from "@/pages/savings-plan-details";
+import SavingsGoalsPage from "@/pages/savings-goals";
 import VariableObligationDetails from "@/pages/variable-obligation-details";
 import Login from "@/pages/login";
 import SavingsPlans from "@/pages/savings-plans";
@@ -120,6 +121,7 @@ function Router() {
         <Route path="/reports" component={Reports} />
         <Route path="/financial-plans/:id" component={SavingsPlanDetails} />
         <Route path="/financial-plans" component={SavingsPlans} />
+        <Route path="/savings-goals" component={SavingsGoalsPage} />
         <Route path="/obligations/:id" component={VariableObligationDetails} />
         <Route path="/obligations" component={Obligations} />
         <Route path="/settings" component={Settings} />
