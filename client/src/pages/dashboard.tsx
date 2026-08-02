@@ -3,10 +3,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CurrencyDisplay } from "@/components/ui/currency-display";
 import { useEffect, useMemo, useState } from "react";
-import { calculateSavingsGoalProgress, calculateSavingsGoalSavedAmount, loadSavingsGoals, type SavingsGoalDraft } from "@/lib/savings-goals";
+import { calculateSavingsGoalProgress, calculateSavingsGoalSavedAmount } from "@/lib/savings-goals";
 import { cn, formatCurrency, formatObligationDueDate, formatRelativeArabicDate, getUpcomingObligations, normalizeArabicText } from "@/lib/utils";
 import { Link, useLocation } from "wouter";
-import { useCategories, useDashboard, useUser, useObligations, useWallets } from "@/lib/hooks";
+import { useCategories, useDashboard, useUser, useObligations, useSavingsGoals, useWallets } from "@/lib/hooks";
 
 const categoryColors: Record<string, { icon: string; bg: string }> = {
   "طعام": { icon: "🍔", bg: "bg-orange-100 dark:bg-orange-950" },
@@ -21,12 +21,12 @@ const categoryColors: Record<string, { icon: string; bg: string }> = {
 export default function Dashboard() {
   const [showBalance, setShowBalance] = useState(true);
   const [isOnboardingDismissed, setIsOnboardingDismissed] = useState(false);
-  const [savingsGoals, setSavingsGoals] = useState<SavingsGoalDraft[]>([]);
   const [, setLocation] = useLocation();
   const { data: user } = useUser();
   const { data: dashboard, isLoading } = useDashboard();
   const { data: obligations, isLoading: isLoadingObligations } = useObligations();
   const { data: wallets = [] } = useWallets();
+  const { data: savingsGoals = [] } = useSavingsGoals();
   const { data: categories = [] } = useCategories();
   
   const upcomingObligations = getUpcomingObligations(obligations, 5);
@@ -72,23 +72,6 @@ export default function Dashboard() {
       setLocation("/user-guide");
     }
   }, [setLocation, userGuideStorageKey]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const syncGoals = () => {
-      setSavingsGoals(loadSavingsGoals());
-    };
-
-    syncGoals();
-    window.addEventListener("storage", syncGoals);
-
-    return () => {
-      window.removeEventListener("storage", syncGoals);
-    };
-  }, []);
 
   const hasCompletedInitialSetup = onboardingSteps.every((step) => step.done);
   const nextStep = onboardingSteps.find((step) => !step.done);

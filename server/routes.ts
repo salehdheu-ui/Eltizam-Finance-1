@@ -1,10 +1,10 @@
-﻿import type { Express, Request, Response, NextFunction } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { hashPlainPassword, setupAuth } from "./auth";
 import { writeAuditEvent } from "./audit";
 import { createManualBackup, listAllBackups } from "./backup";
-import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema } from "@shared/schema";
+import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema } from "@shared/schema";
 import { buildWriteQueueKey, enqueueWrite } from "./write-queue";
 import { z } from "zod";
 
@@ -100,6 +100,7 @@ const transactionCreateRequestSchema = z.object({
 const recurringIncomePatchSchema = insertRecurringIncomeSchema.partial();
 
 const obligationPatchSchema = insertObligationSchema.partial();
+const commitmentPatchSchema = insertCommitmentSchema.partial();
 
 function getPeriodRange(period: string) {
   const end = new Date();
@@ -637,6 +638,192 @@ export async function registerRoutes(
     } catch (e) { next(e); }
   });
 
+
+
+
+  app.get("/api/savings-goals", requireAuth, async (req, res, next) => {
+    try {
+      res.json(await storage.getSavingsGoals(req.user!.id));
+    } catch (e) { next(e); }
+  });
+
+  app.post("/api/savings-goals", requireAuth, async (req, res, next) => {
+    try {
+      const data = insertSavingsGoalSchema.parse({
+        ...req.body,
+        walletId: toRequiredNumber(req.body.walletId),
+        targetAmount: toRequiredNumber(req.body.targetAmount),
+        monthlyAmount: toRequiredNumber(req.body.monthlyAmount),
+        years: toRequiredNumber(req.body.years),
+      });
+      const goal = await runQueuedWrite(
+        res,
+        buildWriteQueueKey("user", req.user!.id, "savings-goals"),
+        () => storage.createSavingsGoal(req.user!.id, data),
+      );
+      res.status(201).json(goal);
+    } catch (e) { next(e); }
+  });
+
+  app.delete("/api/savings-goals/:id", requireAuth, async (req, res, next) => {
+    try {
+      await runQueuedWrite(
+        res,
+        buildWriteQueueKey("user", req.user!.id, "savings-goals"),
+        () => storage.deleteSavingsGoal(parseRouteId(req.params.id), req.user!.id),
+      );
+      res.json({ message: "تم حذف الهدف الادخاري بنجاح" });
+    } catch (e) { next(e); }
+  });
+  app.get("/api/commitments/:id/steps", requireAuth, async (req, res, next) => {
+    try {
+      res.json(await storage.getCommitmentSteps(parseRouteId(req.params.id), req.user!.id));
+    } catch (e) { next(e); }
+  });
+
+  app.post("/api/commitments/:id/steps", requireAuth, async (req, res, next) => {
+    try {
+      const data = insertCommitmentStepSchema.parse({
+        ...req.body,
+        position: req.body.position === undefined ? undefined : toRequiredNumber(req.body.position),
+      });
+      const commitmentId = parseRouteId(req.params.id);
+      const step = await runQueuedWrite(
+        res,
+        buildWriteQueueKey("user", req.user!.id, "commitment", commitmentId, "steps"),
+        () => storage.createCommitmentStep(commitmentId, req.user!.id, data),
+      );
+      res.status(201).json(step);
+    } catch (e) { next(e); }
+  });
+
+  app.patch("/api/commitments/:id/steps/:stepId/toggle", requireAuth, async (req, res, next) => {
+    try {
+      const commitmentId = parseRouteId(req.params.id);
+      const stepId = parseRouteId(req.params.stepId);
+      const step = await runQueuedWrite(
+        res,
+        buildWriteQueueKey("user", req.user!.id, "commitment", commitmentId, "step", stepId),
+        () => storage.toggleCommitmentStep(commitmentId, stepId, req.user!.id),
+      );
+      res.json(step);
+    } catch (e) { next(e); }
+  });
+
+  app.delete("/api/commitments/:id/steps/:stepId", requireAuth, async (req, res, next) => {
+    try {
+      const commitmentId = parseRouteId(req.params.id);
+      const stepId = parseRouteId(req.params.stepId);
+      await runQueuedWrite(
+        res,
+        buildWriteQueueKey("user", req.user!.id, "commitment", commitmentId, "steps"),
+        () => storage.deleteCommitmentStep(commitmentId, stepId, req.user!.id),
+      );
+      res.json({ message: "تم حذف الخطوة" });
+    } catch (e) { next(e); }
+  });
+
+  app.get("/api/commitments/:id/proofs", requireAuth, async (req, res, next) => {
+    try {
+      res.json(await storage.getCommitmentProofs(parseRouteId(req.params.id), req.user!.id));
+    } catch (e) { next(e); }
+  });
+
+  app.post("/api/commitments/:id/proofs", requireAuth, async (req, res, next) => {
+    try {
+      const data = insertCommitmentProofSchema.parse(req.body);
+      const commitmentId = parseRouteId(req.params.id);
+      const proof = await runQueuedWrite(
+        res,
+        buildWriteQueueKey("user", req.user!.id, "commitment", commitmentId, "proofs"),
+        () => storage.createCommitmentProof(commitmentId, req.user!.id, data),
+      );
+      res.status(201).json(proof);
+    } catch (e) { next(e); }
+  });
+
+  app.delete("/api/commitments/:id/proofs/:proofId", requireAuth, async (req, res, next) => {
+    try {
+      const commitmentId = parseRouteId(req.params.id);
+      const proofId = parseRouteId(req.params.proofId);
+      await runQueuedWrite(
+        res,
+        buildWriteQueueKey("user", req.user!.id, "commitment", commitmentId, "proofs"),
+        () => storage.deleteCommitmentProof(commitmentId, proofId, req.user!.id),
+      );
+      res.json({ message: "تم حذف الإثبات" });
+    } catch (e) { next(e); }
+  });
+  app.get("/api/commitments", requireAuth, async (req, res, next) => {
+    try {
+      res.json(await storage.getCommitments(req.user!.id));
+    } catch (e) { next(e); }
+  });
+
+  app.get("/api/commitments/:id", requireAuth, async (req, res, next) => {
+    try {
+      const commitment = await storage.getCommitmentById(parseRouteId(req.params.id), req.user!.id);
+      if (!commitment) {
+        return res.status(404).json({ message: "الالتزام غير موجود" });
+      }
+      res.json(commitment);
+    } catch (e) { next(e); }
+  });
+
+  app.post("/api/commitments", requireAuth, async (req, res, next) => {
+    try {
+      const data = insertCommitmentSchema.parse({
+        ...req.body,
+        dueDate: toOptionalNumber(req.body.dueDate),
+        amount: toOptionalNumber(req.body.amount),
+      });
+      const commitment = await runQueuedWrite(
+        res,
+        buildWriteQueueKey("user", req.user!.id, "commitments"),
+        () => storage.createCommitment(req.user!.id, data),
+      );
+      res.status(201).json(commitment);
+    } catch (e) { next(e); }
+  });
+
+  app.patch("/api/commitments/:id", requireAuth, async (req, res, next) => {
+    try {
+      const data = commitmentPatchSchema.parse({
+        ...req.body,
+        dueDate: req.body.dueDate === undefined ? undefined : toOptionalNumber(req.body.dueDate),
+        amount: req.body.amount === undefined ? undefined : toOptionalNumber(req.body.amount),
+      });
+      const commitment = await runQueuedWrite(
+        res,
+        buildWriteQueueKey("user", req.user!.id, "commitment", parseRouteId(req.params.id)),
+        () => storage.updateCommitment(parseRouteId(req.params.id), req.user!.id, data),
+      );
+      res.json(commitment);
+    } catch (e) { next(e); }
+  });
+
+  app.patch("/api/commitments/:id/status", requireAuth, async (req, res, next) => {
+    try {
+      const status = z.enum(["active", "completed", "postponed", "archived"]).parse(req.body.status);
+      const commitment = await runQueuedWrite(
+        res,
+        buildWriteQueueKey("user", req.user!.id, "commitment", parseRouteId(req.params.id), "status"),
+        () => storage.updateCommitmentStatus(parseRouteId(req.params.id), req.user!.id, status),
+      );
+      res.json(commitment);
+    } catch (e) { next(e); }
+  });
+
+  app.delete("/api/commitments/:id", requireAuth, async (req, res, next) => {
+    try {
+      await runQueuedWrite(
+        res,
+        buildWriteQueueKey("user", req.user!.id, "commitments"),
+        () => storage.deleteCommitment(parseRouteId(req.params.id), req.user!.id),
+      );
+      res.json({ message: "تم حذف الالتزام بنجاح" });
+    } catch (e) { next(e); }
+  });
   app.get("/api/obligations", requireAuth, async (req, res, next) => {
     try {
       const obligations = await storage.getObligations(req.user!.id);

@@ -1,19 +1,16 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CurrencyDisplay } from "@/components/ui/currency-display";
-import { calculateSavingsGoalMonths, calculateSavingsGoalProgress, calculateSavingsGoalRemaining, calculateSavingsGoalSavedAmount, loadSavingsGoals, saveSavingsGoals, type SavingsGoalDraft } from "@/lib/savings-goals";
-import { useWallets } from "@/lib/hooks";
+import { calculateSavingsGoalMonths, calculateSavingsGoalProgress, calculateSavingsGoalRemaining, calculateSavingsGoalSavedAmount } from "@/lib/savings-goals";
+import { useDeleteSavingsGoal, useSavingsGoals, useWallets } from "@/lib/hooks";
 import { ArrowRight, Goal, Sparkles, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Link } from "wouter";
 
 export default function SavingsGoalsPage() {
-  const [goals, setGoals] = useState<SavingsGoalDraft[]>([]);
+  const { data: goals = [] } = useSavingsGoals();
   const { data: wallets = [] } = useWallets();
-
-  useEffect(() => {
-    setGoals(loadSavingsGoals());
-  }, []);
+  const deleteGoal = useDeleteSavingsGoal();
 
   const summary = useMemo(() => {
     const totalTarget = goals.reduce((sum, goal) => sum + goal.targetAmount, 0);
@@ -31,10 +28,8 @@ export default function SavingsGoalsPage() {
     };
   }, [goals, wallets]);
 
-  const handleDeleteGoal = (goalId: string) => {
-    const nextGoals = goals.filter((goal) => goal.id !== goalId);
-    setGoals(nextGoals);
-    saveSavingsGoals(nextGoals);
+  const handleDeleteGoal = (goalId: number) => {
+    deleteGoal.mutate(goalId);
   };
 
   return (
@@ -90,9 +85,9 @@ export default function SavingsGoalsPage() {
                         <h2 className="text-base font-bold text-foreground sm:text-lg">{goal.title}</h2>
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">خطة على {goal.years} سنوات</p>
-                      <p className="mt-1 text-xs text-muted-foreground">المحفظة المرتبطة: <span className="font-bold text-foreground">{linkedWallet?.name ?? goal.walletName ?? "غير محددة"}</span></p>
+                      <p className="mt-1 text-xs text-muted-foreground">المحفظة المرتبطة: <span className="font-bold text-foreground">{linkedWallet?.name ?? "غير محددة"}</span></p>
                     </div>
-                    <Button variant="outline" className="gap-2 text-muted-foreground" onClick={() => handleDeleteGoal(goal.id)}>
+                    <Button variant="outline" className="gap-2 text-muted-foreground" onClick={() => handleDeleteGoal(goal.id)} disabled={deleteGoal.isPending}>
                       <Trash2 className="h-4 w-4" />
                       حذف الهدف
                     </Button>

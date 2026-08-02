@@ -1,7 +1,7 @@
-﻿import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "./queryClient";
 import { queryClient } from "./queryClient";
-import type { User, Wallet, Category, Transaction, RecurringIncome, Obligation, VariableObligationMonthStatus } from "@shared/schema";
+import type { User, Wallet, Category, Transaction, RecurringIncome, Obligation, VariableObligationMonthStatus, Commitment, CommitmentStep, CommitmentProof, SavingsGoal } from "@shared/schema";
 
 type WalletPayload = Pick<Wallet, "name" | "type" | "balance" | "color">;
 type WalletUpdatePayload = Partial<WalletPayload> & { id: number };
@@ -18,6 +18,9 @@ type RecurringIncomePayload = Pick<RecurringIncome, "title" | "amount" | "income
 type RecurringIncomeUpdatePayload = Partial<RecurringIncomePayload> & { id: number };
 type ObligationPayload = Omit<Obligation, "id" | "userId" | "createdAt" | "updatedAt">;
 type ObligationUpdatePayload = Partial<ObligationPayload> & { id: number };
+type CommitmentPayload = Pick<Commitment, "title" | "type" | "frequency" | "dueDate" | "amount" | "personName" | "assetName" | "notes">;
+type CommitmentUpdatePayload = Partial<CommitmentPayload> & { id: number };
+type SavingsGoalPayload = Pick<SavingsGoal, "planId" | "planTitle" | "title" | "walletId" | "targetAmount" | "monthlyAmount" | "years">;
 
 export type ReportsSummary = {
   period: string;
@@ -355,6 +358,141 @@ export function useReportsSummary(period: "all" | "1month" | "3months" | "6month
   });
 }
 
+
+
+
+export function useSavingsGoals() {
+  return useQuery<SavingsGoal[]>({
+    queryKey: ["/api/savings-goals"],
+  });
+}
+
+export function useCreateSavingsGoal() {
+  return useMutation({
+    mutationFn: (data: SavingsGoalPayload) => apiRequest("POST", "/api/savings-goals", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/savings-goals"] });
+    },
+  });
+}
+
+export function useDeleteSavingsGoal() {
+  return useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/savings-goals/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/savings-goals"] });
+    },
+  });
+}
+export function useCommitment(id: number | undefined) {
+  return useQuery<Commitment>({
+    queryKey: ["/api/commitments", id],
+    enabled: !!id,
+  });
+}
+
+export function useCommitmentSteps(id: number | undefined) {
+  return useQuery<CommitmentStep[]>({
+    queryKey: ["/api/commitments", id, "steps"],
+    enabled: !!id,
+  });
+}
+
+export function useCreateCommitmentStep(id: number | undefined) {
+  return useMutation({
+    mutationFn: (data: { title: string; position?: number }) =>
+      apiRequest("POST", "/api/commitments/" + id + "/steps", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/commitments", id, "steps"] });
+    },
+  });
+}
+
+export function useToggleCommitmentStep(id: number | undefined) {
+  return useMutation({
+    mutationFn: (stepId: number) => apiRequest("PATCH", "/api/commitments/" + id + "/steps/" + stepId + "/toggle"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/commitments", id, "steps"] });
+    },
+  });
+}
+
+export function useDeleteCommitmentStep(id: number | undefined) {
+  return useMutation({
+    mutationFn: (stepId: number) => apiRequest("DELETE", "/api/commitments/" + id + "/steps/" + stepId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/commitments", id, "steps"] });
+    },
+  });
+}
+
+export function useCommitmentProofs(id: number | undefined) {
+  return useQuery<CommitmentProof[]>({
+    queryKey: ["/api/commitments", id, "proofs"],
+    enabled: !!id,
+  });
+}
+
+export function useCreateCommitmentProof(id: number | undefined) {
+  return useMutation({
+    mutationFn: (data: { kind: "note" | "link" | "file" | "receipt"; label: string; value: string }) =>
+      apiRequest("POST", "/api/commitments/" + id + "/proofs", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/commitments", id, "proofs"] });
+    },
+  });
+}
+
+export function useDeleteCommitmentProof(id: number | undefined) {
+  return useMutation({
+    mutationFn: (proofId: number) => apiRequest("DELETE", "/api/commitments/" + id + "/proofs/" + proofId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/commitments", id, "proofs"] });
+    },
+  });
+}
+export function useCommitments() {
+  return useQuery<Commitment[]>({
+    queryKey: ["/api/commitments"],
+  });
+}
+
+export function useCreateCommitment() {
+  return useMutation({
+    mutationFn: (data: CommitmentPayload) => apiRequest("POST", "/api/commitments", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/commitments"] });
+    },
+  });
+}
+
+export function useUpdateCommitment() {
+  return useMutation({
+    mutationFn: ({ id, ...data }: CommitmentUpdatePayload) => apiRequest("PATCH", `/api/commitments/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/commitments"] });
+    },
+  });
+}
+
+export function useUpdateCommitmentStatus() {
+  return useMutation({
+    mutationFn: ({ id, status }: { id: number; status: Commitment["status"] }) =>
+      apiRequest("PATCH", `/api/commitments/${id}/status`, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/commitments"] });
+    },
+  });
+}
+
+export function useDeleteCommitment() {
+  return useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/commitments/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/commitments"] });
+    },
+  });
+}
 // Obligations Hooks
 export function useObligations() {
   return useQuery<Obligation[]>({

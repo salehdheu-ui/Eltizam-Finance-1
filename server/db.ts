@@ -58,6 +58,21 @@ const databaseMigrations: DatabaseMigration[] = [
     name: "ensure_password_reset_requests_table",
     up: async () => { await ensurePasswordResetRequestsTable(); },
   },
+  {
+    version: 8,
+    name: "ensure_commitments_table",
+    up: async () => { await ensureCommitmentsTable(); },
+  },
+  {
+    version: 9,
+    name: "ensure_commitment_steps_and_proofs",
+    up: async () => { await ensureCommitmentStepsAndProofs(); },
+  },
+  {
+    version: 10,
+    name: "ensure_savings_goals_table",
+    up: async () => { await ensureSavingsGoalsTable(); },
+  },
 ];
 
 async function ensureSchemaMigrationsTable() {
@@ -300,4 +315,74 @@ async function ensurePasswordResetRequestsTable() {
   await pgExec("CREATE INDEX IF NOT EXISTS password_reset_requests_user_idx ON password_reset_requests (user_id, created_at DESC)");
   await pgExec("CREATE INDEX IF NOT EXISTS password_reset_requests_status_idx ON password_reset_requests (status, created_at DESC)");
   await pgExec("CREATE UNIQUE INDEX IF NOT EXISTS password_reset_requests_token_unique ON password_reset_requests (reset_token) WHERE reset_token IS NOT NULL");
+}
+
+async function ensureCommitmentsTable() {
+  await pgExec(`
+    CREATE TABLE IF NOT EXISTS commitments (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      title TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'personal',
+      status TEXT NOT NULL DEFAULT 'active',
+      frequency TEXT NOT NULL DEFAULT 'one_time',
+      due_date INTEGER,
+      amount DOUBLE PRECISION,
+      person_name TEXT,
+      asset_name TEXT,
+      notes TEXT DEFAULT '',
+      created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
+      updated_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer
+    )
+  `);
+
+  await pgExec("CREATE INDEX IF NOT EXISTS commitments_user_status_idx ON commitments (user_id, status, due_date)");
+  await pgExec("CREATE INDEX IF NOT EXISTS commitments_user_due_idx ON commitments (user_id, due_date)");
+}
+async function ensureCommitmentStepsAndProofs() {
+  await pgExec(`
+    CREATE TABLE IF NOT EXISTS commitment_steps (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      commitment_id INTEGER NOT NULL REFERENCES commitments(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      position INTEGER NOT NULL DEFAULT 0,
+      is_completed BOOLEAN NOT NULL DEFAULT false,
+      completed_at INTEGER,
+      created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer
+    );
+
+    CREATE TABLE IF NOT EXISTS commitment_proofs (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      commitment_id INTEGER NOT NULL REFERENCES commitments(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL DEFAULT 'note',
+      label TEXT NOT NULL,
+      value TEXT NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer
+    );
+  `);
+
+  await pgExec("CREATE INDEX IF NOT EXISTS commitment_steps_commitment_idx ON commitment_steps (user_id, commitment_id, position)");
+  await pgExec("CREATE INDEX IF NOT EXISTS commitment_proofs_commitment_idx ON commitment_proofs (user_id, commitment_id, created_at DESC)");
+}
+async function ensureSavingsGoalsTable() {
+  await pgExec(`
+    CREATE TABLE IF NOT EXISTS savings_goals (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      plan_id TEXT NOT NULL,
+      plan_title TEXT NOT NULL,
+      title TEXT NOT NULL,
+      wallet_id INTEGER NOT NULL REFERENCES wallets(id),
+      target_amount DOUBLE PRECISION NOT NULL,
+      monthly_amount DOUBLE PRECISION NOT NULL,
+      years INTEGER NOT NULL DEFAULT 5,
+      created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
+      updated_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer
+    )
+  `);
+
+  await pgExec("CREATE INDEX IF NOT EXISTS savings_goals_user_created_idx ON savings_goals (user_id, created_at DESC)");
+  await pgExec("CREATE INDEX IF NOT EXISTS savings_goals_wallet_idx ON savings_goals (user_id, wallet_id)");
 }

@@ -1,7 +1,7 @@
-﻿import { eq, and, desc, like } from "drizzle-orm";
+import { eq, and, asc, desc, like } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, wallets, categories, transactions, recurringIncomes, obligations, variableObligationMonthStatuses, passwordResetRequests,
+  users, wallets, categories, transactions, recurringIncomes, obligations, variableObligationMonthStatuses, commitments, commitmentSteps, commitmentProofs, savingsGoals, passwordResetRequests,
   type User, type InsertUser,
   type Wallet, type InsertWallet,
   type Category, type InsertCategory,
@@ -9,6 +9,10 @@ import {
   type RecurringIncome, type InsertRecurringIncome,
   type Obligation, type InsertObligation,
   type VariableObligationMonthStatus, type InsertVariableObligationMonthStatus,
+  type Commitment, type InsertCommitment,
+  type CommitmentStep, type InsertCommitmentStep,
+  type CommitmentProof, type InsertCommitmentProof,
+  type SavingsGoal, type InsertSavingsGoal,
   type PasswordResetRequest, type InsertPasswordResetRequest,
 } from "@shared/schema";
 
@@ -56,6 +60,10 @@ export interface IStorage {
   updateWallet(id: number, userId: number, data: Partial<InsertWallet>): Promise<Wallet>;
   deleteWallet(id: number, userId: number): Promise<void>;
 
+
+  getSavingsGoals(userId: number): Promise<SavingsGoal[]>;
+  createSavingsGoal(userId: number, goal: InsertSavingsGoal): Promise<SavingsGoal>;
+  deleteSavingsGoal(id: number, userId: number): Promise<void>;
   getCategories(userId: number): Promise<Category[]>;
   getCategoriesByType(userId: number, type: string): Promise<Category[]>;
   createCategory(userId: number, category: InsertCategory): Promise<Category>;
@@ -73,6 +81,20 @@ export interface IStorage {
   updateRecurringIncome(id: number, userId: number, data: Partial<InsertRecurringIncome>): Promise<RecurringIncome>;
   deleteRecurringIncome(id: number, userId: number): Promise<void>;
   applyDueRecurringIncomes(userId: number): Promise<RecurringIncome[]>;
+
+  getCommitmentSteps(commitmentId: number, userId: number): Promise<CommitmentStep[]>;
+  createCommitmentStep(commitmentId: number, userId: number, step: InsertCommitmentStep): Promise<CommitmentStep>;
+  toggleCommitmentStep(commitmentId: number, stepId: number, userId: number): Promise<CommitmentStep>;
+  deleteCommitmentStep(commitmentId: number, stepId: number, userId: number): Promise<void>;
+  getCommitmentProofs(commitmentId: number, userId: number): Promise<CommitmentProof[]>;
+  createCommitmentProof(commitmentId: number, userId: number, proof: InsertCommitmentProof): Promise<CommitmentProof>;
+  deleteCommitmentProof(commitmentId: number, proofId: number, userId: number): Promise<void>;
+  getCommitments(userId: number): Promise<Commitment[]>;
+  getCommitmentById(id: number, userId: number): Promise<Commitment | undefined>;
+  createCommitment(userId: number, commitment: InsertCommitment): Promise<Commitment>;
+  updateCommitment(id: number, userId: number, data: Partial<InsertCommitment>): Promise<Commitment>;
+  deleteCommitment(id: number, userId: number): Promise<void>;
+  updateCommitmentStatus(id: number, userId: number, status: NonNullable<InsertCommitment["status"]>): Promise<Commitment>;
 
   getObligations(userId: number): Promise<Obligation[]>;
   getObligationById(id: number, userId: number): Promise<Obligation | undefined>;
@@ -180,6 +202,10 @@ export class DatabaseStorage implements IStorage {
     await db.delete(recurringIncomes).where(eq(recurringIncomes.userId, id));
     await db.delete(variableObligationMonthStatuses).where(eq(variableObligationMonthStatuses.userId, id));
     await db.delete(passwordResetRequests).where(eq(passwordResetRequests.userId, id));
+    await db.delete(commitmentProofs).where(eq(commitmentProofs.userId, id));
+    await db.delete(commitmentSteps).where(eq(commitmentSteps.userId, id));
+    await db.delete(commitments).where(eq(commitments.userId, id));
+    await db.delete(savingsGoals).where(eq(savingsGoals.userId, id));
     await db.delete(obligations).where(eq(obligations.userId, id));
     await db.delete(categories).where(eq(categories.userId, id));
     await db.delete(wallets).where(eq(wallets.userId, id));
@@ -230,9 +256,38 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteWallet(id: number, userId: number): Promise<void> {
+    await db.delete(savingsGoals).where(and(eq(savingsGoals.walletId, id), eq(savingsGoals.userId, userId)));
     await db.delete(wallets).where(and(eq(wallets.id, id), eq(wallets.userId, userId)));
   }
 
+
+  async getSavingsGoals(userId: number): Promise<SavingsGoal[]> {
+    return db
+      .select()
+      .from(savingsGoals)
+      .where(eq(savingsGoals.userId, userId))
+      .orderBy(desc(savingsGoals.createdAt), desc(savingsGoals.id));
+  }
+
+  async createSavingsGoal(userId: number, goal: InsertSavingsGoal): Promise<SavingsGoal> {
+    const wallet = await this.getWallet(goal.walletId, userId);
+    if (!wallet) {
+      throw new Error("المحفظة المحددة غير موجودة");
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    const [created] = await db
+      .insert(savingsGoals)
+      .values({ ...goal, userId, createdAt: now, updatedAt: now })
+      .returning();
+    return created;
+  }
+
+  async deleteSavingsGoal(id: number, userId: number): Promise<void> {
+    await db
+      .delete(savingsGoals)
+      .where(and(eq(savingsGoals.id, id), eq(savingsGoals.userId, userId)));
+  }
   async getCategories(userId: number): Promise<Category[]> {
     return db.select().from(categories).where(eq(categories.userId, userId));
   }
@@ -449,6 +504,154 @@ export class DatabaseStorage implements IStorage {
     return applied;
   }
 
+
+
+  async getCommitmentSteps(commitmentId: number, userId: number): Promise<CommitmentStep[]> {
+    const commitment = await this.getCommitmentById(commitmentId, userId);
+    if (!commitment) throw new Error("الالتزام غير موجود");
+
+    return db
+      .select()
+      .from(commitmentSteps)
+      .where(and(eq(commitmentSteps.commitmentId, commitmentId), eq(commitmentSteps.userId, userId)))
+      .orderBy(asc(commitmentSteps.position), asc(commitmentSteps.id));
+  }
+
+  async createCommitmentStep(commitmentId: number, userId: number, step: InsertCommitmentStep): Promise<CommitmentStep> {
+    const existingSteps = await this.getCommitmentSteps(commitmentId, userId);
+    const [created] = await db
+      .insert(commitmentSteps)
+      .values({
+        userId,
+        commitmentId,
+        title: step.title,
+        position: step.position ?? existingSteps.length,
+      })
+      .returning();
+    return created;
+  }
+
+  async toggleCommitmentStep(commitmentId: number, stepId: number, userId: number): Promise<CommitmentStep> {
+    const [step] = await db
+      .select()
+      .from(commitmentSteps)
+      .where(and(
+        eq(commitmentSteps.id, stepId),
+        eq(commitmentSteps.commitmentId, commitmentId),
+        eq(commitmentSteps.userId, userId),
+      ));
+
+    if (!step) throw new Error("الخطوة غير موجودة");
+
+    const nextCompleted = !step.isCompleted;
+    const [updated] = await db
+      .update(commitmentSteps)
+      .set({
+        isCompleted: nextCompleted,
+        completedAt: nextCompleted ? Math.floor(Date.now() / 1000) : null,
+      })
+      .where(eq(commitmentSteps.id, step.id))
+      .returning();
+    return updated;
+  }
+
+  async deleteCommitmentStep(commitmentId: number, stepId: number, userId: number): Promise<void> {
+    await db
+      .delete(commitmentSteps)
+      .where(and(
+        eq(commitmentSteps.id, stepId),
+        eq(commitmentSteps.commitmentId, commitmentId),
+        eq(commitmentSteps.userId, userId),
+      ));
+  }
+
+  async getCommitmentProofs(commitmentId: number, userId: number): Promise<CommitmentProof[]> {
+    const commitment = await this.getCommitmentById(commitmentId, userId);
+    if (!commitment) throw new Error("الالتزام غير موجود");
+
+    return db
+      .select()
+      .from(commitmentProofs)
+      .where(and(eq(commitmentProofs.commitmentId, commitmentId), eq(commitmentProofs.userId, userId)))
+      .orderBy(desc(commitmentProofs.createdAt), desc(commitmentProofs.id));
+  }
+
+  async createCommitmentProof(commitmentId: number, userId: number, proof: InsertCommitmentProof): Promise<CommitmentProof> {
+    await this.getCommitmentProofs(commitmentId, userId);
+    const [created] = await db
+      .insert(commitmentProofs)
+      .values({ ...proof, userId, commitmentId })
+      .returning();
+    return created;
+  }
+
+  async deleteCommitmentProof(commitmentId: number, proofId: number, userId: number): Promise<void> {
+    await db
+      .delete(commitmentProofs)
+      .where(and(
+        eq(commitmentProofs.id, proofId),
+        eq(commitmentProofs.commitmentId, commitmentId),
+        eq(commitmentProofs.userId, userId),
+      ));
+  }
+  async getCommitments(userId: number): Promise<Commitment[]> {
+    return db
+      .select()
+      .from(commitments)
+      .where(eq(commitments.userId, userId))
+      .orderBy(desc(commitments.dueDate), desc(commitments.createdAt));
+  }
+
+  async getCommitmentById(id: number, userId: number): Promise<Commitment | undefined> {
+    const [commitment] = await db
+      .select()
+      .from(commitments)
+      .where(and(eq(commitments.id, id), eq(commitments.userId, userId)));
+    return commitment;
+  }
+
+  async createCommitment(userId: number, commitment: InsertCommitment): Promise<Commitment> {
+    const now = Math.floor(Date.now() / 1000);
+    const [created] = await db
+      .insert(commitments)
+      .values({
+        ...commitment,
+        userId,
+        status: commitment.status ?? "active",
+        amount: commitment.amount ?? null,
+        personName: commitment.personName ?? null,
+        assetName: commitment.assetName ?? null,
+        notes: commitment.notes ?? "",
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+    return created;
+  }
+
+  async updateCommitment(id: number, userId: number, data: Partial<InsertCommitment>): Promise<Commitment> {
+    const [updated] = await db
+      .update(commitments)
+      .set({ ...data, updatedAt: Math.floor(Date.now() / 1000) })
+      .where(and(eq(commitments.id, id), eq(commitments.userId, userId)))
+      .returning();
+
+    if (!updated) {
+      throw new Error("الالتزام غير موجود");
+    }
+
+    return updated;
+  }
+
+  async deleteCommitment(id: number, userId: number): Promise<void> {
+    await db
+      .delete(commitments)
+      .where(and(eq(commitments.id, id), eq(commitments.userId, userId)));
+  }
+
+  async updateCommitmentStatus(id: number, userId: number, status: NonNullable<InsertCommitment["status"]>): Promise<Commitment> {
+    return this.updateCommitment(id, userId, { status });
+  }
   async getObligations(userId: number): Promise<Obligation[]> {
     const result = await db
       .select()

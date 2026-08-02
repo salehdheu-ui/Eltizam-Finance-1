@@ -6,8 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SavingsStatusCard } from "@/components/savings/SavingsStatusCard";
-import { useTransactions, useWallets } from "@/lib/hooks";
-import { loadSavingsGoals, saveSavingsGoals, type SavingsGoalDraft } from "@/lib/savings-goals";
+import { useCreateSavingsGoal, useDeleteSavingsGoal, useSavingsGoals, useTransactions, useWallets } from "@/lib/hooks";
 import { cn, formatCurrency, parseNumericInput } from "@/lib/utils";
 import { ArrowRight, CheckCircle2, Sparkles, Target, TrendingUp, Wallet } from "lucide-react";
 import { getSavingsDistributionLabel, savingsPlans } from "@/lib/savings-plans";
@@ -17,6 +16,9 @@ export default function SavingsPlans() {
   const [location, setLocation] = useLocation();
   const { data: transactions = [] } = useTransactions();
   const { data: wallets = [] } = useWallets();
+  const { data: savedGoals = [] } = useSavingsGoals();
+  const createGoal = useCreateSavingsGoal();
+  const deleteGoal = useDeleteSavingsGoal();
 
   const buildPlansSearchParams = (overrides?: Partial<{ tab: "savings" | "plans"; restoreScroll: "1" }>) => {
     const params = new URLSearchParams();
@@ -47,7 +49,6 @@ export default function SavingsPlans() {
   const [manualWants, setManualWants] = useState("");
   const [manualFixedObligations, setManualFixedObligations] = useState("");
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
-  const [savedGoals, setSavedGoals] = useState<SavingsGoalDraft[]>([]);
   const [goalDialogPlanId, setGoalDialogPlanId] = useState<string | null>(null);
   const [goalTitle, setGoalTitle] = useState("");
   const [goalAmount, setGoalAmount] = useState("");
@@ -107,16 +108,7 @@ export default function SavingsPlans() {
       setSelectedPlanId(savedPlanId);
     }
 
-    setSavedGoals(loadSavingsGoals());
   }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    saveSavingsGoals(savedGoals);
-  }, [savedGoals]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -248,25 +240,23 @@ export default function SavingsPlans() {
       return;
     }
 
-    const nextGoal: SavingsGoalDraft = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    setGoalError(null);
+    createGoal.mutate({
       planId: goalDialogPlan.id,
       planTitle: goalDialogPlan.title,
       title: goalTitle.trim(),
       walletId: selectedWallet.id,
-      walletName: selectedWallet.name,
       targetAmount: parsedGoalAmount,
       monthlyAmount: parsedGoalMonthlyAmount,
       years: planYears,
-      createdAt: Date.now(),
-    };
-
-    setSavedGoals((current) => [nextGoal, ...current]);
-    closeGoalDialog();
+    }, {
+      onSuccess: closeGoalDialog,
+      onError: () => setGoalError("تعذر حفظ الهدف الآن. حاول مرة أخرى."),
+    });
   };
 
-  const handleDeleteGoal = (goalId: string) => {
-    setSavedGoals((current) => current.filter((goal) => goal.id !== goalId));
+  const handleDeleteGoal = (goalId: number) => {
+    deleteGoal.mutate(goalId);
   };
 
   return (
@@ -629,11 +619,12 @@ export default function SavingsPlans() {
                                 <p className="font-bold text-foreground">{goal.title}</p>
                               </div>
                               <p className="mt-1 text-xs text-muted-foreground">مدة الخطة المختارة: {goal.years} سنوات</p>
-                              <p className="mt-1 text-xs text-muted-foreground">المحفظة المرتبطة: <span className="font-bold text-foreground">{linkedWallet?.name ?? goal.walletName ?? "غير محددة"}</span></p>
+                              <p className="mt-1 text-xs text-muted-foreground">المحفظة المرتبطة: <span className="font-bold text-foreground">{linkedWallet?.name ?? "غير محددة"}</span></p>
                             </div>
                             <button
                               type="button"
                               onClick={() => handleDeleteGoal(goal.id)}
+                              disabled={deleteGoal.isPending}
                               className="w-full rounded-xl border px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-muted sm:w-auto"
                             >
                               حذف الهدف
@@ -874,7 +865,7 @@ export default function SavingsPlans() {
             {goalError ? <p className="text-sm text-red-600">{goalError}</p> : null}
 
             <div className="flex flex-col gap-2 sm:flex-row-reverse">
-              <button type="button" onClick={handleCreateGoal} className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground hover:opacity-90">
+              <button type="button" onClick={handleCreateGoal} disabled={createGoal.isPending} className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground hover:opacity-90">
                 حفظ الهدف
               </button>
               <button type="button" onClick={closeGoalDialog} className="w-full rounded-xl border px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-muted">

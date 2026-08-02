@@ -1,5 +1,5 @@
 import { useLocation } from "wouter";
-import { Home, ListFilter, Wallet, PieChart, Plus, Settings, Loader2, BarChart3, Menu, X, ChevronLeft, Receipt, Landmark, LogOut, Sparkles, Goal, BookOpen } from "lucide-react";
+import { Home, ListFilter, Wallet, PieChart, Plus, Settings, Loader2, BarChart3, Menu, X, ChevronLeft, Receipt, Landmark, LogOut, Sparkles, Goal, BookOpen, ListChecks } from "lucide-react";
 import { CurrencyDisplay } from "@/components/ui/currency-display";
 import { cn, formatCurrency } from "@/lib/utils";
 import { Button } from "./ui/button";
@@ -210,7 +210,8 @@ export default function Layout({ children }: LayoutProps) {
     { href: "/wallets", icon: Wallet, label: "المحافظ" },
     { href: "/financial-plans", icon: Sparkles, label: "خطط الادخار" },
     { href: "/savings-goals", icon: Goal, label: "الأهداف الادخارية" },
-    { href: "/obligations", icon: Receipt, label: "الالتزامات" },
+    { href: "/commitments", icon: ListChecks, label: "التزاماتي" },
+    { href: "/obligations", icon: Receipt, label: "الالتزامات المالية" },
     { href: "/categories", icon: PieChart, label: "الأقسام" },
     { href: "/settings", icon: Settings, label: "الإعدادات" },
     { href: "/user-guide", icon: BookOpen, label: "دليل الاستخدام" },
@@ -410,7 +411,7 @@ export default function Layout({ children }: LayoutProps) {
                 <span className="flex-1 text-right">تسجيل الخروج</span>
               </Button>
               <div className="text-xs text-muted-foreground text-center">
-                التزام - نظام المالية الشخصية
+                التزام - نظام الالتزامات الشخصية
               </div>
             </div>
           </div>

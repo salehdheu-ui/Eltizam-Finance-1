@@ -110,6 +110,54 @@ export const variableObligationMonthStatuses = pgTable("variable_obligation_mont
   updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
 });
 
+export const commitments = pgTable("commitments", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  title: text("title").notNull(),
+  type: text("type").notNull().default("personal"),
+  status: text("status").notNull().default("active"),
+  frequency: text("frequency").notNull().default("one_time"),
+  dueDate: integer("due_date"),
+  amount: doublePrecision("amount"),
+  personName: text("person_name"),
+  assetName: text("asset_name"),
+  notes: text("notes").default(""),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+  updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+export const commitmentSteps = pgTable("commitment_steps", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  commitmentId: integer("commitment_id").notNull().references(() => commitments.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  position: integer("position").notNull().default(0),
+  isCompleted: boolean("is_completed").notNull().default(false),
+  completedAt: integer("completed_at"),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
+export const commitmentProofs = pgTable("commitment_proofs", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  commitmentId: integer("commitment_id").notNull().references(() => commitments.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull().default("note"),
+  label: text("label").notNull(),
+  value: text("value").notNull(),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+export const savingsGoals = pgTable("savings_goals", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  planId: text("plan_id").notNull(),
+  planTitle: text("plan_title").notNull(),
+  title: text("title").notNull(),
+  walletId: integer("wallet_id").notNull().references(() => wallets.id),
+  targetAmount: doublePrecision("target_amount").notNull(),
+  monthlyAmount: doublePrecision("monthly_amount").notNull(),
+  years: integer("years").notNull().default(5),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+  updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
@@ -213,6 +261,61 @@ export const insertVariableObligationMonthStatusSchema = createInsertSchema(vari
   note: z.string().max(500).nullable().optional(),
 });
 
+export const insertCommitmentSchema = createInsertSchema(commitments).pick({
+  title: true,
+  type: true,
+  status: true,
+  frequency: true,
+  dueDate: true,
+  amount: true,
+  personName: true,
+  assetName: true,
+  notes: true,
+}).extend({
+  title: z.string().trim().min(1, "يجب إدخال اسم الالتزام").max(160),
+  type: z.enum(["financial", "government", "home", "vehicle", "health", "family", "work", "personal"]),
+  status: z.enum(["active", "completed", "postponed", "archived"]).optional(),
+  frequency: z.enum(["one_time", "daily", "weekly", "monthly", "yearly"]),
+  dueDate: z.number().int().positive().nullable().optional(),
+  amount: z.number().finite().nonnegative().nullable().optional(),
+  personName: z.string().trim().max(120).nullable().optional(),
+  assetName: z.string().trim().max(120).nullable().optional(),
+  notes: z.string().max(1000).nullable().optional(),
+});
+export const insertCommitmentStepSchema = createInsertSchema(commitmentSteps).pick({
+  title: true,
+  position: true,
+}).extend({
+  title: z.string().trim().min(1, "يجب إدخال اسم الخطوة").max(200),
+  position: z.number().int().nonnegative().optional(),
+});
+
+export const insertCommitmentProofSchema = createInsertSchema(commitmentProofs).pick({
+  kind: true,
+  label: true,
+  value: true,
+}).extend({
+  kind: z.enum(["note", "link", "file", "receipt"]),
+  label: z.string().trim().min(1, "يجب إدخال اسم الإثبات").max(160),
+  value: z.string().trim().min(1, "يجب إدخال تفاصيل الإثبات").max(2000),
+});
+export const insertSavingsGoalSchema = createInsertSchema(savingsGoals).pick({
+  planId: true,
+  planTitle: true,
+  title: true,
+  walletId: true,
+  targetAmount: true,
+  monthlyAmount: true,
+  years: true,
+}).extend({
+  planId: z.string().trim().min(1).max(80),
+  planTitle: z.string().trim().min(1).max(160),
+  title: z.string().trim().min(1, "يجب إدخال اسم الهدف الادخاري").max(160),
+  walletId: z.number().int().positive("يجب اختيار محفظة صحيحة"),
+  targetAmount: z.number().finite().positive("المبلغ المستهدف يجب أن يكون أكبر من صفر"),
+  monthlyAmount: z.number().finite().positive("الادخار الشهري يجب أن يكون أكبر من صفر"),
+  years: z.union([z.literal(3), z.literal(5), z.literal(10)]),
+});
 export const insertPasswordResetRequestSchema = createInsertSchema(passwordResetRequests).pick({
   userId: true,
   status: true,
@@ -240,5 +343,13 @@ export type InsertObligation = z.infer<typeof insertObligationSchema>;
 export type Obligation = typeof obligations.$inferSelect;
 export type InsertVariableObligationMonthStatus = z.infer<typeof insertVariableObligationMonthStatusSchema>;
 export type VariableObligationMonthStatus = typeof variableObligationMonthStatuses.$inferSelect;
+export type InsertCommitment = z.infer<typeof insertCommitmentSchema>;
+export type Commitment = typeof commitments.$inferSelect;
+export type InsertCommitmentStep = z.infer<typeof insertCommitmentStepSchema>;
+export type CommitmentStep = typeof commitmentSteps.$inferSelect;
+export type InsertCommitmentProof = z.infer<typeof insertCommitmentProofSchema>;
+export type CommitmentProof = typeof commitmentProofs.$inferSelect;
+export type InsertSavingsGoal = z.infer<typeof insertSavingsGoalSchema>;
+export type SavingsGoal = typeof savingsGoals.$inferSelect;
 export type InsertPasswordResetRequest = z.infer<typeof insertPasswordResetRequestSchema>;
 export type PasswordResetRequest = typeof passwordResetRequests.$inferSelect;
