@@ -20,4 +20,4 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
 EXPOSE 5000
-CMD ["npm", "run", "start"]
+CMD ["node", "dist/index.cjs"]
