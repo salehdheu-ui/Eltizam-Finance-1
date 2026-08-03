@@ -145,6 +145,42 @@ export const commitmentProofs = pgTable("commitment_proofs", {
   value: text("value").notNull(),
   createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
 });
+export const bankEmailConnections = pgTable("bank_email_connections", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull().default("google"),
+  email: text("email").notNull(),
+  bankKey: text("bank_key").notNull(),
+  walletId: integer("wallet_id").notNull().references(() => wallets.id),
+  autoImport: boolean("auto_import").notNull().default(true),
+  accessTokenEncrypted: text("access_token_encrypted"),
+  refreshTokenEncrypted: text("refresh_token_encrypted"),
+  tokenExpiresAt: integer("token_expires_at"),
+  lastSyncAt: integer("last_sync_at"),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+  updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
+export const bankEmailEvents = pgTable("bank_email_events", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  connectionId: integer("connection_id").notNull().references(() => bankEmailConnections.id, { onDelete: "cascade" }),
+  providerMessageId: text("provider_message_id").notNull(),
+  fingerprint: text("fingerprint").notNull(),
+  bankKey: text("bank_key").notNull(),
+  sender: text("sender").default(""),
+  subject: text("subject").default(""),
+  snippet: text("snippet").default(""),
+  receivedAt: integer("received_at").notNull(),
+  status: text("status").notNull().default("review"),
+  transactionType: text("transaction_type"),
+  amount: doublePrecision("amount"),
+  merchant: text("merchant"),
+  categoryId: integer("category_id").references(() => categories.id),
+  commitmentId: integer("commitment_id").references(() => commitments.id),
+  transactionId: integer("transaction_id").references(() => transactions.id),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
 export const savingsGoals = pgTable("savings_goals", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id),
@@ -337,6 +373,8 @@ export type InsertCategory = z.infer<typeof insertCategorySchema>;
 export type Category = typeof categories.$inferSelect;
 export type InsertTransaction = z.infer<typeof insertTransactionSchema>;
 export type Transaction = typeof transactions.$inferSelect;
+export type BankEmailConnection = typeof bankEmailConnections.$inferSelect;
+export type BankEmailEvent = typeof bankEmailEvents.$inferSelect;
 export type InsertRecurringIncome = z.infer<typeof insertRecurringIncomeSchema>;
 export type RecurringIncome = typeof recurringIncomes.$inferSelect;
 export type InsertObligation = z.infer<typeof insertObligationSchema>;

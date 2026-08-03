@@ -1,4 +1,4 @@
-import { User, Shield, Bell, Moon, LogOut, ChevronLeft, Globe, Lock, Check, Wallet, PieChart, Receipt, Landmark, Goal } from "lucide-react";
+import { User, Shield, Bell, Moon, LogOut, ChevronLeft, Globe, Lock, Check, Wallet, PieChart, Receipt, Landmark, Goal, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -238,6 +238,18 @@ export default function Settings() {
         </div>
         </div>
 
+        <Card className="border-primary/15 p-4 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <Mail className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="font-bold">رسائل البنك</h3>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">اربط بريدك ليحوّل إشعارات البنك إلى معاملات تلقائيًا، دون إدخال يدوي.</p>
+              <Button className="mt-3" onClick={() => setLocation("/bank-inbox")}>إعداد رسائل البنك</Button>
+            </div>
+          </div>
+        </Card>
         <Card className="border-dashed p-4 shadow-sm">
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">

@@ -73,6 +73,11 @@ const databaseMigrations: DatabaseMigration[] = [
     name: "ensure_savings_goals_table",
     up: async () => { await ensureSavingsGoalsTable(); },
   },
+  {
+    version: 11,
+    name: "ensure_bank_email_import_tables",
+    up: async () => { await ensureBankEmailImportTables(); },
+  },
 ];
 
 async function ensureSchemaMigrationsTable() {
@@ -385,4 +390,51 @@ async function ensureSavingsGoalsTable() {
 
   await pgExec("CREATE INDEX IF NOT EXISTS savings_goals_user_created_idx ON savings_goals (user_id, created_at DESC)");
   await pgExec("CREATE INDEX IF NOT EXISTS savings_goals_wallet_idx ON savings_goals (user_id, wallet_id)");
+}
+
+async function ensureBankEmailImportTables() {
+  await pgExec(`
+    CREATE TABLE IF NOT EXISTS bank_email_connections (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      provider TEXT NOT NULL DEFAULT 'google',
+      email TEXT NOT NULL,
+      bank_key TEXT NOT NULL,
+      wallet_id INTEGER NOT NULL REFERENCES wallets(id),
+      auto_import BOOLEAN NOT NULL DEFAULT true,
+      access_token_encrypted TEXT,
+      refresh_token_encrypted TEXT,
+      token_expires_at INTEGER,
+      last_sync_at INTEGER,
+      created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
+      updated_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
+      UNIQUE(user_id, provider, email, bank_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS bank_email_events (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      connection_id INTEGER NOT NULL REFERENCES bank_email_connections(id) ON DELETE CASCADE,
+      provider_message_id TEXT NOT NULL,
+      fingerprint TEXT NOT NULL,
+      bank_key TEXT NOT NULL,
+      sender TEXT DEFAULT '',
+      subject TEXT DEFAULT '',
+      snippet TEXT DEFAULT '',
+      received_at INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'review',
+      transaction_type TEXT,
+      amount DOUBLE PRECISION,
+      merchant TEXT,
+      category_id INTEGER REFERENCES categories(id),
+      commitment_id INTEGER REFERENCES commitments(id),
+      transaction_id INTEGER REFERENCES transactions(id),
+      created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
+      UNIQUE(user_id, connection_id, provider_message_id),
+      UNIQUE(user_id, fingerprint)
+    )
+  `);
+
+  await pgExec("CREATE INDEX IF NOT EXISTS bank_email_connections_user_idx ON bank_email_connections (user_id, provider)");
+  await pgExec("CREATE INDEX IF NOT EXISTS bank_email_events_user_status_idx ON bank_email_events (user_id, status, received_at DESC)");
 }

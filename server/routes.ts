@@ -7,6 +7,7 @@ import { createManualBackup, listAllBackups } from "./backup";
 import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema } from "@shared/schema";
 import { buildWriteQueueKey, enqueueWrite } from "./write-queue";
 import { z } from "zod";
+import { registerBankInboxRoutes } from "./bank-inbox";
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.isAuthenticated()) {
@@ -141,6 +142,7 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   setupAuth(app);
+  registerBankInboxRoutes(app);
 
   app.get("/api/admin/stats", requireSystemAdmin, async (_req, res, next) => {
     try {
