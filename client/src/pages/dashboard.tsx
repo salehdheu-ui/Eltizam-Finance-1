@@ -1,4 +1,4 @@
-import { ArrowDownLeft, ArrowUpRight, Eye, EyeOff, Settings, Loader2, Receipt, Calendar, Wallet, PieChart, ChevronLeft, Sparkles, Goal } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Eye, EyeOff, Settings, Loader2, Receipt, Calendar, Wallet, PieChart, ChevronLeft, Sparkles, Goal, ListChecks } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CurrencyDisplay } from "@/components/ui/currency-display";
@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { calculateSavingsGoalProgress, calculateSavingsGoalSavedAmount } from "@/lib/savings-goals";
 import { cn, formatCurrency, formatObligationDueDate, formatRelativeArabicDate, getUpcomingObligations, normalizeArabicText } from "@/lib/utils";
 import { Link, useLocation } from "wouter";
-import { useCategories, useDashboard, useUser, useObligations, useSavingsGoals, useWallets } from "@/lib/hooks";
+import { useCategories, useCommitments, useDashboard, useUser, useObligations, useSavingsGoals, useWallets } from "@/lib/hooks";
 
 const categoryColors: Record<string, { icon: string; bg: string }> = {
   "طعام": { icon: "🍔", bg: "bg-orange-100 dark:bg-orange-950" },
@@ -28,6 +28,7 @@ export default function Dashboard() {
   const { data: wallets = [] } = useWallets();
   const { data: savingsGoals = [] } = useSavingsGoals();
   const { data: categories = [] } = useCategories();
+  const { data: commitments = [] } = useCommitments();
   
   const upcomingObligations = getUpcomingObligations(obligations, 5);
   const hasWallets = wallets.length > 0;
@@ -36,6 +37,12 @@ export default function Dashboard() {
   const isInitialLoading = isLoading || isLoadingObligations;
   const totalUpcomingObligations = upcomingObligations.reduce((sum, obligation) => sum + obligation.amount, 0);
   const netBalance = (dashboard?.totalIncome ?? 0) - (dashboard?.totalExpenses ?? 0);
+  const activeCommitments = commitments.filter((commitment) => commitment.status === "active");
+  const nowInSeconds = Math.floor(Date.now() / 1000);
+  const sevenDaysFromNow = nowInSeconds + (7 * 24 * 60 * 60);
+  const dueSoonCommitments = activeCommitments.filter(
+    (commitment) => commitment.dueDate && commitment.dueDate >= nowInSeconds && commitment.dueDate <= sevenDaysFromNow,
+  );
   const onboardingSteps = [
     {
       key: "wallets",
@@ -226,6 +233,40 @@ export default function Dashboard() {
         </Card>
       ) : null}
 
+      <Card className="overflow-hidden border-primary/20 bg-gradient-to-br from-primary/10 via-background to-background shadow-sm">
+        <CardContent className="p-4 sm:p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="mb-1 text-sm font-semibold text-primary">التزاماتي</p>
+              <h3 className="text-base font-bold sm:text-lg">كل التزامات حياتك في مكان واحد</h3>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                مالي، شخصي، صحي، أسري أو متعلق بالعمل.
+              </p>
+            </div>
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
+              <ListChecks className="h-5 w-5" />
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="rounded-2xl border border-border/60 bg-background/80 p-3">
+              <p className="text-xs text-muted-foreground">التزامات نشطة</p>
+              <p className="mt-1 text-2xl font-black text-foreground">{activeCommitments.length}</p>
+            </div>
+            <div className="rounded-2xl border border-border/60 bg-background/80 p-3">
+              <p className="text-xs text-muted-foreground">خلال 7 أيام</p>
+              <p className="mt-1 text-2xl font-black text-amber-600">{dueSoonCommitments.length}</p>
+            </div>
+          </div>
+
+          <Link href="/commitments">
+            <Button className="mt-4 w-full sm:w-auto">
+              {activeCommitments.length > 0 ? "عرض التزاماتي" : "إضافة أول التزام"}
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+          </Link>
+        </CardContent>
+      </Card>
       <Card className="border-emerald-200 bg-emerald-50/70 shadow-sm">
         <CardContent className="p-4">
           <div className="flex items-start justify-between gap-3">

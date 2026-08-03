@@ -200,6 +200,7 @@ export default function Layout({ children }: LayoutProps) {
   // Main bottom navigation (most important)
   const mainNavItems = [
     { href: "/", icon: Home, label: "الرئيسية" },
+    { href: "/commitments", icon: ListChecks, label: "التزاماتي" },
     { href: "/transactions", icon: ListFilter, label: "المعاملات" },
     { href: "/reports", icon: BarChart3, label: "التقارير" },
   ];
