@@ -90,3 +90,28 @@ export async function sendPasswordResetEmail(input: PasswordResetEmailInput) {
     html,
   });
 }
+
+export async function sendIntegrationEmail(input: {
+  to: string;
+  subject: string;
+  message: string;
+  actionUrl?: string;
+}) {
+  const transporter = await getTransporter();
+  const safeMessage = input.message.replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
+  })[character] || character);
+  const html = `
+    <div dir="rtl" style="font-family:Arial,sans-serif;line-height:1.8;color:#0f172a;max-width:640px;margin:auto">
+      <h2>التزام</h2>
+      <p>${safeMessage}</p>
+      ${input.actionUrl ? `<p><a href="${input.actionUrl}" style="display:inline-block;padding:12px 18px;background:#2563eb;color:#fff;text-decoration:none;border-radius:10px;font-weight:700">فتح الالتزام</a></p>` : ""}
+    </div>`;
+  await transporter.sendMail({
+    from: smtpFrom,
+    to: input.to,
+    subject: input.subject,
+    text: `${input.message}${input.actionUrl ? `\n${input.actionUrl}` : ""}`,
+    html,
+  });
+}

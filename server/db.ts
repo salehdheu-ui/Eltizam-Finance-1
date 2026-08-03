@@ -78,6 +78,16 @@ const databaseMigrations: DatabaseMigration[] = [
     name: "ensure_bank_email_import_tables",
     up: async () => { await ensureBankEmailImportTables(); },
   },
+  {
+    version: 12,
+    name: "ensure_commitment_automation_tables",
+    up: async () => { await ensureCommitmentAutomationTables(); },
+  },
+  {
+    version: 13,
+    name: "ensure_user_integrations_tables",
+    up: async () => { await ensureUserIntegrationsTables(); },
+  },
 ];
 
 async function ensureSchemaMigrationsTable() {
@@ -370,6 +380,142 @@ async function ensureCommitmentStepsAndProofs() {
 
   await pgExec("CREATE INDEX IF NOT EXISTS commitment_steps_commitment_idx ON commitment_steps (user_id, commitment_id, position)");
   await pgExec("CREATE INDEX IF NOT EXISTS commitment_proofs_commitment_idx ON commitment_proofs (user_id, commitment_id, created_at DESC)");
+}
+async function ensureCommitmentAutomationTables() {
+  await pgExec(`
+    CREATE TABLE IF NOT EXISTS commitment_automation_settings (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      commitment_id INTEGER NOT NULL REFERENCES commitments(id) ON DELETE CASCADE,
+      enabled BOOLEAN NOT NULL DEFAULT true,
+      reminder_minutes INTEGER NOT NULL DEFAULT 1440,
+      escalation_minutes INTEGER NOT NULL DEFAULT 1440,
+      auto_close_on_proof BOOLEAN NOT NULL DEFAULT true,
+      auto_close_on_payment BOOLEAN NOT NULL DEFAULT true,
+      delegated_to TEXT,
+      delegated_contact TEXT,
+      snoozed_until INTEGER,
+      last_occurrence_at INTEGER,
+      next_occurrence_at INTEGER,
+      created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
+      updated_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
+      UNIQUE(user_id, commitment_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS commitment_occurrences (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      commitment_id INTEGER NOT NULL REFERENCES commitments(id) ON DELETE CASCADE,
+      scheduled_for INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      snoozed_until INTEGER,
+      completed_at INTEGER,
+      source TEXT NOT NULL DEFAULT 'scheduler',
+      created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
+      updated_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
+      UNIQUE(user_id, commitment_id, scheduled_for)
+    );
+
+    CREATE TABLE IF NOT EXISTS commitment_automation_logs (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      commitment_id INTEGER NOT NULL REFERENCES commitments(id) ON DELETE CASCADE,
+      occurrence_id INTEGER REFERENCES commitment_occurrences(id) ON DELETE CASCADE,
+      action TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      metadata TEXT,
+      undo_payload TEXT,
+      undone_at INTEGER,
+      seen_at INTEGER,
+      created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer
+    );
+  `);
+
+  await pgExec("CREATE INDEX IF NOT EXISTS commitment_automation_settings_enabled_idx ON commitment_automation_settings (enabled, next_occurrence_at)");
+  await pgExec("CREATE INDEX IF NOT EXISTS commitment_occurrences_due_idx ON commitment_occurrences (user_id, status, scheduled_for)");
+  await pgExec("CREATE INDEX IF NOT EXISTS commitment_automation_logs_commitment_idx ON commitment_automation_logs (user_id, commitment_id, created_at DESC)");
+  await pgExec("CREATE INDEX IF NOT EXISTS commitment_automation_logs_alerts_idx ON commitment_automation_logs (user_id, seen_at, action, created_at DESC)");
+}
+async function ensureUserIntegrationsTables() {
+  await pgExec(`
+    CREATE TABLE IF NOT EXISTS user_notification_settings (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+      email_enabled BOOLEAN NOT NULL DEFAULT false,
+      push_enabled BOOLEAN NOT NULL DEFAULT false,
+      whatsapp_enabled BOOLEAN NOT NULL DEFAULT false,
+      whatsapp_number TEXT,
+      telegram_enabled BOOLEAN NOT NULL DEFAULT false,
+      telegram_chat_id TEXT,
+      created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
+      updated_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer
+    );
+
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      endpoint TEXT NOT NULL UNIQUE,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      user_agent TEXT,
+      created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
+      updated_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer
+    );
+
+    CREATE TABLE IF NOT EXISTS integration_documents (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      commitment_id INTEGER REFERENCES commitments(id) ON DELETE SET NULL,
+      kind TEXT NOT NULL DEFAULT 'other',
+      original_name TEXT NOT NULL,
+      stored_name TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer
+    );
+
+    CREATE TABLE IF NOT EXISTS integration_webhooks (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      url TEXT NOT NULL,
+      secret TEXT NOT NULL,
+      events TEXT NOT NULL DEFAULT 'reminder,escalated,completed',
+      enabled BOOLEAN NOT NULL DEFAULT true,
+      last_delivery_at INTEGER,
+      last_status TEXT,
+      created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
+      updated_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer
+    );
+
+    CREATE TABLE IF NOT EXISTS integration_webhook_deliveries (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      webhook_id INTEGER NOT NULL REFERENCES integration_webhooks(id) ON DELETE CASCADE,
+      event TEXT NOT NULL,
+      response_status INTEGER,
+      status TEXT NOT NULL,
+      error TEXT,
+      created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer
+    );
+
+    CREATE TABLE IF NOT EXISTS calendar_event_links (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      commitment_id INTEGER NOT NULL REFERENCES commitments(id) ON DELETE CASCADE,
+      provider TEXT NOT NULL,
+      external_event_id TEXT NOT NULL,
+      synced_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
+      UNIQUE(user_id, commitment_id, provider)
+    );
+  `);
+
+  await pgExec("CREATE INDEX IF NOT EXISTS push_subscriptions_user_idx ON push_subscriptions (user_id)");
+  await pgExec("CREATE INDEX IF NOT EXISTS integration_documents_user_idx ON integration_documents (user_id, created_at DESC)");
+  await pgExec("CREATE INDEX IF NOT EXISTS integration_documents_commitment_idx ON integration_documents (user_id, commitment_id)");
+  await pgExec("CREATE INDEX IF NOT EXISTS integration_webhooks_user_idx ON integration_webhooks (user_id, enabled)");
+  await pgExec("CREATE INDEX IF NOT EXISTS integration_webhook_deliveries_idx ON integration_webhook_deliveries (user_id, webhook_id, created_at DESC)");
+  await pgExec("CREATE INDEX IF NOT EXISTS calendar_event_links_user_idx ON calendar_event_links (user_id, provider)");
 }
 async function ensureSavingsGoalsTable() {
   await pgExec(`

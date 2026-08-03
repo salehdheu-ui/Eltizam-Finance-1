@@ -493,6 +493,112 @@ export function useDeleteCommitment() {
     },
   });
 }
+
+export type CommitmentAutomationData = {
+  settings: {
+    id: number;
+    enabled: boolean;
+    reminderMinutes: number;
+    escalationMinutes: number;
+    autoCloseOnProof: boolean;
+    autoCloseOnPayment: boolean;
+    delegatedTo: string | null;
+    delegatedContact: string | null;
+    snoozedUntil: number | null;
+    nextOccurrenceAt: number | null;
+  };
+  occurrences: Array<{
+    id: number;
+    scheduledFor: number;
+    status: string;
+    snoozedUntil: number | null;
+    completedAt: number | null;
+  }>;
+  logs: Array<{
+    id: number;
+    action: string;
+    summary: string;
+    undoPayload: string | null;
+    undoneAt: number | null;
+    createdAt: number;
+  }>;
+};
+
+function invalidateCommitmentAutomation(id: number) {
+  queryClient.invalidateQueries({ queryKey: ["/api/commitments", id, "automation"] });
+  queryClient.invalidateQueries({ queryKey: ["/api/commitments", id] });
+  queryClient.invalidateQueries({ queryKey: ["/api/commitments"] });
+}
+
+export function useCommitmentAutomation(id: number | undefined) {
+  return useQuery<CommitmentAutomationData>({
+    queryKey: ["/api/commitments", id, "automation"],
+    enabled: !!id,
+    refetchInterval: 60_000,
+  });
+}
+
+export function useUpdateCommitmentAutomation(id: number) {
+  return useMutation({
+    mutationFn: (data: Partial<CommitmentAutomationData["settings"]>) =>
+      apiRequest("PATCH", `/api/commitments/${id}/automation`, data),
+    onSuccess: () => invalidateCommitmentAutomation(id),
+  });
+}
+
+export function useSnoozeCommitment(id: number) {
+  return useMutation({
+    mutationFn: (minutes: number) =>
+      apiRequest("POST", `/api/commitments/${id}/automation/snooze`, { minutes }),
+    onSuccess: () => invalidateCommitmentAutomation(id),
+  });
+}
+
+export function useDelegateCommitment(id: number) {
+  return useMutation({
+    mutationFn: (data: { delegatedTo: string | null; delegatedContact?: string | null }) =>
+      apiRequest("POST", `/api/commitments/${id}/automation/delegate`, data),
+    onSuccess: () => invalidateCommitmentAutomation(id),
+  });
+}
+
+export function useRunCommitmentAutomation(id: number) {
+  return useMutation({
+    mutationFn: () => apiRequest("POST", `/api/commitments/${id}/automation/run`),
+    onSuccess: () => invalidateCommitmentAutomation(id),
+  });
+}
+
+export function useUndoCommitmentAutomation(id: number) {
+  return useMutation({
+    mutationFn: (logId: number) => apiRequest("POST", `/api/automation/logs/${logId}/undo`),
+    onSuccess: () => invalidateCommitmentAutomation(id),
+  });
+}
+
+export type AutomationAlert = {
+  id: number;
+  commitmentId: number;
+  action: "reminder" | "escalated";
+  summary: string;
+  createdAt: number;
+};
+
+export function useAutomationAlerts() {
+  return useQuery<AutomationAlert[]>({
+    queryKey: ["/api/automation/alerts"],
+    refetchInterval: 30_000,
+  });
+}
+
+export function useMarkAutomationAlertSeen() {
+  return useMutation({
+    mutationFn: (id: number) => apiRequest("POST", `/api/automation/logs/${id}/seen`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/automation/alerts"] });
+    },
+  });
+}
 // Obligations Hooks
 export function useObligations() {
   return useQuery<Obligation[]>({
@@ -634,5 +740,96 @@ export function useAdminRejectPasswordReset() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/password-reset-requests"] });
     },
+  });
+}
+
+export type IntegrationsData = {
+  settings: {
+    id: number;
+    emailEnabled: boolean;
+    pushEnabled: boolean;
+    whatsappEnabled: boolean;
+    whatsappNumber: string | null;
+    telegramEnabled: boolean;
+    telegramChatId: string | null;
+  };
+  providers: {
+    email: { configured: boolean };
+    push: { configured: boolean; publicKey: string | null; subscriptions: number };
+    whatsapp: { configured: boolean };
+    telegram: { configured: boolean; botUsername: string | null };
+  };
+  accounts: Array<{ provider: "google" | "microsoft"; email: string }>;
+  documents: Array<{ id: number; commitmentId: number | null; kind: string; originalName: string; mimeType: string; size: number; createdAt: number }>;
+  webhooks: Array<{ id: number; name: string; url: string; events: string; enabled: boolean; lastDeliveryAt: number | null; lastStatus: string | null; createdAt: number }>;
+};
+
+export function useIntegrations() {
+  return useQuery<IntegrationsData>({ queryKey: ["/api/integrations"] });
+}
+
+function refreshIntegrations() {
+  return queryClient.invalidateQueries({ queryKey: ["/api/integrations"] });
+}
+
+export function useUpdateIntegrationNotifications() {
+  return useMutation({
+    mutationFn: (data: Partial<IntegrationsData["settings"]>) => apiRequest("PATCH", "/api/integrations/notifications", data),
+    onSuccess: refreshIntegrations,
+  });
+}
+
+export function useTestIntegrationNotification() {
+  return useMutation({ mutationFn: (channel: "email" | "push" | "whatsapp" | "telegram") => apiRequest("POST", "/api/integrations/notifications/test", { channel }) });
+}
+
+export function useSyncIntegrationCalendar() {
+  return useMutation({
+    mutationFn: async (provider: "google" | "microsoft") => {
+      const response = await apiRequest("POST", `/api/integrations/calendar/${provider}/sync`);
+      return response.json() as Promise<{ synced: number }>;
+    },
+    onSuccess: refreshIntegrations,
+  });
+}
+
+export function useCreateIntegrationWebhook() {
+  return useMutation({
+    mutationFn: async (data: { name: string; url: string; events: string[] }) => {
+      const response = await apiRequest("POST", "/api/integrations/webhooks", data);
+      return response.json() as Promise<{ id: number; signingSecret: string }>;
+    },
+    onSuccess: refreshIntegrations,
+  });
+}
+
+export function useToggleIntegrationWebhook() {
+  return useMutation({
+    mutationFn: ({ id, enabled }: { id: number; enabled: boolean }) => apiRequest("PATCH", `/api/integrations/webhooks/${id}`, { enabled }),
+    onSuccess: refreshIntegrations,
+  });
+}
+
+export function useTestIntegrationWebhook() {
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const response = await apiRequest("POST", `/api/integrations/webhooks/${id}/test`);
+      return response.json() as Promise<{ status: string; responseStatus: number | null; error: string | null }>;
+    },
+    onSuccess: refreshIntegrations,
+  });
+}
+
+export function useDeleteIntegrationWebhook() {
+  return useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/integrations/webhooks/${id}`),
+    onSuccess: refreshIntegrations,
+  });
+}
+
+export function useDeleteIntegrationDocument() {
+  return useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/integrations/documents/${id}`),
+    onSuccess: refreshIntegrations,
   });
 }

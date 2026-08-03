@@ -1,10 +1,10 @@
 import { useLocation } from "wouter";
-import { Home, ListFilter, Plus, Settings, Loader2, BarChart3, Menu, X, ChevronLeft, Receipt, Landmark, LogOut, Sparkles, Goal, BookOpen, ListChecks } from "lucide-react";
+import { Home, ListFilter, Plus, Settings, Loader2, BarChart3, Menu, X, ChevronLeft, Receipt, Landmark, LogOut, Sparkles, Goal, BookOpen, ListChecks, Link2 } from "lucide-react";
 import { CurrencyDisplay } from "@/components/ui/currency-display";
 import { cn, formatCurrency } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Drawer,
   DrawerClose,
@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError, apiRequest } from "@/lib/queryClient";
 import { queryClient } from "@/lib/queryClient";
-import { useCategories, useWallets, useCreateTransaction, useUser, useObligation, useVariableObligationStatuses, useLogout } from "@/lib/hooks";
+import { useAutomationAlerts, useCategories, useWallets, useCreateTransaction, useUser, useMarkAutomationAlertSeen, useObligation, useVariableObligationStatuses, useLogout } from "@/lib/hooks";
 
 function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
@@ -89,6 +89,9 @@ export default function Layout({ children }: LayoutProps) {
   const { data: sourceObligationStatuses = [] } = useVariableObligationStatuses(sourceObligationNumericId);
   const createTransaction = useCreateTransaction();
   const logoutMutation = useLogout();
+  const { data: automationAlerts = [] } = useAutomationAlerts();
+  const markAutomationAlertSeen = useMarkAutomationAlertSeen();
+  const shownAutomationAlerts = useRef(new Set<number>());
   const isSubmittingTransaction = createTransaction.isPending;
   const isSystemAdmin = user?.role === "system_admin";
 
@@ -161,6 +164,19 @@ export default function Layout({ children }: LayoutProps) {
   }, []);
 
   useEffect(() => {
+    for (const alert of automationAlerts) {
+      if (shownAutomationAlerts.current.has(alert.id)) continue;
+      shownAutomationAlerts.current.add(alert.id);
+      toast({
+        title: alert.action === "escalated" ? "التزام متأخر" : "تذكير بالتزام",
+        description: alert.summary,
+        variant: alert.action === "escalated" ? "destructive" : "default",
+      });
+      markAutomationAlertSeen.mutate(alert.id);
+    }
+  }, [automationAlerts, markAutomationAlertSeen, toast]);
+
+  useEffect(() => {
     if (isVariableObligationQuickPay) {
       const matchingOption = quickPayAmountOptions.find((option) => option.amount.toString() === txAmount);
       if (!matchingOption && quickPayAmountOptions.length > 0) {
@@ -207,6 +223,7 @@ export default function Layout({ children }: LayoutProps) {
 
   // Sidebar navigation (less frequently used)
   const sidebarItems = [
+    { href: "/integrations", icon: Link2, label: "التكاملات" },
     { href: "/settings", icon: Settings, label: "الإعدادات" },
     { href: "/user-guide", icon: BookOpen, label: "دليل الاستخدام" },
     ...(isSystemAdmin ? [{ href: "/admin/users", icon: Settings, label: "إدارة المستخدمين" }] : []),

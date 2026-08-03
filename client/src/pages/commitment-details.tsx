@@ -28,6 +28,7 @@ import {
   useToggleCommitmentStep,
   useUpdateCommitmentStatus,
 } from "@/lib/hooks";
+import { CommitmentAutomationCard } from "@/components/commitment-automation-card";
 
 const typeLabels: Record<string, string> = {
   financial: "مالي",
@@ -149,6 +150,8 @@ export default function CommitmentDetails() {
           ) : null}
         </CardContent>
       </Card>
+
+      <CommitmentAutomationCard commitment={commitment} />
 
       <Card>
         <CardHeader className="pb-3">

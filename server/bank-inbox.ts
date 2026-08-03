@@ -8,6 +8,7 @@ import { storage } from "./storage";
 import { BANK_PROFILES, buildBankSearchQuery, createMessageFingerprint, parseBankMessage, type BankKey } from "./bank-message-parser";
 import { establishUserSession, hashPlainPassword } from "./auth";
 import { writeAuditEvent } from "./audit";
+import { processCommitmentAutomation } from "./commitment-automation";
 
 const connectSchema = z.object({
   bankKey: z.enum(["bank_muscat", "nbo", "bank_dhofar", "sohar_international", "ahlibank", "oman_arab_bank", "bank_nizwa", "other"]).optional().default("other"),
@@ -220,7 +221,7 @@ async function microsoftAccessToken(connection: typeof bankEmailConnections.$inf
       client_secret: process.env.MICROSOFT_CLIENT_SECRET,
       refresh_token: refreshToken,
       grant_type: "refresh_token",
-      scope: "openid email offline_access User.Read Mail.Read",
+      scope: "openid email offline_access User.Read Mail.Read Calendars.ReadWrite",
     }),
   });
   if (!response.ok) throw new Error("تعذر تحديث صلاحية Outlook");
@@ -232,6 +233,11 @@ async function microsoftAccessToken(connection: typeof bankEmailConnections.$inf
     updatedAt: now,
   }).where(eq(bankEmailConnections.id, connection.id));
   return token.access_token;
+}
+
+export async function getBankConnectionAccessToken(connection: typeof bankEmailConnections.$inferSelect) {
+  return connection.provider === "google"
+    ? googleAccessToken(connection) : microsoftAccessToken(connection);
 }
 function headerValue(headers: Array<{ name?: string; value?: string }> | undefined, name: string) {
   return headers?.find((header) => header.name?.toLowerCase() === name.toLowerCase())?.value || "";
@@ -315,6 +321,13 @@ async function importParsedEvent(params: {
     });
     await db.update(transactions).set({ date: params.receivedAt }).where(eq(transactions.id, transaction.id));
     const [imported] = await db.update(bankEmailEvents).set({ status: "imported", transactionId: transaction.id }).where(eq(bankEmailEvents.id, event.id)).returning();
+    if (links.commitmentId) {
+      const [linkedCommitment] = await db.select().from(commitments).where(and(
+        eq(commitments.id, links.commitmentId),
+        eq(commitments.userId, params.userId),
+      ));
+      if (linkedCommitment) void processCommitmentAutomation(linkedCommitment).catch(() => undefined);
+    }
     return { state: "imported" as const, event: imported };
   } catch {
     return { state: "review" as const, event };
@@ -468,7 +481,7 @@ export function registerBankInboxRoutes(app: Express) {
       url.searchParams.set("client_id", process.env.GOOGLE_CLIENT_ID);
       url.searchParams.set("redirect_uri", redirectUri);
       url.searchParams.set("response_type", "code");
-      url.searchParams.set("scope", "openid email profile https://www.googleapis.com/auth/gmail.readonly");
+      url.searchParams.set("scope", "openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.events");
       url.searchParams.set("access_type", "offline");
       url.searchParams.set("prompt", "consent");
       url.searchParams.set("state", state);
@@ -522,7 +535,7 @@ export function registerBankInboxRoutes(app: Express) {
       url.searchParams.set("redirect_uri", redirectUri);
       url.searchParams.set("response_type", "code");
       url.searchParams.set("response_mode", "query");
-      url.searchParams.set("scope", "openid email profile offline_access User.Read Mail.Read");
+      url.searchParams.set("scope", "openid email profile offline_access User.Read Mail.Read Calendars.ReadWrite");
       url.searchParams.set("state", state);
       res.redirect(url.toString());
     } catch (error) { next(error); }
@@ -540,7 +553,7 @@ export function registerBankInboxRoutes(app: Express) {
       const tokenResponse = await fetch(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ code: String(req.query.code || ""), client_id: process.env.MICROSOFT_CLIENT_ID!, client_secret: process.env.MICROSOFT_CLIENT_SECRET!, redirect_uri: redirectUri, grant_type: "authorization_code", scope: "openid email profile offline_access User.Read Mail.Read" }),
+        body: new URLSearchParams({ code: String(req.query.code || ""), client_id: process.env.MICROSOFT_CLIENT_ID!, client_secret: process.env.MICROSOFT_CLIENT_SECRET!, redirect_uri: redirectUri, grant_type: "authorization_code", scope: "openid email profile offline_access User.Read Mail.Read Calendars.ReadWrite" }),
       });
       if (!tokenResponse.ok) throw new Error("token exchange failed");
       const token = await tokenResponse.json() as { access_token: string; refresh_token?: string; expires_in?: number };
@@ -607,7 +620,7 @@ export function registerBankInboxRoutes(app: Express) {
       url.searchParams.set("client_id", process.env.GOOGLE_CLIENT_ID);
       url.searchParams.set("redirect_uri", redirectUri);
       url.searchParams.set("response_type", "code");
-      url.searchParams.set("scope", "openid email https://www.googleapis.com/auth/gmail.readonly");
+      url.searchParams.set("scope", "openid email https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.events");
       url.searchParams.set("access_type", "offline");
       url.searchParams.set("prompt", "consent");
       url.searchParams.set("state", state);
@@ -690,7 +703,7 @@ export function registerBankInboxRoutes(app: Express) {
       url.searchParams.set("redirect_uri", redirectUri);
       url.searchParams.set("response_type", "code");
       url.searchParams.set("response_mode", "query");
-      url.searchParams.set("scope", "openid email offline_access User.Read Mail.Read");
+      url.searchParams.set("scope", "openid email offline_access User.Read Mail.Read Calendars.ReadWrite");
       url.searchParams.set("state", state);
       res.json({ authUrl: url.toString() });
     } catch (error) { next(error); }
@@ -708,7 +721,7 @@ export function registerBankInboxRoutes(app: Express) {
       const tokenResponse = await fetch(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ code: String(req.query.code || ""), client_id: process.env.MICROSOFT_CLIENT_ID!, client_secret: process.env.MICROSOFT_CLIENT_SECRET!, redirect_uri: redirectUri, grant_type: "authorization_code", scope: "openid email offline_access User.Read Mail.Read" }),
+        body: new URLSearchParams({ code: String(req.query.code || ""), client_id: process.env.MICROSOFT_CLIENT_ID!, client_secret: process.env.MICROSOFT_CLIENT_SECRET!, redirect_uri: redirectUri, grant_type: "authorization_code", scope: "openid email offline_access User.Read Mail.Read Calendars.ReadWrite" }),
       });
       if (!tokenResponse.ok) throw new Error("token exchange failed");
       const token = await tokenResponse.json() as { access_token: string; refresh_token?: string; expires_in?: number };

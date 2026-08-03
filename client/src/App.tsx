@@ -21,6 +21,7 @@ import Login from "@/pages/login";
 import SavingsPlans from "@/pages/savings-plans";
 import Settings from "@/pages/settings";
 import BankInbox from "@/pages/bank-inbox";
+import Integrations from "@/pages/integrations";
 import UserGuidePage from "@/pages/user-guide";
 import AdminUsers from "@/pages/admin-users";
 import { useUser } from "@/lib/hooks";
@@ -132,6 +133,7 @@ function Router() {
         <Route path="/commitments" component={Commitments} />
         <Route path="/settings" component={Settings} />
         <Route path="/bank-inbox" component={BankInbox} />
+        <Route path="/integrations" component={Integrations} />
         <Route path="/user-guide" component={UserGuidePage} />
         {isSystemAdmin ? (
           <Route path="/admin/users" component={AdminUsers} />

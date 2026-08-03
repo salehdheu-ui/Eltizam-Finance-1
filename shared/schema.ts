@@ -145,6 +145,48 @@ export const commitmentProofs = pgTable("commitment_proofs", {
   value: text("value").notNull(),
   createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
 });
+export const commitmentAutomationSettings = pgTable("commitment_automation_settings", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  commitmentId: integer("commitment_id").notNull().references(() => commitments.id, { onDelete: "cascade" }),
+  enabled: boolean("enabled").notNull().default(true),
+  reminderMinutes: integer("reminder_minutes").notNull().default(1440),
+  escalationMinutes: integer("escalation_minutes").notNull().default(1440),
+  autoCloseOnProof: boolean("auto_close_on_proof").notNull().default(true),
+  autoCloseOnPayment: boolean("auto_close_on_payment").notNull().default(true),
+  delegatedTo: text("delegated_to"),
+  delegatedContact: text("delegated_contact"),
+  snoozedUntil: integer("snoozed_until"),
+  lastOccurrenceAt: integer("last_occurrence_at"),
+  nextOccurrenceAt: integer("next_occurrence_at"),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+  updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+export const commitmentOccurrences = pgTable("commitment_occurrences", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  commitmentId: integer("commitment_id").notNull().references(() => commitments.id, { onDelete: "cascade" }),
+  scheduledFor: integer("scheduled_for").notNull(),
+  status: text("status").notNull().default("pending"),
+  snoozedUntil: integer("snoozed_until"),
+  completedAt: integer("completed_at"),
+  source: text("source").notNull().default("scheduler"),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+  updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+export const commitmentAutomationLogs = pgTable("commitment_automation_logs", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  commitmentId: integer("commitment_id").notNull().references(() => commitments.id, { onDelete: "cascade" }),
+  occurrenceId: integer("occurrence_id").references(() => commitmentOccurrences.id, { onDelete: "cascade" }),
+  action: text("action").notNull(),
+  summary: text("summary").notNull(),
+  metadata: text("metadata"),
+  undoPayload: text("undo_payload"),
+  undoneAt: integer("undone_at"),
+  seenAt: integer("seen_at"),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
 export const bankEmailConnections = pgTable("bank_email_connections", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -180,6 +222,76 @@ export const bankEmailEvents = pgTable("bank_email_events", {
   commitmentId: integer("commitment_id").references(() => commitments.id),
   transactionId: integer("transaction_id").references(() => transactions.id),
   createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
+export const userNotificationSettings = pgTable("user_notification_settings", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
+  emailEnabled: boolean("email_enabled").notNull().default(false),
+  pushEnabled: boolean("push_enabled").notNull().default(false),
+  whatsappEnabled: boolean("whatsapp_enabled").notNull().default(false),
+  whatsappNumber: text("whatsapp_number"),
+  telegramEnabled: boolean("telegram_enabled").notNull().default(false),
+  telegramChatId: text("telegram_chat_id"),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+  updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  userAgent: text("user_agent"),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+  updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
+export const integrationDocuments = pgTable("integration_documents", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  commitmentId: integer("commitment_id").references(() => commitments.id, { onDelete: "set null" }),
+  kind: text("kind").notNull().default("other"),
+  originalName: text("original_name").notNull(),
+  storedName: text("stored_name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  size: integer("size").notNull(),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
+export const integrationWebhooks = pgTable("integration_webhooks", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  url: text("url").notNull(),
+  secret: text("secret").notNull(),
+  events: text("events").notNull().default("reminder,escalated,completed"),
+  enabled: boolean("enabled").notNull().default(true),
+  lastDeliveryAt: integer("last_delivery_at"),
+  lastStatus: text("last_status"),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+  updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
+export const integrationWebhookDeliveries = pgTable("integration_webhook_deliveries", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  webhookId: integer("webhook_id").notNull().references(() => integrationWebhooks.id, { onDelete: "cascade" }),
+  event: text("event").notNull(),
+  responseStatus: integer("response_status"),
+  status: text("status").notNull(),
+  error: text("error"),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
+export const calendarEventLinks = pgTable("calendar_event_links", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  commitmentId: integer("commitment_id").notNull().references(() => commitments.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull(),
+  externalEventId: text("external_event_id").notNull(),
+  syncedAt: integer("synced_at").notNull().default(sql`extract(epoch from now())::integer`),
 });
 export const savingsGoals = pgTable("savings_goals", {
   id: serial("id").primaryKey(),
@@ -375,6 +487,12 @@ export type InsertTransaction = z.infer<typeof insertTransactionSchema>;
 export type Transaction = typeof transactions.$inferSelect;
 export type BankEmailConnection = typeof bankEmailConnections.$inferSelect;
 export type BankEmailEvent = typeof bankEmailEvents.$inferSelect;
+export type UserNotificationSetting = typeof userNotificationSettings.$inferSelect;
+export type PushSubscriptionRecord = typeof pushSubscriptions.$inferSelect;
+export type IntegrationDocument = typeof integrationDocuments.$inferSelect;
+export type IntegrationWebhook = typeof integrationWebhooks.$inferSelect;
+export type IntegrationWebhookDelivery = typeof integrationWebhookDeliveries.$inferSelect;
+export type CalendarEventLink = typeof calendarEventLinks.$inferSelect;
 export type InsertRecurringIncome = z.infer<typeof insertRecurringIncomeSchema>;
 export type RecurringIncome = typeof recurringIncomes.$inferSelect;
 export type InsertObligation = z.infer<typeof insertObligationSchema>;
@@ -387,6 +505,9 @@ export type InsertCommitmentStep = z.infer<typeof insertCommitmentStepSchema>;
 export type CommitmentStep = typeof commitmentSteps.$inferSelect;
 export type InsertCommitmentProof = z.infer<typeof insertCommitmentProofSchema>;
 export type CommitmentProof = typeof commitmentProofs.$inferSelect;
+export type CommitmentAutomationSetting = typeof commitmentAutomationSettings.$inferSelect;
+export type CommitmentOccurrence = typeof commitmentOccurrences.$inferSelect;
+export type CommitmentAutomationLog = typeof commitmentAutomationLogs.$inferSelect;
 export type InsertSavingsGoal = z.infer<typeof insertSavingsGoalSchema>;
 export type SavingsGoal = typeof savingsGoals.$inferSelect;
 export type InsertPasswordResetRequest = z.infer<typeof insertPasswordResetRequestSchema>;

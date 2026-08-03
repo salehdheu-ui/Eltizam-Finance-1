@@ -8,6 +8,8 @@ import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, inse
 import { buildWriteQueueKey, enqueueWrite } from "./write-queue";
 import { z } from "zod";
 import { registerBankInboxRoutes } from "./bank-inbox";
+import { processCommitmentAutomation, registerCommitmentAutomationRoutes } from "./commitment-automation";
+import { registerIntegrationRoutes } from "./integrations";
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.isAuthenticated()) {
@@ -143,6 +145,8 @@ export async function registerRoutes(
 ): Promise<Server> {
   setupAuth(app);
   registerBankInboxRoutes(app);
+  registerCommitmentAutomationRoutes(app);
+  registerIntegrationRoutes(app);
 
   app.get("/api/admin/stats", requireSystemAdmin, async (_req, res, next) => {
     try {
@@ -740,6 +744,10 @@ export async function registerRoutes(
         buildWriteQueueKey("user", req.user!.id, "commitment", commitmentId, "proofs"),
         () => storage.createCommitmentProof(commitmentId, req.user!.id, data),
       );
+      const commitment = await storage.getCommitmentById(commitmentId, req.user!.id);
+      if (commitment) {
+        await processCommitmentAutomation(commitment);
+      }
       res.status(201).json(proof);
     } catch (e) { next(e); }
   });
