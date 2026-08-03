@@ -5,8 +5,10 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useLocation } from "wouter";
 import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useForgotPasswordRequest, useLogin, usePasswordResetSelfServiceComplete, usePasswordResetSelfServiceStart, useRegister } from "@/lib/hooks";
 import { useToast } from "@/hooks/use-toast";
+import { EmailProviderButtons, type EmailProvider } from "@/components/email-provider-buttons";
 
 const passwordGuidanceMessage = "استخدم 8 أحرف على الأقل مع حرف كبير وحرف صغير ورقم واحد على الأقل";
 const forgotPasswordRequestHint = "أدخل اسم المستخدم أو البريد أو الهاتف للحصول على رمز مؤقت";
@@ -36,6 +38,7 @@ export default function Login() {
   const [resetNewPassword, setResetNewPassword] = useState("");
   const [resetMaskedContact, setResetMaskedContact] = useState<string | null>(null);
   const [resetDeliveryMethod, setResetDeliveryMethod] = useState<"email" | "phone" | null>(null);
+  const [providerPending, setProviderPending] = useState<EmailProvider | null>(null);
   const { toast } = useToast();
   
   const loginMutation = useLogin();
@@ -46,6 +49,10 @@ export default function Login() {
   const isLoading = loginMutation.isPending || registerMutation.isPending;
   const isLoginMode = mode === "login";
   const isForgotPasswordMode = mode === "forgotPassword";
+  const { data: emailProviders } = useQuery<{
+    google: { configured: boolean };
+    microsoft: { configured: boolean };
+  }>({ queryKey: ["/api/auth/email-providers"], retry: false, staleTime: 60_000 });
 
   const resetForgotPasswordFlow = () => {
     setForgotPasswordStep("request");
@@ -71,6 +78,12 @@ export default function Login() {
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const tokenFromUrl = searchParams.get("token")?.trim() || "";
+    const oauthError = searchParams.get("oauth_error");
+
+    if (oauthError) {
+      toast({ title: "تعذر ربط البريد", description: "أعد المحاولة، أو استخدم اسم المستخدم وكلمة المرور.", variant: "destructive" });
+      window.history.replaceState({}, "", "/login");
+    }
 
     if (location === "/forgot-password") {
       setMode("forgotPassword");
@@ -91,7 +104,13 @@ export default function Login() {
     }
 
     setMode("login");
-  }, [location]);
+  }, [location, toast]);
+
+  const startProviderLogin = (provider: EmailProvider) => {
+    setProviderPending(provider);
+    const path = provider === "google" ? "/api/auth/google/start" : "/api/auth/microsoft/start";
+    window.location.assign(path);
+  };
 
   const buildPhoneWithCountryCode = () => {
     const trimmedPhone = phone.trim();
@@ -178,7 +197,7 @@ export default function Login() {
         setPasswordGuidance("");
         toast({ title: "تم إنشاء الحساب بنجاح", description: "مرحباً بك في التزام!" });
       }
-      setLocation("/");
+      setLocation("/bank-inbox?onboarding=1");
     } catch (error: any) {
       const msg = parseAuthErrorMessage(error);
       if (msg.includes("كلمة المرور ضعيفة")) {
@@ -287,7 +306,7 @@ export default function Login() {
               {isForgotPasswordMode ? "استعادة كلمة المرور" : isLoginMode ? "مرحباً بعودتك" : "إنشاء حساب جديد"}
             </CardTitle>
             <CardDescription className="text-sm leading-7 max-w-sm mx-auto">
-              {isForgotPasswordMode ? (forgotPasswordStep === "request" ? forgotPasswordRequestHint : "أدخل الرمز المؤقت ثم عيّن كلمة مرور جديدة") : isLoginMode ? "قم بتسجيل الدخول للمتابعة" : "أدخل بياناتك لإنشاء حسابك"}
+              {isForgotPasswordMode ? (forgotPasswordStep === "request" ? forgotPasswordRequestHint : "أدخل الرمز المؤقت ثم عيّن كلمة مرور جديدة") : "ادخل واربط بريد البنك في خطوة واحدة"}
             </CardDescription>
           </CardHeader>
           <form onSubmit={isForgotPasswordMode ? (e) => {
@@ -317,6 +336,25 @@ export default function Login() {
                     <UserPlus className="h-8 w-8" />
                     <span className="text-sm font-semibold">إنشاء حساب</span>
                   </button>
+                </div>
+              ) : null}
+
+              {!isForgotPasswordMode ? (
+                <div className="space-y-4">
+                  <EmailProviderButtons
+                    onSelect={startProviderLogin}
+                    pendingProvider={providerPending}
+                    googleDisabled={!emailProviders?.google.configured}
+                    microsoftDisabled={!emailProviders?.microsoft.configured}
+                  />
+                  {!emailProviders?.google.configured || !emailProviders?.microsoft.configured ? (
+                    <p className="text-center text-xs leading-5 text-amber-700">الخدمة غير المفعّلة ستظهر فور تهيئتها من إدارة المنصة.</p>
+                  ) : null}
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <span className="h-px flex-1 bg-border" />
+                    <span>أو استخدم بيانات حسابك</span>
+                    <span className="h-px flex-1 bg-border" />
+                  </div>
                 </div>
               ) : null}
 

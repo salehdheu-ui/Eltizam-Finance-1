@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowRight, Building2, CheckCircle2, Inbox, Loader2, Mail, RefreshCw, ShieldCheck, Sparkles, Unplug } from "lucide-react";
+import { ArrowRight, Building2, CheckCircle2, ChevronDown, Loader2, Mail, RefreshCw, ShieldCheck, Sparkles, Unplug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useCategories, useCommitments, useWallets } from "@/lib/hooks";
 import { CurrencyDisplay } from "@/components/ui/currency-display";
+import { EmailProviderButtons, type EmailProvider } from "@/components/email-provider-buttons";
 
  type BankInboxData = {
   providers: {
@@ -50,10 +51,11 @@ export default function BankInbox() {
   const { data: wallets = [] } = useWallets();
   const { data: categories = [] } = useCategories();
   const { data: commitments = [] } = useCommitments();
-  const [bankKey, setBankKey] = useState("bank_muscat");
+  const [bankKey, setBankKey] = useState("other");
   const [walletId, setWalletId] = useState("");
   const [autoImport, setAutoImport] = useState(true);
   const [showSetup, setShowSetup] = useState(false);
+  const [showPreferences, setShowPreferences] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -79,7 +81,7 @@ export default function BankInbox() {
 
   const connectGoogle = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/bank-inbox/google/start", { bankKey, walletId: Number(walletId), autoImport });
+      const response = await apiRequest("POST", "/api/bank-inbox/google/start", { bankKey, walletId: walletId ? Number(walletId) : undefined, autoImport });
       return response.json() as Promise<{ authUrl: string }>;
     },
     onSuccess: ({ authUrl }) => window.location.assign(authUrl),
@@ -88,7 +90,7 @@ export default function BankInbox() {
 
   const connectMicrosoft = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/bank-inbox/microsoft/start", { bankKey, walletId: Number(walletId), autoImport });
+      const response = await apiRequest("POST", "/api/bank-inbox/microsoft/start", { bankKey, walletId: walletId ? Number(walletId) : undefined, autoImport });
       return response.json() as Promise<{ authUrl: string }>;
     },
     onSuccess: ({ authUrl }) => window.location.assign(authUrl),
@@ -140,6 +142,13 @@ export default function BankInbox() {
 
   const hasConnections = (data?.connections.length || 0) > 0;
   const pendingEvents = (data?.events || []).filter((event) => event.status === "review");
+  const pendingProvider: EmailProvider | null = connectGoogle.isPending
+    ? "google"
+    : connectMicrosoft.isPending
+      ? "microsoft"
+      : null;
+  const selectProvider = (provider: EmailProvider) =>
+    provider === "google" ? connectGoogle.mutate() : connectMicrosoft.mutate();
 
   return (
     <div className="mx-auto max-w-4xl space-y-5 p-4 pb-24 sm:p-6" dir="rtl">
@@ -153,54 +162,65 @@ export default function BankInbox() {
       </header>
 
       {!hasConnections || showSetup ? (
-        <Card className="overflow-hidden border-primary/15 shadow-sm">
-          <div className="bg-primary/5 p-5 text-center">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground"><Mail className="h-7 w-7" /></div>
-            <h2 className="mt-4 text-xl font-bold">اربط بريدك في خطوة واحدة</h2>
-            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">اختر البنك والمحفظة فقط. التزام سيبحث عن رسائل البنك دون قراءة رسائلك الشخصية أو تعديلها.</p>
+        <Card className="mx-auto max-w-xl overflow-hidden border-border/80 shadow-sm">
+          <div className="px-5 pb-4 pt-7 text-center sm:px-8">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Mail className="h-7 w-7" /></div>
+            <h2 className="mt-4 text-xl font-bold">اربط بريد البنك</h2>
+            <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-muted-foreground">اختر حساب البريد الذي تصلك عليه رسائل البنك، وسيتولى التزام الإعداد تلقائيًا.</p>
           </div>
-          <div className="space-y-4 p-5">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="space-y-2 text-sm font-semibold">
-                <span>اسم البنك</span>
-                <select value={bankKey} onChange={(event) => setBankKey(event.target.value)} className="h-11 w-full rounded-xl border bg-background px-3 font-normal">
-                  {(data?.banks || []).map((bank) => <option key={bank.key} value={bank.key}>{bank.name}</option>)}
-                </select>
-              </label>
-              <label className="space-y-2 text-sm font-semibold">
-                <span>تُضاف المعاملات إلى</span>
-                <select value={walletId} onChange={(event) => setWalletId(event.target.value)} className="h-11 w-full rounded-xl border bg-background px-3 font-normal">
-                  {wallets.map((wallet) => <option key={wallet.id} value={wallet.id}>{wallet.name}</option>)}
-                </select>
-              </label>
-            </div>
+          <div className="space-y-3 px-5 pb-6 sm:px-8 sm:pb-8">
+            <EmailProviderButtons
+              onSelect={selectProvider}
+              pendingProvider={pendingProvider}
+              googleDisabled={!data?.providers.google.configured}
+              microsoftDisabled={!data?.providers.microsoft.configured}
+            />
 
-            {wallets.length === 0 ? (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                أضف حساب البنك أولًا، ثم ارجع للربط.
-                <Button variant="link" className="h-auto px-2 text-amber-900" onClick={() => setLocation("/wallets")}>إضافة حساب</Button>
+            {!data?.providers.google.configured || !data?.providers.microsoft.configured ? (
+              <p className="text-center text-xs leading-5 text-amber-700">الخدمة غير المفعّلة ستعمل تلقائيًا فور تهيئتها من إدارة المنصة.</p>
+            ) : null}
+
+            <button
+              type="button"
+              className="mx-auto flex items-center gap-1.5 pt-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+              onClick={() => setShowPreferences((value) => !value)}
+              aria-expanded={showPreferences}
+            >
+              إعدادات الربط
+              <ChevronDown className={`h-4 w-4 transition-transform ${showPreferences ? "rotate-180" : ""}`} />
+            </button>
+
+            {showPreferences ? (
+              <div className="space-y-4 rounded-2xl bg-muted/40 p-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="space-y-2 text-sm font-semibold">
+                    <span>البنك</span>
+                    <select value={bankKey} onChange={(event) => setBankKey(event.target.value)} className="h-11 w-full rounded-xl border bg-background px-3 font-normal">
+                      {(data?.banks || []).map((bank) => <option key={bank.key} value={bank.key}>{bank.name}</option>)}
+                    </select>
+                  </label>
+                  <label className="space-y-2 text-sm font-semibold">
+                    <span>حفظ المعاملات في</span>
+                    <select value={walletId} onChange={(event) => setWalletId(event.target.value)} className="h-11 w-full rounded-xl border bg-background px-3 font-normal">
+                      {wallets.length === 0 ? <option value="">حساب البنك (يُنشأ تلقائيًا)</option> : null}
+                      {wallets.map((wallet) => <option key={wallet.id} value={wallet.id}>{wallet.name}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <div className="flex items-center justify-between gap-4 rounded-xl border bg-background p-3">
+                  <div>
+                    <p className="font-semibold">إضافة تلقائية</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">المعاملات الواضحة تُضاف فورًا، والباقي ينتظر موافقتك.</p>
+                  </div>
+                  <Switch checked={autoImport} onCheckedChange={setAutoImport} />
+                </div>
               </div>
             ) : null}
 
-            <div className="flex items-center justify-between rounded-xl border p-3">
-              <div>
-                <p className="font-semibold">إضافة تلقائية</p>
-                <p className="mt-1 text-xs text-muted-foreground">المعاملات الواضحة تُضاف فورًا، وغير الواضحة تنتظر موافقتك.</p>
-              </div>
-              <Switch checked={autoImport} onCheckedChange={setAutoImport} />
+            <div className="flex items-center justify-center gap-2 pt-2 text-xs text-muted-foreground">
+              <ShieldCheck className="h-4 w-4 text-emerald-600" />
+              نقرأ رسائل البنك فقط ولا نعدّل بريدك
             </div>
-
-            <Button className="h-12 w-full text-base font-bold" disabled={!walletId || connectGoogle.isPending || !data?.providers.google.configured} onClick={() => connectGoogle.mutate()}>
-              {connectGoogle.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mail className="h-5 w-5" />}
-              ربط Gmail
-            </Button>
-            {!data?.providers.google.configured ? <p className="text-center text-xs text-amber-700">ربط Gmail متاح بعد تفعيل خدمة البريد من إدارة المنصة.</p> : null}
-
-            <Button variant="outline" className="h-12 w-full text-base font-bold" disabled={!walletId || connectMicrosoft.isPending || !data?.providers.microsoft.configured} onClick={() => connectMicrosoft.mutate()}>
-              {connectMicrosoft.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Inbox className="h-5 w-5" />}
-              ربط Outlook
-            </Button>
-            {!data?.providers.microsoft.configured ? <p className="text-center text-xs text-amber-700">ربط Outlook متاح بعد تفعيل خدمة البريد من إدارة المنصة.</p> : null}
           </div>
         </Card>
       ) : (

@@ -133,6 +133,12 @@ function saveSession(req: Express.Request) {
   });
 }
 
+export async function establishUserSession(req: Express.Request, user: SelectUser) {
+  await regenerateSession(req);
+  await loginUser(req, user);
+  await saveSession(req);
+}
+
 function logoutUser(req: Express.Request) {
   return new Promise<void>((resolve, reject) => {
     req.logout((err) => {

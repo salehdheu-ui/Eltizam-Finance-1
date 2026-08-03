@@ -20,7 +20,7 @@ export const BANK_PROFILES: Array<{ key: BankKey; name: string; senders: string[
   { key: "ahlibank", name: "الأهلي بنك", senders: ["ahlibank", "ahli bank"] },
   { key: "oman_arab_bank", name: "بنك عمان العربي", senders: ["oman arab bank", "oab"] },
   { key: "bank_nizwa", name: "بنك نزوى", senders: ["banknizwa", "bank nizwa"] },
-  { key: "other", name: "بنك آخر", senders: [] },
+  { key: "other", name: "تحديد البنك تلقائيًا", senders: [] },
 ];
 
 function normalizeDigits(value: string) {
@@ -78,9 +78,17 @@ function inferCategory(text: string) {
 
 export function buildBankSearchQuery(bankKey: BankKey) {
   const profile = BANK_PROFILES.find((bank) => bank.key === bankKey);
-  if (!profile || profile.senders.length === 0) return "newer_than:30d";
-  const senderQuery = profile.senders.map((sender) => `from:(${sender})`).join(" OR ");
+  const senders = profile && profile.key !== "other"
+    ? profile.senders
+    : BANK_PROFILES.flatMap((bank) => bank.senders);
+  if (senders.length === 0) return "newer_than:30d";
+  const senderQuery = senders.map((sender) => `from:(${sender})`).join(" OR ");
   return `newer_than:30d (${senderQuery})`;
+}
+
+function detectBankKey(sender: string, subject: string, body: string): BankKey {
+  const searchable = `${sender}\n${subject}\n${body}`.toLowerCase();
+  return BANK_PROFILES.find((bank) => bank.key !== "other" && bank.senders.some((value) => searchable.includes(value.toLowerCase())))?.key || "other";
 }
 
 export function parseBankMessage(input: { bankKey: BankKey; sender: string; subject: string; body: string }): ParsedBankMessage | null {
@@ -105,15 +113,16 @@ export function parseBankMessage(input: { bankKey: BankKey; sender: string; subj
           : income
             ? "deposit"
             : "purchase";
+  const detectedBankKey = input.bankKey === "other" ? detectBankKey(input.sender, input.subject, input.body) : input.bankKey;
 
   return {
-    bankKey: input.bankKey,
+    bankKey: detectedBankKey,
     transactionType: income ? "income" : "expense",
     operation,
     amount,
     merchant: findMerchant(combined),
     categoryHint: inferCategory(combined),
-    confidence: input.sender ? 0.92 : 0.78,
+    confidence: detectedBankKey !== "other" ? 0.92 : input.sender ? 0.82 : 0.78,
   };
 }
 

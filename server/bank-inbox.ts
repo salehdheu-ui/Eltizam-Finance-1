@@ -6,15 +6,17 @@ import { bankEmailConnections, bankEmailEvents, categories, commitments, transac
 import { db } from "./db";
 import { storage } from "./storage";
 import { BANK_PROFILES, buildBankSearchQuery, createMessageFingerprint, parseBankMessage, type BankKey } from "./bank-message-parser";
+import { establishUserSession, hashPlainPassword } from "./auth";
+import { writeAuditEvent } from "./audit";
 
 const connectSchema = z.object({
-  bankKey: z.enum(["bank_muscat", "nbo", "bank_dhofar", "sohar_international", "ahlibank", "oman_arab_bank", "bank_nizwa", "other"]),
-  walletId: z.coerce.number().int().positive(),
+  bankKey: z.enum(["bank_muscat", "nbo", "bank_dhofar", "sohar_international", "ahlibank", "oman_arab_bank", "bank_nizwa", "other"]).optional().default("other"),
+  walletId: z.coerce.number().int().positive().optional(),
   autoImport: z.boolean().optional().default(true),
 });
 
 const previewSchema = z.object({
-  bankKey: connectSchema.shape.bankKey,
+  bankKey: z.enum(["bank_muscat", "nbo", "bank_dhofar", "sohar_international", "ahlibank", "oman_arab_bank", "bank_nizwa", "other"]),
   sender: z.string().max(300).optional().default(""),
   subject: z.string().max(500).optional().default(""),
   body: z.string().min(3).max(15000),
@@ -30,6 +32,96 @@ function appUrl(req: Request) {
   if (configured) return configured;
   const protocol = (req.get("x-forwarded-proto") || req.protocol).split(",")[0].trim();
   return `${protocol}://${req.get("host")}`;
+}
+
+function saveSession(req: Request) {
+  return new Promise<void>((resolve, reject) => {
+    req.session.save((error) => error ? reject(error) : resolve());
+  });
+}
+
+async function resolveConnectionWallet(userId: number, walletId?: number) {
+  if (walletId) {
+    const selected = await storage.getWallet(walletId, userId);
+    if (!selected) throw new Error("المحفظة المحددة غير موجودة");
+    return selected;
+  }
+
+  const existing = await storage.getWallets(userId);
+  if (existing[0]) return existing[0];
+
+  return storage.createWallet(userId, {
+    name: "حساب البنك",
+    type: "bank",
+    balance: 0,
+    color: "from-blue-600 to-cyan-500",
+  });
+}
+
+async function uniqueOauthUsername(email: string) {
+  const localPart = email.split("@")[0]?.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 40) || "user";
+  const base = localPart.length >= 3 ? localPart : `user_${localPart}`;
+  let candidate = base;
+  let suffix = 1;
+  while (await storage.getUserByUsername(candidate)) {
+    candidate = `${base.slice(0, 43)}_${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
+}
+
+async function resolveOauthUser(email: string, name: string) {
+  const existing = await storage.getUserByEmail(email);
+  const now = Math.floor(Date.now() / 1000);
+  if (existing) {
+    if (!existing.isActive) throw new Error("تم إيقاف هذا الحساب");
+    return storage.updateUser(existing.id, { lastLoginAt: now });
+  }
+
+  const users = await storage.getAllUsers();
+  return storage.createUser({
+    username: await uniqueOauthUsername(email),
+    password: await hashPlainPassword(randomBytes(32).toString("base64url")),
+    name: name.trim() || email.split("@")[0] || "مستخدم التزام",
+    email,
+    phone: null,
+    role: users.length === 0 ? "system_admin" : "user",
+    isActive: true,
+    lastLoginAt: now,
+    createdAt: now,
+  });
+}
+
+async function upsertAutomaticConnection(params: {
+  userId: number;
+  provider: "google" | "microsoft";
+  email: string;
+  walletId: number;
+  accessToken: string;
+  refreshToken?: string;
+  expiresIn?: number;
+}) {
+  const existing = await db.select().from(bankEmailConnections).where(and(
+    eq(bankEmailConnections.userId, params.userId),
+    eq(bankEmailConnections.provider, params.provider),
+    eq(bankEmailConnections.email, params.email),
+    eq(bankEmailConnections.bankKey, "other"),
+  ));
+  const now = Math.floor(Date.now() / 1000);
+  const values = {
+    walletId: params.walletId,
+    autoImport: true,
+    accessTokenEncrypted: encryptToken(params.accessToken, params.userId),
+    refreshTokenEncrypted: params.refreshToken ? encryptToken(params.refreshToken, params.userId) : existing[0]?.refreshTokenEncrypted || null,
+    tokenExpiresAt: now + (params.expiresIn || 3600),
+    updatedAt: now,
+  };
+  if (existing[0]) {
+    const [updated] = await db.update(bankEmailConnections).set(values).where(eq(bankEmailConnections.id, existing[0].id)).returning();
+    return updated;
+  }
+  const [created] = await db.insert(bankEmailConnections).values({ userId: params.userId, provider: params.provider, email: params.email, bankKey: "other", ...values }).returning();
+  return created;
 }
 
 function tokenKey(userId: number) {
@@ -179,7 +271,7 @@ async function importParsedEvent(params: {
   parsed: NonNullable<ReturnType<typeof parseBankMessage>>;
 }) {
   const fingerprint = createMessageFingerprint({
-    bankKey: params.connection.bankKey,
+    bankKey: params.parsed.bankKey,
     amount: params.parsed.amount,
     type: params.parsed.transactionType,
     merchant: params.parsed.merchant,
@@ -198,7 +290,7 @@ async function importParsedEvent(params: {
     connectionId: params.connection.id,
     providerMessageId: params.providerMessageId,
     fingerprint,
-    bankKey: params.connection.bankKey,
+    bankKey: params.parsed.bankKey,
     sender: params.sender,
     subject: params.subject,
     snippet: params.snippet.slice(0, 600),
@@ -280,8 +372,10 @@ async function syncGoogleConnection(userId: number, connection: typeof bankEmail
 
 function senderMatchesBank(bankKey: BankKey, sender: string) {
   const profile = BANK_PROFILES.find((bank) => bank.key === bankKey);
-  if (!profile || profile.key === "other") return true;
   const normalized = sender.toLowerCase();
+  if (!profile || profile.key === "other") {
+    return BANK_PROFILES.some((bank) => bank.key !== "other" && bank.senders.some((value) => normalized.includes(value.toLowerCase())));
+  }
   return profile.senders.some((value) => normalized.includes(value.toLowerCase()));
 }
 
@@ -354,6 +448,119 @@ function startBankInboxScheduler() {
   initialTimer.unref();
 }
 export function registerBankInboxRoutes(app: Express) {
+  app.get("/api/auth/email-providers", (_req, res) => {
+    res.json({
+      google: { configured: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) },
+      microsoft: { configured: Boolean(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET) },
+    });
+  });
+
+  app.get("/api/auth/google/start", async (req, res, next) => {
+    try {
+      if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+        return res.redirect("/login?oauth_error=google_not_configured");
+      }
+      const state = randomBytes(24).toString("base64url");
+      (req.session as any).bankEmailLoginOauth = { state, provider: "google", createdAt: Date.now() };
+      await saveSession(req);
+      const redirectUri = process.env.GOOGLE_AUTH_REDIRECT_URI || `${appUrl(req)}/api/auth/google/callback`;
+      const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+      url.searchParams.set("client_id", process.env.GOOGLE_CLIENT_ID);
+      url.searchParams.set("redirect_uri", redirectUri);
+      url.searchParams.set("response_type", "code");
+      url.searchParams.set("scope", "openid email profile https://www.googleapis.com/auth/gmail.readonly");
+      url.searchParams.set("access_type", "offline");
+      url.searchParams.set("prompt", "consent");
+      url.searchParams.set("state", state);
+      res.redirect(url.toString());
+    } catch (error) { next(error); }
+  });
+
+  app.get("/api/auth/google/callback", async (req, res) => {
+    const pending = (req.session as any).bankEmailLoginOauth;
+    delete (req.session as any).bankEmailLoginOauth;
+    if (!pending || pending.provider !== "google" || pending.state !== req.query.state || Date.now() - pending.createdAt > 10 * 60 * 1000) {
+      return res.redirect("/login?oauth_error=invalid_state");
+    }
+    try {
+      const redirectUri = process.env.GOOGLE_AUTH_REDIRECT_URI || `${appUrl(req)}/api/auth/google/callback`;
+      const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ code: String(req.query.code || ""), client_id: process.env.GOOGLE_CLIENT_ID!, client_secret: process.env.GOOGLE_CLIENT_SECRET!, redirect_uri: redirectUri, grant_type: "authorization_code" }),
+      });
+      if (!tokenResponse.ok) throw new Error("token exchange failed");
+      const token = await tokenResponse.json() as { access_token: string; refresh_token?: string; expires_in?: number };
+      const profileResponse = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", { headers: { Authorization: `Bearer ${token.access_token}` } });
+      if (!profileResponse.ok) throw new Error("profile read failed");
+      const profile = await profileResponse.json() as { email?: string; name?: string; verified_email?: boolean };
+      if (!profile.email || profile.verified_email === false) throw new Error("email missing");
+      const user = await resolveOauthUser(profile.email, profile.name || "");
+      const wallet = await resolveConnectionWallet(user.id);
+      const connection = await upsertAutomaticConnection({ userId: user.id, provider: "google", email: profile.email, walletId: wallet.id, accessToken: token.access_token, refreshToken: token.refresh_token, expiresIn: token.expires_in });
+      await establishUserSession(req, user);
+      await writeAuditEvent({ action: "auth.login.google", actorUserId: user.id, actorRole: user.role, targetUserId: user.id, ipAddress: req.ip });
+      void syncGoogleConnection(user.id, connection).catch(() => undefined);
+      res.redirect("/bank-inbox?connected=1&provider=google");
+    } catch {
+      res.redirect("/login?oauth_error=google_failed");
+    }
+  });
+
+  app.get("/api/auth/microsoft/start", async (req, res, next) => {
+    try {
+      if (!process.env.MICROSOFT_CLIENT_ID || !process.env.MICROSOFT_CLIENT_SECRET) {
+        return res.redirect("/login?oauth_error=microsoft_not_configured");
+      }
+      const state = randomBytes(24).toString("base64url");
+      (req.session as any).bankEmailLoginOauth = { state, provider: "microsoft", createdAt: Date.now() };
+      await saveSession(req);
+      const tenant = process.env.MICROSOFT_TENANT_ID || "common";
+      const redirectUri = process.env.MICROSOFT_AUTH_REDIRECT_URI || `${appUrl(req)}/api/auth/microsoft/callback`;
+      const url = new URL(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize`);
+      url.searchParams.set("client_id", process.env.MICROSOFT_CLIENT_ID);
+      url.searchParams.set("redirect_uri", redirectUri);
+      url.searchParams.set("response_type", "code");
+      url.searchParams.set("response_mode", "query");
+      url.searchParams.set("scope", "openid email profile offline_access User.Read Mail.Read");
+      url.searchParams.set("state", state);
+      res.redirect(url.toString());
+    } catch (error) { next(error); }
+  });
+
+  app.get("/api/auth/microsoft/callback", async (req, res) => {
+    const pending = (req.session as any).bankEmailLoginOauth;
+    delete (req.session as any).bankEmailLoginOauth;
+    if (!pending || pending.provider !== "microsoft" || pending.state !== req.query.state || Date.now() - pending.createdAt > 10 * 60 * 1000) {
+      return res.redirect("/login?oauth_error=invalid_state");
+    }
+    try {
+      const tenant = process.env.MICROSOFT_TENANT_ID || "common";
+      const redirectUri = process.env.MICROSOFT_AUTH_REDIRECT_URI || `${appUrl(req)}/api/auth/microsoft/callback`;
+      const tokenResponse = await fetch(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ code: String(req.query.code || ""), client_id: process.env.MICROSOFT_CLIENT_ID!, client_secret: process.env.MICROSOFT_CLIENT_SECRET!, redirect_uri: redirectUri, grant_type: "authorization_code", scope: "openid email profile offline_access User.Read Mail.Read" }),
+      });
+      if (!tokenResponse.ok) throw new Error("token exchange failed");
+      const token = await tokenResponse.json() as { access_token: string; refresh_token?: string; expires_in?: number };
+      const profileResponse = await fetch("https://graph.microsoft.com/v1.0/me?$select=mail,userPrincipalName,displayName", { headers: { Authorization: `Bearer ${token.access_token}` } });
+      if (!profileResponse.ok) throw new Error("profile read failed");
+      const profile = await profileResponse.json() as { mail?: string; userPrincipalName?: string; displayName?: string };
+      const email = profile.mail || profile.userPrincipalName;
+      if (!email) throw new Error("email missing");
+      const user = await resolveOauthUser(email, profile.displayName || "");
+      const wallet = await resolveConnectionWallet(user.id);
+      const connection = await upsertAutomaticConnection({ userId: user.id, provider: "microsoft", email, walletId: wallet.id, accessToken: token.access_token, refreshToken: token.refresh_token, expiresIn: token.expires_in });
+      await establishUserSession(req, user);
+      await writeAuditEvent({ action: "auth.login.microsoft", actorUserId: user.id, actorRole: user.role, targetUserId: user.id, ipAddress: req.ip });
+      void syncMicrosoftConnection(user.id, connection).catch(() => undefined);
+      res.redirect("/bank-inbox?connected=1&provider=microsoft");
+    } catch {
+      res.redirect("/login?oauth_error=microsoft_failed");
+    }
+  });
+
   app.get("/api/bank-inbox", requireAuth, async (req, res, next) => {
     try {
       const connections = await db.select({
@@ -392,10 +599,9 @@ export function registerBankInboxRoutes(app: Express) {
         return res.status(503).json({ message: "ربط Gmail يحتاج تهيئة مفاتيح Google من إدارة المنصة" });
       }
       const input = connectSchema.parse(req.body);
-      const wallet = await storage.getWallet(input.walletId, req.user!.id);
-      if (!wallet) return res.status(404).json({ message: "المحفظة المحددة غير موجودة" });
+      const wallet = await resolveConnectionWallet(req.user!.id, input.walletId);
       const state = randomBytes(24).toString("base64url");
-      (req.session as any).bankEmailOauth = { state, provider: "google", userId: req.user!.id, ...input, createdAt: Date.now() };
+      (req.session as any).bankEmailOauth = { state, provider: "google", userId: req.user!.id, ...input, walletId: wallet.id, createdAt: Date.now() };
       const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${appUrl(req)}/api/bank-inbox/google/callback`;
       const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
       url.searchParams.set("client_id", process.env.GOOGLE_CLIENT_ID);
@@ -474,10 +680,9 @@ export function registerBankInboxRoutes(app: Express) {
         return res.status(503).json({ message: "ربط Outlook يحتاج تهيئة مفاتيح Microsoft من إدارة المنصة" });
       }
       const input = connectSchema.parse(req.body);
-      const wallet = await storage.getWallet(input.walletId, req.user!.id);
-      if (!wallet) return res.status(404).json({ message: "المحفظة المحددة غير موجودة" });
+      const wallet = await resolveConnectionWallet(req.user!.id, input.walletId);
       const state = randomBytes(24).toString("base64url");
-      (req.session as any).bankEmailOauth = { state, provider: "microsoft", userId: req.user!.id, ...input, createdAt: Date.now() };
+      (req.session as any).bankEmailOauth = { state, provider: "microsoft", userId: req.user!.id, ...input, walletId: wallet.id, createdAt: Date.now() };
       const tenant = process.env.MICROSOFT_TENANT_ID || "common";
       const redirectUri = process.env.MICROSOFT_REDIRECT_URI || `${appUrl(req)}/api/bank-inbox/microsoft/callback`;
       const url = new URL(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize`);
