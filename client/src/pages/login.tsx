@@ -277,7 +277,7 @@ export default function Login() {
           </div>
           <div className="space-y-2">
             <h1 className="text-4xl font-extrabold tracking-tight text-foreground">التزام</h1>
-            <p className="text-muted-foreground text-sm font-medium px-8 leading-7">رفيقك الذكي لإدارة أموالك بوعي ومسؤولية</p>
+            <p className="text-muted-foreground text-sm font-medium px-8 leading-7">رفيقك الذكي لتنظيم التزاماتك وحياتك ببساطة</p>
           </div>
         </div>
 

@@ -1,5 +1,5 @@
 import { useLocation } from "wouter";
-import { Home, ListFilter, Wallet, PieChart, Plus, Settings, Loader2, BarChart3, Menu, X, ChevronLeft, Receipt, Landmark, LogOut, Sparkles, Goal, BookOpen, ListChecks } from "lucide-react";
+import { Home, ListFilter, Plus, Settings, Loader2, BarChart3, Menu, X, ChevronLeft, Receipt, Landmark, LogOut, Sparkles, Goal, BookOpen, ListChecks } from "lucide-react";
 import { CurrencyDisplay } from "@/components/ui/currency-display";
 import { cn, formatCurrency } from "@/lib/utils";
 import { Button } from "./ui/button";
@@ -207,13 +207,6 @@ export default function Layout({ children }: LayoutProps) {
 
   // Sidebar navigation (less frequently used)
   const sidebarItems = [
-    { href: "/income", icon: Landmark, label: "الدخل والراتب" },
-    { href: "/wallets", icon: Wallet, label: "المحافظ" },
-    { href: "/financial-plans", icon: Sparkles, label: "خطط الادخار" },
-    { href: "/savings-goals", icon: Goal, label: "الأهداف الادخارية" },
-    { href: "/commitments", icon: ListChecks, label: "التزاماتي" },
-    { href: "/obligations", icon: Receipt, label: "الالتزامات المالية" },
-    { href: "/categories", icon: PieChart, label: "الأقسام" },
     { href: "/settings", icon: Settings, label: "الإعدادات" },
     { href: "/user-guide", icon: BookOpen, label: "دليل الاستخدام" },
     ...(isSystemAdmin ? [{ href: "/admin/users", icon: Settings, label: "إدارة المستخدمين" }] : []),
@@ -367,7 +360,7 @@ export default function Layout({ children }: LayoutProps) {
             {/* Sidebar Items */}
             <nav className="flex-1 p-4 space-y-2">
               {sidebarItems.map((item) => {
-                const isActive = location === item.href;
+                const isActive = item.href === "/" ? location === "/" : location === item.href || location.startsWith(item.href + "/");
                 const Icon = item.icon;
                 return (
                   <button
@@ -438,7 +431,8 @@ export default function Layout({ children }: LayoutProps) {
           </div>
         ) : null}
         
-        <div className="fixed bottom-[5.5rem] left-3 z-40 sm:bottom-24 sm:left-6 lg:bottom-8 lg:left-8 xl:left-[max(2rem,calc((100vw-80rem)/2+2rem))]">
+        {location === "/transactions" ? (
+          <div className="fixed bottom-[5.5rem] left-3 z-40 sm:bottom-24 sm:left-6 lg:bottom-8 lg:left-8 xl:left-[max(2rem,calc((100vw-80rem)/2+2rem))]">
           <Button 
             size="icon" 
             className="h-12 w-12 rounded-full shadow-lg hover:shadow-xl transition-all shadow-primary/30 bg-primary text-primary-foreground cursor-pointer sm:h-14 sm:w-14"
@@ -447,22 +441,20 @@ export default function Layout({ children }: LayoutProps) {
           >
             <Plus className="h-5 w-5 sm:h-6 sm:w-6" strokeWidth={2.5} />
           </Button>
-        </div>
+          </div>
+        ) : null}
       </main>
 
       {/* Simplified Bottom Navigation */}
       <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-background shadow-[0_-4px_20px_rgba(0,0,0,0.05)] pb-safe lg:border-t-0 lg:bg-transparent lg:shadow-none">
         <div className="relative mx-auto flex h-16 w-full max-w-7xl items-center justify-around px-4 sm:px-6 lg:max-w-fit lg:justify-center lg:gap-4 lg:rounded-2xl lg:border lg:border-border/70 lg:bg-background/95 lg:px-5 lg:shadow-lg lg:backdrop-blur xl:px-6">
           {mainNavItems.map((item) => {
-            const isActive = location === item.href;
+            const isActive = item.href === "/" ? location === "/" : location === item.href || location.startsWith(item.href + "/");
             const Icon = item.icon;
             return (
               <div
                 key={item.href}
-                onClick={() => {
-                  console.log(`Navigating to: ${item.href}`);
-                  setLocation(item.href);
-                }}
+                onClick={() => setLocation(item.href)}
                 className={cn(
                   "flex h-full min-w-[70px] cursor-pointer flex-col items-center justify-center gap-1.5 transition-colors duration-200 lg:min-w-[88px] lg:flex-row lg:gap-2 lg:px-3",
                   isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"

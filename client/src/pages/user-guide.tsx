@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { ArrowRight, BookOpen, CheckCircle2, Goal, Landmark, PieChart, Receipt, Sparkles, Wallet } from "lucide-react";
+import { ArrowRight, BarChart3, BookOpen, CheckCircle2, Home, ListChecks, Receipt } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 
@@ -15,7 +15,7 @@ type GuideStep = {
   details: string[];
   href: string;
   actionLabel: string;
-  icon: typeof Wallet;
+  icon: typeof ListChecks;
 };
 
 export default function UserGuidePage() {
@@ -25,76 +25,52 @@ export default function UserGuidePage() {
 
   const guideSteps = useMemo<GuideStep[]>(() => [
     {
-      title: "ابدأ بالمحافظ",
-      description: "أضف الحسابات أو المحافظ التي تستخدمها حتى يصبح الرصيد واضحًا منذ البداية.",
+      title: "أضف أول التزام",
+      description: "ابدأ بشيء واحد تريد إنجازه أو تذكره. لا تحتاج إلى إعداد مالي مسبق.",
       details: [
-        "أضف كل محفظة أو حساب تريد متابعته.",
-        "أدخل الرصيد الحالي لكل محفظة.",
-        "بعدها سيظهر لك إجمالي أموالك بشكل أدق.",
+        "اكتب عنوان الالتزام.",
+        "اختر الموعد والنوع.",
+        "اترك الخيارات المتقدمة مغلقة إن لم تحتجها.",
       ],
-      href: "/wallets",
-      actionLabel: "انتقل إلى المحافظ",
-      icon: Wallet,
+      href: "/commitments",
+      actionLabel: "إضافة التزام",
+      icon: ListChecks,
     },
     {
-      title: "سجل دخلك",
-      description: "أضف مصدر دخلك أو راتبك حتى يبني النظام نظرة أوضح لوضعك المالي.",
+      title: "شاهد المهم الآن",
+      description: "الرئيسية تعرض المتأخر وما يخص اليوم والأسبوع دون أن تشتتك بالتفاصيل.",
       details: [
-        "حدد المبلغ الذي يدخل لك بشكل متكرر.",
-        "اربطه بمحفظتك المناسبة.",
-        "يساعدك ذلك على قراءة خطط الادخار بشكل أفضل.",
+        "ابدأ بالأولوية الأولى.",
+        "افتح الالتزام لرؤية خطواته.",
+        "لا تظهر الأدوات المالية إلا عند وجود بيانات فعلية.",
       ],
-      href: "/income",
-      actionLabel: "انتقل إلى الدخل والراتب",
-      icon: Landmark,
+      href: "/",
+      actionLabel: "العودة إلى الرئيسية",
+      icon: Home,
     },
     {
-      title: "أضف معاملاتك اليومية",
-      description: "سجل الدخل والمصروفات أولًا بأول حتى تكون أرقامك دقيقة ويعكس النظام واقعك الحقيقي.",
+      title: "سجل معاملة عند الحاجة",
+      description: "استخدم المعاملات فقط عندما تريد متابعة الدخل أو المصروف، وليس شرطاً لبدء استخدام النظام.",
       details: [
-        "أضف أي مصروف أو دخل جديد.",
-        "اختر القسم والمحفظة المناسبة.",
-        "كلما سجلت أكثر كانت التقارير أدق.",
+        "أضف الدخل أو المصروف من زر الإضافة.",
+        "التفاصيل المالية المتقدمة موجودة في الإعدادات.",
+        "يمكنك تجاهل هذا القسم إذا كان هدفك تنظيم التزاماتك فقط.",
       ],
       href: "/transactions",
-      actionLabel: "انتقل إلى المعاملات",
+      actionLabel: "فتح المعاملات",
       icon: Receipt,
     },
     {
-      title: "نظّم الأقسام",
-      description: "قسّم مصروفاتك إلى أقسام مثل الطعام والفواتير والمواصلات حتى تفهم أين تذهب أموالك.",
+      title: "راجع الصورة العامة",
+      description: "التقارير تلخص نشاطك عندما تتوفر بيانات، ولا تحتاج إلى إعدادها يدوياً.",
       details: [
-        "أنشئ الأقسام الأساسية لحياتك اليومية.",
-        "استخدمها عند تسجيل المعاملات.",
-        "ستظهر لك النتائج بوضوح في التقارير.",
-      ],
-      href: "/categories",
-      actionLabel: "انتقل إلى الأقسام",
-      icon: PieChart,
-    },
-    {
-      title: "تابع وضعك من التقارير",
-      description: "بعد تسجيل بياناتك ستفهم من التقارير أين تنفق أكثر وكيف تحسّن قراراتك المالية.",
-      details: [
-        "راجع ملخص الإنفاق والدخل.",
-        "تعرف على أكثر الأقسام استهلاكًا.",
-        "استخدم النتائج لتحسين خطتك الشهرية.",
+        "راجع الملخص وقتما تشاء.",
+        "راقب التغيرات بدل التفاصيل اليومية.",
+        "ارجع إلى التزاماتك لاتخاذ الإجراء التالي.",
       ],
       href: "/reports",
-      actionLabel: "انتقل إلى التقارير",
-      icon: Sparkles,
-    },
-    {
-      title: "خطط وادخر",
-      description: "إذا أردت الادخار، أنشئ خطة وهدفًا ادخاريًا وتابع التقدم الفعلي حسب رصيد المحفظة المرتبطة.",
-      details: [
-        "اختر خطة ادخار تناسب وضعك.",
-        "أنشئ هدفًا واربِطه بمحفظة.",
-        "تابع المبلغ المحفوظ فعليًا ونسبة التقدم.",
-      ],
-      href: "/financial-plans?tab=plans",
-      actionLabel: "انتقل إلى خطط الادخار",
-      icon: Goal,
+      actionLabel: "فتح التقارير",
+      icon: BarChart3,
     },
   ], []);
 
@@ -169,9 +145,9 @@ export default function UserGuidePage() {
           <BookOpen className="h-4 w-4" />
           دليل الاستخدام
         </div>
-        <h1 className="text-xl font-bold sm:text-2xl">شرح فعلي لطريقة عمل النظام</h1>
+        <h1 className="text-xl font-bold sm:text-2xl">ابدأ ببساطة</h1>
         <p className="text-sm leading-7 text-muted-foreground">
-          اتبع الخطوات التالية بالترتيب، وكل خطوة ستنقلك مباشرة إلى المكان المناسب لتطبيقها داخل النظام.
+          أربع خطوات واضحة فقط. يمكنك البدء بالتزاماتك الآن، وإضافة الأدوات المالية لاحقاً عند الحاجة.
         </p>
       </div>
 

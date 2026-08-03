@@ -1,464 +1,231 @@
-import { ArrowDownLeft, ArrowUpRight, Eye, EyeOff, Settings, Loader2, Receipt, Calendar, Wallet, PieChart, ChevronLeft, Sparkles, Goal, ListChecks } from "lucide-react";
+import { Calendar, ChevronLeft, CircleAlert, Clock3, ListChecks, Loader2, Receipt, Settings, Sparkles } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CurrencyDisplay } from "@/components/ui/currency-display";
-import { useEffect, useMemo, useState } from "react";
-import { calculateSavingsGoalProgress, calculateSavingsGoalSavedAmount } from "@/lib/savings-goals";
-import { cn, formatCurrency, formatObligationDueDate, formatRelativeArabicDate, getUpcomingObligations, normalizeArabicText } from "@/lib/utils";
-import { Link, useLocation } from "wouter";
-import { useCategories, useCommitments, useDashboard, useUser, useObligations, useSavingsGoals, useWallets } from "@/lib/hooks";
+import { useMemo } from "react";
+import { cn, formatObligationDueDate, formatRelativeArabicDate, getUpcomingObligations, normalizeArabicText } from "@/lib/utils";
+import { Link } from "wouter";
+import { useCommitments, useDashboard, useObligations, useUser } from "@/lib/hooks";
+import type { Commitment } from "@shared/schema";
 
-const categoryColors: Record<string, { icon: string; bg: string }> = {
-  "طعام": { icon: "🍔", bg: "bg-orange-100 dark:bg-orange-950" },
-  "وقود": { icon: "⛽", bg: "bg-blue-100 dark:bg-blue-950" },
-  "إيجار": { icon: "🏠", bg: "bg-indigo-100 dark:bg-indigo-950" },
-  "راتب": { icon: "💰", bg: "bg-emerald-100 dark:bg-emerald-950" },
-  "صحة": { icon: "💊", bg: "bg-red-100 dark:bg-red-950" },
-  "تسوق": { icon: "🛍️", bg: "bg-pink-100 dark:bg-pink-950" },
-  "فواتير": { icon: "📄", bg: "bg-yellow-100 dark:bg-yellow-950" },
-};
+function startOfTodayTimestamp() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.floor(today.getTime() / 1000);
+}
+
+function getCommitmentTiming(commitment: Commitment, today: number) {
+  if (!commitment.dueDate) {
+    return { label: "بدون موعد", tone: "neutral" as const, daysLeft: Number.MAX_SAFE_INTEGER };
+  }
+
+  const dueDate = new Date(commitment.dueDate * 1000);
+  dueDate.setHours(0, 0, 0, 0);
+  const dueTimestamp = Math.floor(dueDate.getTime() / 1000);
+  const daysLeft = Math.round((dueTimestamp - today) / (24 * 60 * 60));
+
+  if (daysLeft < 0) return { label: `متأخر ${Math.abs(daysLeft)} يوم`, tone: "danger" as const, daysLeft };
+  if (daysLeft === 0) return { label: "اليوم", tone: "warning" as const, daysLeft };
+  if (daysLeft === 1) return { label: "غداً", tone: "soon" as const, daysLeft };
+  if (daysLeft <= 7) return { label: `بعد ${daysLeft} أيام`, tone: "soon" as const, daysLeft };
+  return { label: new Intl.DateTimeFormat("ar-OM", { day: "numeric", month: "short" }).format(dueDate), tone: "neutral" as const, daysLeft };
+}
 
 export default function Dashboard() {
-  const [showBalance, setShowBalance] = useState(true);
-  const [isOnboardingDismissed, setIsOnboardingDismissed] = useState(false);
-  const [, setLocation] = useLocation();
   const { data: user } = useUser();
   const { data: dashboard, isLoading } = useDashboard();
   const { data: obligations, isLoading: isLoadingObligations } = useObligations();
-  const { data: wallets = [] } = useWallets();
-  const { data: savingsGoals = [] } = useSavingsGoals();
-  const { data: categories = [] } = useCategories();
-  const { data: commitments = [] } = useCommitments();
-  
-  const upcomingObligations = getUpcomingObligations(obligations, 5);
-  const hasWallets = wallets.length > 0;
-  const hasCategories = categories.length > 0;
-  const hasTransactions = (dashboard?.recentTransactions?.length ?? 0) > 0;
-  const isInitialLoading = isLoading || isLoadingObligations;
-  const totalUpcomingObligations = upcomingObligations.reduce((sum, obligation) => sum + obligation.amount, 0);
-  const netBalance = (dashboard?.totalIncome ?? 0) - (dashboard?.totalExpenses ?? 0);
-  const activeCommitments = commitments.filter((commitment) => commitment.status === "active");
-  const nowInSeconds = Math.floor(Date.now() / 1000);
-  const sevenDaysFromNow = nowInSeconds + (7 * 24 * 60 * 60);
-  const dueSoonCommitments = activeCommitments.filter(
-    (commitment) => commitment.dueDate && commitment.dueDate >= nowInSeconds && commitment.dueDate <= sevenDaysFromNow,
+  const { data: commitments = [], isLoading: isLoadingCommitments } = useCommitments();
+  const today = useMemo(startOfTodayTimestamp, []);
+
+  const activeCommitments = useMemo(
+    () => commitments.filter((commitment) => commitment.status === "active"),
+    [commitments],
   );
-  const onboardingSteps = [
-    {
-      key: "wallets",
-      title: "أضف أول محفظة",
-      description: "ابدأ بحساب أو محفظة واحدة ليصبح الرصيد والتسجيل المالي واضحًا.",
-      href: "/wallets",
-      done: hasWallets,
-      icon: Wallet,
-    },
-    {
-      key: "categories",
-      title: "أنشئ أقسامك الأساسية",
-      description: "قسّم مصروفاتك ودخلك لتقرأ التقارير بسهولة لاحقًا.",
-      href: "/categories",
-      done: hasCategories,
-      icon: PieChart,
-    },
-  ];
-  const onboardingStorageKey = useMemo(() => `dashboard-onboarding-dismissed:${user?.id ?? user?.email ?? "guest"}`, [user?.email, user?.id]);
-  const userGuideStorageKey = "eltizam-user-guide-seen";
-
-  useEffect(() => {
-    const storedValue = window.localStorage.getItem(onboardingStorageKey);
-    setIsOnboardingDismissed(storedValue === "true");
-  }, [onboardingStorageKey]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const hasSeenGuide = window.localStorage.getItem(userGuideStorageKey) === "true";
-    if (!hasSeenGuide) {
-      setLocation("/user-guide");
-    }
-  }, [setLocation, userGuideStorageKey]);
-
-  const hasCompletedInitialSetup = onboardingSteps.every((step) => step.done);
-  const nextStep = onboardingSteps.find((step) => !step.done);
-  const shouldShowOnboardingCard = !hasCompletedInitialSetup && !isOnboardingDismissed && !!nextStep;
-  const savingsGoalsSummary = useMemo(() => {
-    const totalTarget = savingsGoals.reduce((sum, goal) => sum + goal.targetAmount, 0);
-    const totalMonthly = savingsGoals.reduce((sum, goal) => sum + goal.monthlyAmount, 0);
-    const totalSaved = savingsGoals.reduce((sum, goal) => sum + calculateSavingsGoalSavedAmount(goal, wallets), 0);
-    const averageProgress = savingsGoals.length > 0
-      ? savingsGoals.reduce((sum, goal) => sum + calculateSavingsGoalProgress(goal, wallets), 0) / savingsGoals.length
-      : 0;
-
-    return {
-      totalTarget,
-      totalMonthly,
-      totalSaved,
-      averageProgress,
-    };
-  }, [savingsGoals, wallets]);
-
-  const handleDismissOnboarding = () => {
-    window.localStorage.setItem(onboardingStorageKey, "true");
-    setIsOnboardingDismissed(true);
-  };
+  const priorityCommitments = useMemo(
+    () => activeCommitments
+      .map((commitment) => ({ commitment, timing: getCommitmentTiming(commitment, today) }))
+      .filter(({ timing }) => timing.daysLeft <= 7)
+      .sort((first, second) => first.timing.daysLeft - second.timing.daysLeft)
+      .slice(0, 5),
+    [activeCommitments, today],
+  );
+  const overdueCount = priorityCommitments.filter(({ timing }) => timing.tone === "danger").length;
+  const todayCount = priorityCommitments.filter(({ timing }) => timing.tone === "warning").length;
+  const weekCount = priorityCommitments.filter(({ timing }) => timing.daysLeft >= 0 && timing.daysLeft <= 7).length;
+  const upcomingObligations = getUpcomingObligations(obligations, 3);
+  const hasFinancialActivity = (dashboard?.recentTransactions?.length ?? 0) > 0
+    || (dashboard?.totalBalance ?? 0) !== 0
+    || (dashboard?.totalIncome ?? 0) !== 0
+    || (dashboard?.totalExpenses ?? 0) !== 0;
+  const isLoadingImportant = isLoadingCommitments || isLoadingObligations;
 
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-4 flex flex-col gap-5 px-1 py-4 pb-24 duration-500 sm:gap-6 sm:px-2 sm:py-6 xl:px-0 xl:py-8" dir="rtl">
-      <header className="mb-1 flex items-center justify-between gap-4">
+    <div className="animate-in fade-in flex flex-col gap-5 px-1 py-4 pb-24 duration-300 sm:gap-6 sm:px-2 sm:py-6 xl:px-0 xl:py-8" dir="rtl">
+      <header className="flex items-center justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="text-sm font-medium text-muted-foreground" data-testid="text-greeting">مرحباً بعودتك،</h1>
-          <h2 className="text-xl font-bold sm:text-2xl" data-testid="text-username">{user?.name || "المستخدم"}</h2>
+          <p className="text-sm text-muted-foreground">مرحباً بعودتك</p>
+          <h1 className="truncate text-xl font-bold sm:text-2xl">{user?.name || "المستخدم"}</h1>
         </div>
-        <div className="shrink-0">
-          <Link href="/settings">
-            <div className="h-11 w-11 bg-primary/10 rounded-full flex items-center justify-center text-primary cursor-pointer hover:bg-primary/20 transition-colors" data-testid="link-settings">
-              <Settings className="h-5 w-5" />
-            </div>
-          </Link>
-        </div>
+        <Link href="/settings">
+          <div className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-full bg-primary/10 text-primary transition-colors hover:bg-primary/20" aria-label="الإعدادات">
+            <Settings className="h-5 w-5" />
+          </div>
+        </Link>
       </header>
 
-      {shouldShowOnboardingCard ? (
-        <Card className="border-primary/20 bg-primary/5 shadow-sm overflow-hidden">
-          <CardContent className="p-4">
-            <div className="flex items-start justify-between gap-3">
+      <Card className="overflow-hidden border-none bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-xl">
+        <CardContent className="relative p-5 sm:p-6">
+          <div className="absolute -left-8 -top-8 h-28 w-28 rounded-full bg-white/10 blur-2xl" />
+          <div className="relative">
+            <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-sm text-primary font-semibold mb-1">خطوتك التالية</p>
-                <h3 className="font-bold text-base">{nextStep.title}</h3>
-                <p className="text-sm text-muted-foreground mt-1">{nextStep.description}</p>
-                <Button variant="ghost" size="sm" className="mt-3 h-auto px-0 text-muted-foreground hover:text-foreground" onClick={handleDismissOnboarding}>
-                  تخطي
-                </Button>
+                <p className="text-sm font-medium text-primary-foreground/75">ما المهم الآن؟</p>
+                <h2 className="mt-1 text-2xl font-black">يومك في نظرة واحدة</h2>
+                <p className="mt-2 max-w-xl text-sm leading-6 text-primary-foreground/80">ابدأ بالأقرب، واترك التفاصيل للنظام.</p>
               </div>
-              <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                <nextStep.icon className="h-5 w-5" />
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/15">
+                <Sparkles className="h-6 w-6" />
               </div>
             </div>
-            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-              {onboardingSteps.map((step) => (
-                <Link key={step.key} href={step.href}>
-                  <div className={cn(
-                    "rounded-xl border p-3 h-full transition-colors cursor-pointer",
-                    step.done ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-border/60 bg-background hover:bg-muted/50"
-                  )}>
-                    <div className="flex items-center justify-between mb-2">
-                      <step.icon className="h-4 w-4" />
-                      <span className="text-[11px] font-medium">{step.done ? "مكتملة" : "مطلوبة"}</span>
-                    </div>
-                    <p className="text-xs font-medium leading-5">{step.title}</p>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
 
-      <Card className="relative overflow-hidden border-none bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-xl">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
-        <div className="absolute bottom-0 left-0 w-24 h-24 bg-black/10 rounded-full blur-2xl -ml-5 -mb-5"></div>
-        
-        <CardContent className="relative z-10 p-4 sm:p-6">
-          <div className="mb-5 flex items-start justify-between gap-3 sm:mb-6">
-            <span className="text-sm font-medium text-primary-foreground/80">الرصيد الإجمالي</span>
-            <button 
-              onClick={() => setShowBalance(!showBalance)}
-              className="rounded-full bg-white/10 p-2 text-primary-foreground/80 transition-colors hover:text-white"
-              data-testid="button-toggle-balance"
-            >
-              {showBalance ? <Eye className="h-4 w-4 sm:h-5 sm:w-5" /> : <EyeOff className="h-4 w-4 sm:h-5 sm:w-5" />}
-            </button>
-          </div>
-          
-          <div className="mb-6 sm:mb-8">
-            <h3 className="flex items-baseline gap-2 text-3xl font-black tracking-tight sm:text-4xl" data-testid="text-total-balance">
-              {isLoading ? (
-                <Loader2 className="h-8 w-8 animate-spin" />
-              ) : showBalance ? (
-                <CurrencyDisplay amount={dashboard?.totalBalance ?? 0} fractionDigits={2} symbolClassName="text-lg font-medium text-primary-foreground/80" />
-              ) : (
-                "••••••••"
-              )}
-            </h3>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 border-t border-white/20 pt-4 sm:gap-4">
-            <div className="rounded-2xl bg-white/10 p-3 backdrop-blur-sm">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <span className="text-xs text-primary-foreground/70">الدخل</span>
-                <div className="rounded-xl bg-white/15 p-2">
-                  <ArrowDownLeft className="h-4 w-4 text-green-300 sm:h-5 sm:w-5" strokeWidth={3} />
-                </div>
+            <div className="mt-5 grid grid-cols-3 gap-2 sm:gap-3">
+              <div className="rounded-2xl bg-white/10 p-3 text-center backdrop-blur-sm">
+                <p className="text-2xl font-black">{overdueCount}</p>
+                <p className="mt-1 text-[11px] text-primary-foreground/75 sm:text-xs">متأخر</p>
               </div>
-              <p className="break-words text-sm font-semibold sm:text-base" data-testid="text-income">
-                {showBalance ? `+${formatCurrency(dashboard?.totalIncome ?? 0, 2)}` : "••••"}
-              </p>
-            </div>
-            <div className="rounded-2xl bg-white/10 p-3 backdrop-blur-sm">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <span className="text-xs text-primary-foreground/70">المصروفات</span>
-                <div className="rounded-xl bg-white/15 p-2">
-                  <ArrowUpRight className="h-4 w-4 text-red-300 sm:h-5 sm:w-5" strokeWidth={3} />
-                </div>
+              <div className="rounded-2xl bg-white/10 p-3 text-center backdrop-blur-sm">
+                <p className="text-2xl font-black">{todayCount}</p>
+                <p className="mt-1 text-[11px] text-primary-foreground/75 sm:text-xs">اليوم</p>
               </div>
-              <p className="break-words text-sm font-semibold sm:text-base" data-testid="text-expenses">
-                {showBalance ? `-${formatCurrency(dashboard?.totalExpenses ?? 0, 2)}` : "••••"}
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {!nextStep && !isInitialLoading ? (
-        <Card className="border-border/50 shadow-sm bg-card/80">
-          <CardContent className="p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-primary mb-1">ملخص سريع</p>
-                <h3 className="font-bold text-base">وضعك الحالي باختصار</h3>
-                <div className="space-y-1.5 mt-3 text-sm text-muted-foreground">
-                  <p>صافي الحركة: <span className={cn("font-bold", netBalance >= 0 ? "text-emerald-600" : "text-red-600")}>{netBalance >= 0 ? "+" : ""}<CurrencyDisplay amount={Math.abs(netBalance) === netBalance ? netBalance : Math.abs(netBalance)} fractionDigits={2} /></span></p>
-                  <p>الالتزامات القريبة: <span className="font-bold text-amber-600"><CurrencyDisplay amount={totalUpcomingObligations} fractionDigits={2} /></span></p>
-                  <p>المحافظ المتاحة: <span className="font-bold text-foreground">{wallets.length}</span></p>
-                  <p>الأقسام المعرفة: <span className="font-bold text-foreground">{categories.length}</span></p>
-                </div>
-              </div>
-              <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                <Sparkles className="h-5 w-5" />
+              <div className="rounded-2xl bg-white/10 p-3 text-center backdrop-blur-sm">
+                <p className="text-2xl font-black">{weekCount}</p>
+                <p className="mt-1 text-[11px] text-primary-foreground/75 sm:text-xs">هذا الأسبوع</p>
               </div>
             </div>
-          </CardContent>
-        </Card>
-      ) : null}
 
-      <Card className="overflow-hidden border-primary/20 bg-gradient-to-br from-primary/10 via-background to-background shadow-sm">
-        <CardContent className="p-4 sm:p-5">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <p className="mb-1 text-sm font-semibold text-primary">التزاماتي</p>
-              <h3 className="text-base font-bold sm:text-lg">كل التزامات حياتك في مكان واحد</h3>
-              <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                مالي، شخصي، صحي، أسري أو متعلق بالعمل.
-              </p>
-            </div>
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
-              <ListChecks className="h-5 w-5" />
-            </div>
-          </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <div className="rounded-2xl border border-border/60 bg-background/80 p-3">
-              <p className="text-xs text-muted-foreground">التزامات نشطة</p>
-              <p className="mt-1 text-2xl font-black text-foreground">{activeCommitments.length}</p>
-            </div>
-            <div className="rounded-2xl border border-border/60 bg-background/80 p-3">
-              <p className="text-xs text-muted-foreground">خلال 7 أيام</p>
-              <p className="mt-1 text-2xl font-black text-amber-600">{dueSoonCommitments.length}</p>
-            </div>
-          </div>
-
-          <Link href="/commitments">
-            <Button className="mt-4 w-full sm:w-auto">
-              {activeCommitments.length > 0 ? "عرض التزاماتي" : "إضافة أول التزام"}
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-        </CardContent>
-      </Card>
-      <Card className="border-emerald-200 bg-emerald-50/70 shadow-sm">
-        <CardContent className="p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold text-emerald-700 mb-1">الأهداف الادخارية</p>
-              <h3 className="font-bold text-base">متابعة أهدافك من الصفحة الرئيسية</h3>
-              <div className="mt-3 space-y-1.5 text-sm text-muted-foreground">
-                <p>عدد الأهداف: <span className="font-bold text-foreground">{savingsGoals.length}</span></p>
-                <p>المحفوظ فعلياً: <span className="font-bold text-emerald-700"><CurrencyDisplay amount={savingsGoalsSummary.totalSaved} fractionDigits={2} /></span></p>
-                <p>إجمالي الادخار الشهري: <span className="font-bold text-emerald-700"><CurrencyDisplay amount={savingsGoalsSummary.totalMonthly} fractionDigits={2} /></span></p>
-                <p>إجمالي المستهدف: <span className="font-bold text-primary"><CurrencyDisplay amount={savingsGoalsSummary.totalTarget} fractionDigits={2} /></span></p>
-                <p>متوسط التقدم: <span className="font-bold text-foreground">{savingsGoalsSummary.averageProgress.toFixed(0)}%</span></p>
-              </div>
-            </div>
-            <div className="h-10 w-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
-              <Goal className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="mt-4 flex flex-col gap-2 sm:flex-row-reverse">
-            <Link href="/savings-goals">
-              <Button className="w-full sm:w-auto">عرض الأهداف الادخارية</Button>
-            </Link>
-            <Link href="/financial-plans?tab=plans">
-              <Button variant="outline" className="w-full sm:w-auto">إضافة هدف جديد</Button>
+            <Link href="/commitments">
+              <Button variant="secondary" className="mt-5 h-12 w-full rounded-xl font-bold text-primary sm:w-auto">
+                <ListChecks className="h-5 w-5" />
+                إضافة التزام
+              </Button>
             </Link>
           </div>
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:max-w-4xl">
-        <Link href="/wallets">
-          <div className="bg-card flex min-h-[128px] flex-col justify-between rounded-2xl border border-border/50 p-3 shadow-sm transition-colors hover:bg-muted/30 cursor-pointer sm:p-4">
-            <div className="flex items-center justify-between mb-2">
-              <div className="rounded-xl bg-primary/10 p-2">
-                <Wallet className="h-4 w-4 text-primary sm:h-5 sm:w-5" />
-              </div>
-              <ChevronLeft className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <div className="space-y-1 text-right">
-              <h3 className="font-bold text-sm">المحافظ</h3>
-              <p className="text-xs text-muted-foreground">{hasWallets ? `${wallets.length} محفوظة` : "أضف محفظتك الأولى"}</p>
-            </div>
+      <section className="xl:max-w-4xl">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold">الأولوية الآن</h2>
+            <p className="text-sm text-muted-foreground">الأقرب يظهر أولاً</p>
           </div>
-        </Link>
-        <Link href="/categories">
-          <div className="bg-card flex min-h-[128px] flex-col justify-between rounded-2xl border border-border/50 p-3 shadow-sm transition-colors hover:bg-muted/30 cursor-pointer sm:p-4">
-            <div className="flex items-center justify-between mb-2">
-              <div className="rounded-xl bg-primary/10 p-2">
-                <PieChart className="h-4 w-4 text-primary sm:h-5 sm:w-5" />
-              </div>
-              <ChevronLeft className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <div className="space-y-1 text-right">
-              <h3 className="font-bold text-sm">الأقسام</h3>
-              <p className="text-xs text-muted-foreground">{hasCategories ? `${categories.length} قسمًا` : "أنشئ أقسامك الأساسية"}</p>
-            </div>
-          </div>
-        </Link>
-        <Link href="/savings-goals">
-          <div className="bg-card flex min-h-[128px] flex-col justify-between rounded-2xl border border-border/50 p-3 shadow-sm transition-colors hover:bg-muted/30 cursor-pointer sm:p-4">
-            <div className="flex items-center justify-between mb-2">
-              <div className="rounded-xl bg-emerald-100 p-2">
-                <Goal className="h-4 w-4 text-emerald-700 sm:h-5 sm:w-5" />
-              </div>
-              <ChevronLeft className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <div className="space-y-1 text-right">
-              <h3 className="font-bold text-sm">الأهداف الادخارية</h3>
-              <p className="text-xs text-muted-foreground">{savingsGoals.length > 0 ? `${savingsGoals.length} أهداف` : "أضف هدفك الأول"}</p>
-            </div>
-          </div>
-        </Link>
-      </div>
-
-      <div className="mt-4 xl:max-w-4xl">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="font-bold text-lg">الالتزامات القادمة</h3>
-          <Link href="/obligations">
-            <Button variant="link" className="text-primary h-auto p-0 cursor-pointer">عرض الكل</Button>
-          </Link>
+          {activeCommitments.length > 0 ? (
+            <Link href="/commitments"><Button variant="link" className="h-auto p-0">عرض الكل</Button></Link>
+          ) : null}
         </div>
 
-        {isLoadingObligations ? (
-          <div className="flex justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        {isLoadingImportant ? (
+          <Card><CardContent className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></CardContent></Card>
+        ) : priorityCommitments.length > 0 ? (
+          <div className="grid gap-3 md:grid-cols-2">
+            {priorityCommitments.map(({ commitment, timing }) => (
+              <Link key={commitment.id} href={`/commitments/${commitment.id}`}>
+                <Card className={cn(
+                  "cursor-pointer border-border/60 shadow-sm transition-colors hover:bg-muted/30",
+                  timing.tone === "danger" && "border-red-200 bg-red-50/60",
+                  timing.tone === "warning" && "border-amber-200 bg-amber-50/60",
+                )}>
+                  <CardContent className="flex items-center gap-3 p-4">
+                    <div className={cn(
+                      "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl",
+                      timing.tone === "danger" ? "bg-red-100 text-red-700" : timing.tone === "warning" ? "bg-amber-100 text-amber-700" : "bg-primary/10 text-primary",
+                    )}>
+                      {timing.tone === "danger" ? <CircleAlert className="h-5 w-5" /> : <Clock3 className="h-5 w-5" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="truncate font-bold">{commitment.title}</h3>
+                      <p className={cn("mt-1 text-xs", timing.tone === "danger" ? "text-red-700" : timing.tone === "warning" ? "text-amber-700" : "text-muted-foreground")}>{timing.label}</p>
+                    </div>
+                    <ChevronLeft className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
           </div>
-        ) : upcomingObligations.length > 0 ? (
-          <Card className="border border-border/50 shadow-sm">
-            <CardContent className="p-4">
-              <div className="space-y-3">
-                {upcomingObligations.map((obligation) => (
-                  <div 
-                    key={obligation.id} 
-                    className="flex flex-col gap-3 rounded-xl bg-muted/30 p-3 transition-colors hover:bg-muted/50 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                        <Receipt className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <h4 className="font-semibold text-sm">{obligation.title}</h4>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                          <Calendar className="h-3 w-3" />
-                          <span>{formatObligationDueDate(obligation)}</span>
-                        </div>
-                        <p className="text-[11px] text-amber-600 mt-1">
-                          {obligation.daysLeft === 0 ? "اليوم" : obligation.daysLeft === 1 ? "غدًا" : `بعد ${obligation.daysLeft} يوم`}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right sm:text-left">
-                      <span className="font-bold text-destructive text-sm">
-                        <CurrencyDisplay amount={obligation.amount} fractionDigits={3} />
-                      </span>
-                    </div>
+        ) : (
+          <Card className="border-dashed bg-muted/20">
+            <CardContent className="py-9 text-center">
+              <ListChecks className="mx-auto h-9 w-9 text-primary/60" />
+              <h3 className="mt-3 font-bold">لا يوجد شيء عاجل</h3>
+              <p className="mt-1 text-sm text-muted-foreground">أضف أول التزام، وسيظهر هنا في الوقت المناسب.</p>
+            </CardContent>
+          </Card>
+        )}
+      </section>
+
+      {upcomingObligations.length > 0 ? (
+        <section className="xl:max-w-4xl">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-lg font-bold">دفعات قريبة</h2>
+            <Link href="/obligations"><Button variant="link" className="h-auto p-0">التفاصيل</Button></Link>
+          </div>
+          <Card className="border-border/60 shadow-sm">
+            <CardContent className="divide-y p-0">
+              {upcomingObligations.map((obligation) => (
+                <div key={obligation.id} className="flex items-center gap-3 p-4">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700"><Receipt className="h-5 w-5" /></div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold">{obligation.title}</p>
+                    <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground"><Calendar className="h-3.5 w-3.5" />{formatObligationDueDate(obligation)}</p>
                   </div>
-                ))}
+                  <span className="shrink-0 text-sm font-bold text-amber-700"><CurrencyDisplay amount={obligation.amount} fractionDigits={3} /></span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </section>
+      ) : null}
+
+      {hasFinancialActivity ? (
+        <section className="xl:max-w-4xl">
+          <h2 className="mb-3 text-lg font-bold">المال باختصار</h2>
+          <Card className="border-border/60 shadow-sm">
+            <CardContent className="p-4">
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div><p className="text-[11px] text-muted-foreground">الرصيد</p><p className="mt-1 text-sm font-bold"><CurrencyDisplay amount={dashboard?.totalBalance ?? 0} fractionDigits={2} /></p></div>
+                <div><p className="text-[11px] text-muted-foreground">الدخل</p><p className="mt-1 text-sm font-bold text-emerald-600"><CurrencyDisplay amount={dashboard?.totalIncome ?? 0} fractionDigits={2} /></p></div>
+                <div><p className="text-[11px] text-muted-foreground">المصروف</p><p className="mt-1 text-sm font-bold text-red-600"><CurrencyDisplay amount={dashboard?.totalExpenses ?? 0} fractionDigits={2} /></p></div>
               </div>
             </CardContent>
           </Card>
-        ) : (
-          <div className="text-center py-8 bg-muted/20 rounded-2xl border border-dashed border-border/50">
-            <Receipt className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-            <p className="text-muted-foreground text-sm">لا توجد التزامات قادمة</p>
-            <p className="text-xs text-muted-foreground/70 mt-1">أضف التزاماتك المالية لتتبع مواعيد الاستحقاق</p>
-            <Link href="/obligations">
-              <Button variant="outline" size="sm" className="mt-4">إضافة التزام</Button>
-            </Link>
-          </div>
-        )}
-      </div>
+        </section>
+      ) : null}
 
-      <div className="mt-6 xl:max-w-5xl">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="font-bold text-lg">أحدث المعاملات</h3>
-          <Link href="/transactions">
-            <Button variant="link" className="text-primary h-auto p-0 cursor-pointer" data-testid="link-all-transactions">عرض الكل</Button>
-          </Link>
-        </div>
-
-        {isLoading ? (
-          <div className="flex justify-center py-10">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      {!isLoading && dashboard?.recentTransactions && dashboard.recentTransactions.length > 0 ? (
+        <section className="xl:max-w-4xl">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-lg font-bold">آخر المعاملات</h2>
+            <Link href="/transactions"><Button variant="link" className="h-auto p-0">عرض الكل</Button></Link>
           </div>
-        ) : dashboard?.recentTransactions && dashboard.recentTransactions.length > 0 ? (
-          <div className="grid gap-3 lg:grid-cols-2">
-            {dashboard.recentTransactions.map((tx) => {
-              const catName = tx.categoryName || "أخرى";
-              const colors = categoryColors[catName] || { icon: tx.categoryIcon || "📝", bg: "bg-muted" };
-              return (
-                <div key={tx.id} className="bg-card flex items-center justify-between gap-3 rounded-2xl border border-border/50 p-4 shadow-sm transition-all hover-elevate cursor-pointer" data-testid={`card-transaction-${tx.id}`}>
-                  <div className="flex min-w-0 items-center gap-4">
-                    <div className={cn("h-12 w-12 rounded-2xl flex items-center justify-center text-xl", colors.bg)}>
-                      {tx.categoryIcon || colors.icon}
-                    </div>
-                    <div className="min-w-0">
-                      <h4 className="font-bold">{catName}</h4>
-                      <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">{normalizeArabicText(tx.note)} {tx.date && `• ${formatRelativeArabicDate(tx.date)}`}</p>
-                    </div>
+          <Card className="border-border/60 shadow-sm">
+            <CardContent className="divide-y p-0">
+              {dashboard.recentTransactions.slice(0, 3).map((transaction) => (
+                <div key={transaction.id} className="flex items-center gap-3 p-4">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-lg">{transaction.categoryIcon || "📝"}</div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold">{transaction.categoryName || "معاملة"}</p>
+                    <p className="mt-1 truncate text-xs text-muted-foreground">{normalizeArabicText(transaction.note)} {transaction.date ? `· ${formatRelativeArabicDate(transaction.date)}` : ""}</p>
                   </div>
-                  <div className={cn(
-                    "shrink-0 text-left font-bold text-lg",
-                    tx.type === 'income' ? "text-emerald-500" : tx.type === 'expense' ? "text-red-500" : ""
-                  )}>
-                    {tx.type === 'income' ? '+' : '-'}<CurrencyDisplay amount={tx.amount} fractionDigits={2} />
-                  </div>
+                  <span className={cn("shrink-0 text-sm font-bold", transaction.type === "income" ? "text-emerald-600" : "text-red-600")}>
+                    {transaction.type === "income" ? "+" : "-"}<CurrencyDisplay amount={transaction.amount} fractionDigits={2} />
+                  </span>
                 </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="text-center py-10 bg-muted/20 rounded-2xl border border-dashed border-border/50">
-            <p className="text-muted-foreground font-medium">لا توجد معاملات بعد</p>
-            <p className="text-xs text-muted-foreground/70 mt-1">ابدأ بمحفظة، ثم قسم، ثم أضف معاملتك الأولى من زر + أسفل الشاشة</p>
-            <div className="flex items-center justify-center gap-2 mt-4">
-              {!hasWallets ? (
-                <Link href="/wallets">
-                  <Button variant="outline" size="sm">إضافة محفظة</Button>
-                </Link>
-              ) : null}
-              {!hasCategories ? (
-                <Link href="/categories">
-                  <Button variant="outline" size="sm">إضافة قسم</Button>
-                </Link>
-              ) : null}
-              {hasWallets && hasCategories ? (
-                <Button variant="outline" size="sm" onClick={() => window.dispatchEvent(new CustomEvent("open-add-transaction"))}>إضافة معاملة</Button>
-              ) : null}
-            </div>
-          </div>
-        )}
-      </div>
+              ))}
+            </CardContent>
+          </Card>
+        </section>
+      ) : null}
     </div>
   );
 }

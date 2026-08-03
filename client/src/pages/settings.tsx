@@ -1,4 +1,4 @@
-import { User, Shield, Bell, Moon, LogOut, ChevronLeft, Globe, Lock, Check } from "lucide-react";
+import { User, Shield, Bell, Moon, LogOut, ChevronLeft, Globe, Lock, Check, Wallet, PieChart, Receipt, Landmark, Goal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -238,6 +238,24 @@ export default function Settings() {
         </div>
         </div>
 
+        <Card className="border-dashed p-4 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+              <Wallet className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="font-bold">إعداد مالي متقدم</h3>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">المحافظ والأقسام مخفية من الواجهة الرئيسية لتبقى بسيطة. افتحها فقط عندما تحتاج إدارة مالية تفصيلية.</p>
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <Button variant="outline" size="sm" className="justify-start" onClick={() => setLocation("/wallets")}><Wallet className="h-4 w-4" />المحافظ</Button>
+                <Button variant="outline" size="sm" className="justify-start" onClick={() => setLocation("/categories")}><PieChart className="h-4 w-4" />الأقسام</Button>
+                <Button variant="outline" size="sm" className="justify-start" onClick={() => setLocation("/income")}><Landmark className="h-4 w-4" />الدخل والراتب</Button>
+                <Button variant="outline" size="sm" className="justify-start" onClick={() => setLocation("/obligations")}><Receipt className="h-4 w-4" />الالتزامات المالية</Button>
+                <Button variant="outline" size="sm" className="justify-start sm:col-span-2" onClick={() => setLocation("/financial-plans")}><Goal className="h-4 w-4" />خطط وأهداف الادخار</Button>
+              </div>
+            </div>
+          </div>
+        </Card>
         <div className="pt-4 pb-8 xl:max-w-md">
           <Button variant="destructive" className="w-full py-6 rounded-xl font-bold text-lg shadow-sm cursor-pointer" onClick={handleLogout} disabled={logoutMutation.isPending} data-testid="button-logout">
             <LogOut className="mr-2 h-5 w-5 ml-2" />

@@ -101,10 +101,6 @@ export default function Commitments() {
     setForm((current) => ({ ...current, [key]: value }));
   };
 
-  const selectTemplate = (title: string, type: Commitment["type"]) => {
-    setForm((current) => ({ ...current, title, type }));
-  };
-
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!form.title.trim() || createCommitment.isPending) return;
@@ -138,41 +134,28 @@ export default function Commitments() {
       <Card className="border-primary/15 bg-gradient-to-br from-primary/5 to-background">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg"><Plus className="h-5 w-5 text-primary" />التزام جديد</CardTitle>
-          <p className="text-sm text-muted-foreground">ابدأ بالعنوان والموعد فقط، وأضف التفاصيل عند الحاجة.</p>
+          <p className="text-sm text-muted-foreground">ثلاثة حقول فقط. التفاصيل الأخرى اختيارية.</p>
         </CardHeader>
         <CardContent>
-          <div className="mb-4 flex flex-wrap gap-2">
-            <Button type="button" size="sm" variant="outline" onClick={() => selectTemplate("دفع فاتورة", "financial")}>فاتورة</Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => selectTemplate("صيانة السيارة", "vehicle")}>صيانة سيارة</Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => selectTemplate("موعد طبي", "health")}>موعد طبي</Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => selectTemplate("تسليم عمل", "work")}>مهمة عمل</Button>
-          </div>
-
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="commitment-title">ما الذي تريد الالتزام به؟</Label>
-                <Input id="commitment-title" value={form.title} onChange={(event) => updateField("title", event.target.value)} placeholder="مثال: تجديد تأمين السيارة" required />
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="space-y-2 md:col-span-3">
+                <Label htmlFor="commitment-title">ما التزامك؟</Label>
+                <Input id="commitment-title" value={form.title} onChange={(event) => updateField("title", event.target.value)} placeholder="مثال: تجديد تأمين السيارة" className="h-12" required autoFocus />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="commitment-due-date">متى؟</Label>
-                <Input id="commitment-due-date" type="date" value={form.dueDate} onChange={(event) => updateField("dueDate", event.target.value)} />
+                <Input id="commitment-due-date" type="date" value={form.dueDate} onChange={(event) => updateField("dueDate", event.target.value)} className="h-12" />
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="commitment-type">يتعلق بماذا؟</Label>
+                <select id="commitment-type" value={form.type} onChange={(event) => updateField("type", event.target.value as Commitment["type"])} className="h-12 w-full rounded-md border border-input bg-background px-3 text-sm">
+                  {typeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
               </div>
             </div>
-
-            <div className="flex flex-wrap gap-2">
-              {typeOptions.map((option) => {
-                const Icon = option.icon;
-                return (
-                  <button key={option.value} type="button" onClick={() => updateField("type", option.value)} className={"flex items-center gap-1.5 rounded-full border px-3 py-2 text-sm transition-colors " + (form.type === option.value ? "border-primary bg-primary/10 font-medium text-primary" : "border-border hover:bg-muted")}>
-                    <Icon className="h-4 w-4" />{option.label}
-                  </button>
-                );
-              })}
-            </div>
-
             <button type="button" className="text-sm font-medium text-primary" onClick={() => setShowAdvanced((visible) => !visible)}>
-              {showAdvanced ? "إخفاء التفاصيل" : "إضافة تفاصيل اختيارية"}
+              {showAdvanced ? "إخفاء الخيارات المتقدمة" : "خيارات متقدمة"}
             </button>
 
             {showAdvanced ? (
@@ -202,7 +185,7 @@ export default function Commitments() {
               </div>
             ) : null}
 
-            <Button type="submit" disabled={createCommitment.isPending} className="w-full md:w-auto">{createCommitment.isPending ? "جاري الحفظ..." : "حفظ الالتزام"}</Button>
+            <Button type="submit" disabled={createCommitment.isPending} className="h-12 w-full rounded-xl md:w-auto">{createCommitment.isPending ? "جاري الحفظ..." : "إضافة الالتزام"}</Button>
           </form>
         </CardContent>
       </Card>
