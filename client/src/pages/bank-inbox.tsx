@@ -194,13 +194,13 @@ export default function BankInbox() {
               {connectGoogle.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mail className="h-5 w-5" />}
               ربط Gmail
             </Button>
-            {!data?.providers.google.configured ? <p className="text-center text-xs text-amber-700">يحتاج مسؤول المنصة لإضافة مفاتيح Google مرة واحدة قبل تفعيل الزر.</p> : null}
+            {!data?.providers.google.configured ? <p className="text-center text-xs text-amber-700">ربط Gmail متاح بعد تفعيل خدمة البريد من إدارة المنصة.</p> : null}
 
             <Button variant="outline" className="h-12 w-full text-base font-bold" disabled={!walletId || connectMicrosoft.isPending || !data?.providers.microsoft.configured} onClick={() => connectMicrosoft.mutate()}>
               {connectMicrosoft.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Inbox className="h-5 w-5" />}
               ربط Outlook
             </Button>
-            {!data?.providers.microsoft.configured ? <p className="text-center text-xs text-amber-700">Outlook يحتاج مفاتيح Microsoft من إدارة المنصة قبل تفعيل الزر.</p> : null}
+            {!data?.providers.microsoft.configured ? <p className="text-center text-xs text-amber-700">ربط Outlook متاح بعد تفعيل خدمة البريد من إدارة المنصة.</p> : null}
           </div>
         </Card>
       ) : (

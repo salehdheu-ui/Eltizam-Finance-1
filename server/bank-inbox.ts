@@ -2,7 +2,7 @@ import type { Express, NextFunction, Request, Response } from "express";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
-import { bankEmailConnections, bankEmailEvents, commitments, transactions } from "@shared/schema";
+import { bankEmailConnections, bankEmailEvents, categories, commitments, transactions } from "@shared/schema";
 import { db } from "./db";
 import { storage } from "./storage";
 import { BANK_PROFILES, buildBankSearchQuery, createMessageFingerprint, parseBankMessage, type BankKey } from "./bank-message-parser";
@@ -32,25 +32,25 @@ function appUrl(req: Request) {
   return `${protocol}://${req.get("host")}`;
 }
 
-function tokenKey() {
+function tokenKey(userId: number) {
   const secret = process.env.TOKEN_ENCRYPTION_KEY || process.env.SESSION_SECRET;
   if (!secret) throw new Error("TOKEN_ENCRYPTION_KEY or SESSION_SECRET is required");
-  return createHash("sha256").update(secret).digest();
+  return createHash("sha256").update(`${secret}:bank-email-user:${userId}`).digest();
 }
 
-function encryptToken(value: string | null | undefined) {
+function encryptToken(value: string | null | undefined, userId: number) {
   if (!value) return null;
   const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", tokenKey(), iv);
+  const cipher = createCipheriv("aes-256-gcm", tokenKey(userId), iv);
   const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
   return [iv.toString("base64url"), cipher.getAuthTag().toString("base64url"), encrypted.toString("base64url")].join(".");
 }
 
-function decryptToken(value: string | null | undefined) {
+function decryptToken(value: string | null | undefined, userId: number) {
   if (!value) return null;
   const [iv, tag, encrypted] = value.split(".");
   if (!iv || !tag || !encrypted) return null;
-  const decipher = createDecipheriv("aes-256-gcm", tokenKey(), Buffer.from(iv, "base64url"));
+  const decipher = createDecipheriv("aes-256-gcm", tokenKey(userId), Buffer.from(iv, "base64url"));
   decipher.setAuthTag(Buffer.from(tag, "base64url"));
   return Buffer.concat([decipher.update(Buffer.from(encrypted, "base64url")), decipher.final()]).toString("utf8");
 }
@@ -82,10 +82,10 @@ function gmailBody(part?: GmailPart): string {
 
 async function googleAccessToken(connection: typeof bankEmailConnections.$inferSelect) {
   const now = Math.floor(Date.now() / 1000);
-  const accessToken = decryptToken(connection.accessTokenEncrypted);
+  const accessToken = decryptToken(connection.accessTokenEncrypted, connection.userId);
   if (accessToken && (connection.tokenExpiresAt || 0) > now + 60) return accessToken;
 
-  const refreshToken = decryptToken(connection.refreshTokenEncrypted);
+  const refreshToken = decryptToken(connection.refreshTokenEncrypted, connection.userId);
   if (!refreshToken || !process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
     throw new Error("انتهت صلاحية ربط Gmail. أعد ربط البريد.");
   }
@@ -103,7 +103,7 @@ async function googleAccessToken(connection: typeof bankEmailConnections.$inferS
   if (!response.ok) throw new Error("تعذر تحديث صلاحية Gmail");
   const token = await response.json() as { access_token: string; expires_in?: number };
   await db.update(bankEmailConnections).set({
-    accessTokenEncrypted: encryptToken(token.access_token),
+    accessTokenEncrypted: encryptToken(token.access_token, connection.userId),
     tokenExpiresAt: now + (token.expires_in || 3600),
     updatedAt: now,
   }).where(eq(bankEmailConnections.id, connection.id));
@@ -112,10 +112,10 @@ async function googleAccessToken(connection: typeof bankEmailConnections.$inferS
 
 async function microsoftAccessToken(connection: typeof bankEmailConnections.$inferSelect) {
   const now = Math.floor(Date.now() / 1000);
-  const accessToken = decryptToken(connection.accessTokenEncrypted);
+  const accessToken = decryptToken(connection.accessTokenEncrypted, connection.userId);
   if (accessToken && (connection.tokenExpiresAt || 0) > now + 60) return accessToken;
 
-  const refreshToken = decryptToken(connection.refreshTokenEncrypted);
+  const refreshToken = decryptToken(connection.refreshTokenEncrypted, connection.userId);
   if (!refreshToken || !process.env.MICROSOFT_CLIENT_ID || !process.env.MICROSOFT_CLIENT_SECRET) {
     throw new Error("انتهت صلاحية ربط Outlook. أعد ربط البريد.");
   }
@@ -134,8 +134,8 @@ async function microsoftAccessToken(connection: typeof bankEmailConnections.$inf
   if (!response.ok) throw new Error("تعذر تحديث صلاحية Outlook");
   const token = await response.json() as { access_token: string; expires_in?: number; refresh_token?: string };
   await db.update(bankEmailConnections).set({
-    accessTokenEncrypted: encryptToken(token.access_token),
-    refreshTokenEncrypted: token.refresh_token ? encryptToken(token.refresh_token) : connection.refreshTokenEncrypted,
+    accessTokenEncrypted: encryptToken(token.access_token, connection.userId),
+    refreshTokenEncrypted: token.refresh_token ? encryptToken(token.refresh_token, connection.userId) : connection.refreshTokenEncrypted,
     tokenExpiresAt: now + (token.expires_in || 3600),
     updatedAt: now,
   }).where(eq(bankEmailConnections.id, connection.id));
@@ -444,8 +444,8 @@ export function registerBankInboxRoutes(app: Express) {
         await db.update(bankEmailConnections).set({
           walletId: pending.walletId,
           autoImport: pending.autoImport,
-          accessTokenEncrypted: encryptToken(token.access_token),
-          refreshTokenEncrypted: token.refresh_token ? encryptToken(token.refresh_token) : existing[0].refreshTokenEncrypted,
+          accessTokenEncrypted: encryptToken(token.access_token, req.user!.id),
+          refreshTokenEncrypted: token.refresh_token ? encryptToken(token.refresh_token, req.user!.id) : existing[0].refreshTokenEncrypted,
           tokenExpiresAt: now + (token.expires_in || 3600),
           updatedAt: now,
         }).where(eq(bankEmailConnections.id, existing[0].id));
@@ -457,8 +457,8 @@ export function registerBankInboxRoutes(app: Express) {
           bankKey: pending.bankKey,
           walletId: pending.walletId,
           autoImport: pending.autoImport,
-          accessTokenEncrypted: encryptToken(token.access_token),
-          refreshTokenEncrypted: encryptToken(token.refresh_token),
+          accessTokenEncrypted: encryptToken(token.access_token, req.user!.id),
+          refreshTokenEncrypted: encryptToken(token.refresh_token, req.user!.id),
           tokenExpiresAt: now + (token.expires_in || 3600),
         });
       }
@@ -514,7 +514,7 @@ export function registerBankInboxRoutes(app: Express) {
       if (!email) throw new Error("email missing");
       const existing = await db.select().from(bankEmailConnections).where(and(eq(bankEmailConnections.userId, req.user!.id), eq(bankEmailConnections.provider, "microsoft"), eq(bankEmailConnections.email, email), eq(bankEmailConnections.bankKey, pending.bankKey)));
       const now = Math.floor(Date.now() / 1000);
-      const values = { walletId: pending.walletId, autoImport: pending.autoImport, accessTokenEncrypted: encryptToken(token.access_token), refreshTokenEncrypted: token.refresh_token ? encryptToken(token.refresh_token) : existing[0]?.refreshTokenEncrypted || null, tokenExpiresAt: now + (token.expires_in || 3600), updatedAt: now };
+      const values = { walletId: pending.walletId, autoImport: pending.autoImport, accessTokenEncrypted: encryptToken(token.access_token, req.user!.id), refreshTokenEncrypted: token.refresh_token ? encryptToken(token.refresh_token, req.user!.id) : existing[0]?.refreshTokenEncrypted || null, tokenExpiresAt: now + (token.expires_in || 3600), updatedAt: now };
       if (existing[0]) {
         await db.update(bankEmailConnections).set(values).where(eq(bankEmailConnections.id, existing[0].id));
       } else {
@@ -540,9 +540,18 @@ export function registerBankInboxRoutes(app: Express) {
     try {
       const input = z.object({ categoryId: z.number().int().positive().nullable().optional(), commitmentId: z.number().int().positive().nullable().optional() }).parse(req.body);
       const id = Number(req.params.id);
-      const [event] = await db.select().from(bankEmailEvents).where(and(eq(bankEmailEvents.id, id), eq(bankEmailEvents.userId, req.user!.id)));
+      const userId = req.user!.id;
+      const [event] = await db.select().from(bankEmailEvents).where(and(eq(bankEmailEvents.id, id), eq(bankEmailEvents.userId, userId)));
       if (!event) return res.status(404).json({ message: "المعاملة المقترحة غير موجودة" });
-      const [updated] = await db.update(bankEmailEvents).set(input).where(eq(bankEmailEvents.id, id)).returning();
+      if (input.categoryId) {
+        const [ownedCategory] = await db.select({ id: categories.id }).from(categories).where(and(eq(categories.id, input.categoryId), eq(categories.userId, userId)));
+        if (!ownedCategory) return res.status(404).json({ message: "التصنيف المحدد غير موجود" });
+      }
+      if (input.commitmentId) {
+        const [ownedCommitment] = await db.select({ id: commitments.id }).from(commitments).where(and(eq(commitments.id, input.commitmentId), eq(commitments.userId, userId), eq(commitments.type, "financial")));
+        if (!ownedCommitment) return res.status(404).json({ message: "الالتزام المالي المحدد غير موجود" });
+      }
+      const [updated] = await db.update(bankEmailEvents).set(input).where(and(eq(bankEmailEvents.id, id), eq(bankEmailEvents.userId, userId))).returning();
       if (event.transactionId && input.categoryId !== undefined) {
         await db.update(transactions).set({ categoryId: input.categoryId }).where(and(eq(transactions.id, event.transactionId), eq(transactions.userId, req.user!.id)));
       }
