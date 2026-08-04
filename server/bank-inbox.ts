@@ -7,6 +7,7 @@ import { db } from "./db";
 import { storage } from "./storage";
 import { BANK_PROFILES, buildBankSearchQuery, createMessageFingerprint, normalizeSenderList, parseBankMessage, resolveAllowedSenders, senderMatchesBank, type BankKey } from "./bank-message-parser";
 import { getProviderConfig, isProviderConfigured, resolveRedirectUri } from "./integration-settings";
+import { buildWriteQueueKey, enqueueWrite } from "./write-queue";
 
 const senderEntryPattern = /^[a-z0-9](?:[a-z0-9._+@-]*[a-z0-9])?$/;
 
@@ -291,6 +292,8 @@ async function importParsedEvent(params: {
   if (duplicate.length > 0) return { state: "duplicate" as const };
 
   const links = await findAutomaticLinks(params.userId, params.parsed.merchant, params.parsed.categoryHint, params.parsed.amount, params.receivedAt);
+  // The select above cannot prevent a concurrent run from inserting the same
+  // message between the check and the write, so let the unique indexes decide.
   const [event] = await db.insert(bankEmailEvents).values({
     userId: params.userId,
     connectionId: params.connection.id,
@@ -307,7 +310,9 @@ async function importParsedEvent(params: {
     merchant: params.parsed.merchant,
     categoryId: links.categoryId,
     commitmentId: links.commitmentId,
-  }).returning();
+  }).onConflictDoNothing().returning();
+
+  if (!event) return { state: "duplicate" as const };
 
   if (!params.connection.autoImport || params.parsed.confidence < 0.9) return { state: "review" as const, event };
 
@@ -418,6 +423,19 @@ async function syncMicrosoftConnection(userId: number, connection: typeof bankEm
   await db.update(bankEmailConnections).set({ lastSyncAt: Math.floor(Date.now() / 1000), updatedAt: Math.floor(Date.now() / 1000) }).where(eq(bankEmailConnections.id, connection.id));
   return summary;
 }
+/**
+ * The scheduler and the manual "read messages" button hit the same connection, so
+ * they take turns instead of racing each other through the same inbox.
+ */
+async function syncConnection(userId: number, connection: typeof bankEmailConnections.$inferSelect) {
+  const queued = await enqueueWrite(buildWriteQueueKey("bank-inbox-sync", connection.id), async () => {
+    if (connection.provider === "google") return syncGoogleConnection(userId, connection);
+    if (connection.provider === "microsoft") return syncMicrosoftConnection(userId, connection);
+    throw providerError(400, "موصل البريد غير مدعوم");
+  });
+  return queued.result;
+}
+
 let schedulerStarted = false;
 function startBankInboxScheduler() {
   if (schedulerStarted || process.env.NODE_ENV === "test") return;
@@ -435,8 +453,7 @@ function startBankInboxScheduler() {
       for (const connection of connections) {
         if (connection.lastSyncAt && now - connection.lastSyncAt < intervalMinutes * 60 - 15) continue;
         try {
-          if (connection.provider === "google") await syncGoogleConnection(connection.userId, connection);
-          if (connection.provider === "microsoft") await syncMicrosoftConnection(connection.userId, connection);
+          await syncConnection(connection.userId, connection);
         } catch (error) {
           console.error(`Bank inbox sync failed for connection ${connection.id}:`, error instanceof Error ? error.message : "unknown error");
         }
@@ -642,9 +659,7 @@ export function registerBankInboxRoutes(app: Express) {
       const id = Number(req.params.id);
       const [connection] = await db.select().from(bankEmailConnections).where(and(eq(bankEmailConnections.id, id), eq(bankEmailConnections.userId, req.user!.id)));
       if (!connection) return res.status(404).json({ message: "ربط البريد غير موجود" });
-      if (connection.provider === "google") return res.json(await syncGoogleConnection(req.user!.id, connection));
-      if (connection.provider === "microsoft") return res.json(await syncMicrosoftConnection(req.user!.id, connection));
-      return res.status(400).json({ message: "موصل البريد غير مدعوم" });
+      return res.json(await syncConnection(req.user!.id, connection));
     } catch (error) { next(error); }
   });
 
