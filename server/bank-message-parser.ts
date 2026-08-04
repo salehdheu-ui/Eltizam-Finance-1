@@ -76,11 +76,41 @@ function inferCategory(text: string) {
   return rules.find(([, rule]) => rule.test(text))?.[0] ?? null;
 }
 
-export function buildBankSearchQuery(bankKey: BankKey) {
+export function normalizeSenderList(value: string | null | undefined) {
+  if (!value) return [];
+  return Array.from(new Set(
+    value
+      .split(/[,;\n]/)
+      .map((entry) => entry.trim().toLowerCase().replace(/^@/, ""))
+      .filter(Boolean),
+  ));
+}
+
+/**
+ * Every sender we are allowed to read for a connection: the bank's known senders
+ * plus whatever the user registered themselves. An empty result means we have no
+ * filter, and scanning the whole mailbox is never an acceptable fallback.
+ */
+export function resolveAllowedSenders(bankKey: BankKey, customSenders?: string | string[] | null) {
   const profile = BANK_PROFILES.find((bank) => bank.key === bankKey);
-  if (!profile || profile.senders.length === 0) return "newer_than:30d";
-  const senderQuery = profile.senders.map((sender) => `from:(${sender})`).join(" OR ");
+  const custom = Array.isArray(customSenders)
+    ? normalizeSenderList(customSenders.join(","))
+    : normalizeSenderList(customSenders);
+  return Array.from(new Set([...(profile?.senders || []), ...custom]));
+}
+
+export function buildBankSearchQuery(bankKey: BankKey, customSenders?: string | string[] | null) {
+  const senders = resolveAllowedSenders(bankKey, customSenders);
+  if (senders.length === 0) return null;
+  const senderQuery = senders.map((sender) => `from:(${sender})`).join(" OR ");
   return `newer_than:30d (${senderQuery})`;
+}
+
+export function senderMatchesBank(bankKey: BankKey, sender: string, customSenders?: string | string[] | null) {
+  const senders = resolveAllowedSenders(bankKey, customSenders);
+  if (senders.length === 0) return false;
+  const normalized = sender.toLowerCase();
+  return senders.some((value) => normalized.includes(value));
 }
 
 export function parseBankMessage(input: { bankKey: BankKey; sender: string; subject: string; body: string }): ParsedBankMessage | null {

@@ -151,6 +151,7 @@ export const bankEmailConnections = pgTable("bank_email_connections", {
   provider: text("provider").notNull().default("google"),
   email: text("email").notNull(),
   bankKey: text("bank_key").notNull(),
+  customSenders: text("custom_senders"),
   walletId: integer("wallet_id").notNull().references(() => wallets.id),
   autoImport: boolean("auto_import").notNull().default(true),
   accessTokenEncrypted: text("access_token_encrypted"),

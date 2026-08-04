@@ -5,17 +5,43 @@ import { z } from "zod";
 import { bankEmailConnections, bankEmailEvents, categories, commitments, transactions } from "@shared/schema";
 import { db } from "./db";
 import { storage } from "./storage";
-import { BANK_PROFILES, buildBankSearchQuery, createMessageFingerprint, parseBankMessage, type BankKey } from "./bank-message-parser";
+import { BANK_PROFILES, buildBankSearchQuery, createMessageFingerprint, normalizeSenderList, parseBankMessage, resolveAllowedSenders, senderMatchesBank, type BankKey } from "./bank-message-parser";
 import { getProviderConfig, isProviderConfigured, resolveRedirectUri } from "./integration-settings";
 
+const senderEntryPattern = /^[a-z0-9](?:[a-z0-9._+@-]*[a-z0-9])?$/;
+
+const bankKeySchema = z.enum(["bank_muscat", "nbo", "bank_dhofar", "sohar_international", "ahlibank", "oman_arab_bank", "bank_nizwa", "other"]);
+
 const connectSchema = z.object({
-  bankKey: z.enum(["bank_muscat", "nbo", "bank_dhofar", "sohar_international", "ahlibank", "oman_arab_bank", "bank_nizwa", "other"]),
+  bankKey: bankKeySchema,
+  customSenders: z.string().max(500).optional().default(""),
   walletId: z.coerce.number().int().positive(),
   autoImport: z.boolean().optional().default(true),
+}).superRefine((input, ctx) => {
+  const entries = normalizeSenderList(input.customSenders);
+
+  if (entries.some((entry) => !senderEntryPattern.test(entry))) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["customSenders"],
+      message: "أدخل عنوان بريد أو نطاقًا صحيحًا، مثل alerts@yourbank.com أو yourbank.com",
+    });
+    return;
+  }
+
+  // Without a sender filter we would have to scan the whole mailbox, which is
+  // exactly what the connect screen promises we never do.
+  if (resolveAllowedSenders(input.bankKey, entries).length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["customSenders"],
+      message: "اكتب عنوان المرسل الذي يصلك منه إشعار البنك حتى نقرأ رسائله فقط",
+    });
+  }
 });
 
 const previewSchema = z.object({
-  bankKey: connectSchema.shape.bankKey,
+  bankKey: bankKeySchema,
   sender: z.string().max(300).optional().default(""),
   subject: z.string().max(500).optional().default(""),
   body: z.string().min(3).max(15000),
@@ -24,6 +50,76 @@ const previewSchema = z.object({
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.isAuthenticated()) return res.status(401).json({ message: "غير مسجل الدخول" });
   next();
+}
+
+/**
+ * Errors carrying a 4xx status survive the production error handler, which masks
+ * anything >= 500. Mail provider failures are almost always actionable by the
+ * user, so they must arrive with the reason intact rather than as "unexpected".
+ */
+function providerError(status: number, message: string, detail?: string) {
+  const error = new Error(detail ? `${message} (${detail})` : message) as Error & { status: number; publicMessage: string };
+  error.status = status;
+  error.publicMessage = message;
+  return error;
+}
+
+// `Response` in this module is Express's, so the fetch one needs qualifying.
+async function describeProviderFailure(response: globalThis.Response) {
+  const raw = await response.text().catch(() => "");
+  let detail = raw.slice(0, 300);
+  let reason = "";
+
+  try {
+    const payload = JSON.parse(raw) as {
+      error?: string | { message?: string; status?: string; errors?: Array<{ reason?: string }> };
+      error_description?: string;
+    };
+    if (typeof payload.error === "string") {
+      reason = payload.error;
+      detail = payload.error_description || payload.error;
+    } else if (payload.error) {
+      reason = payload.error.errors?.[0]?.reason || payload.error.status || "";
+      detail = payload.error.message || detail;
+    }
+  } catch {
+    // Non-JSON body: keep the truncated raw text as the detail.
+  }
+
+  return { status: response.status, reason, detail };
+}
+
+function googleReadError(failure: { status: number; reason: string; detail: string }) {
+  const haystack = `${failure.reason} ${failure.detail}`.toLowerCase();
+
+  if (failure.status === 401) {
+    return providerError(401, "انتهت صلاحية ربط Gmail. افصل البريد ثم أعد ربطه.", failure.detail);
+  }
+  if (haystack.includes("accessnotconfigured") || haystack.includes("has not been used in project") || haystack.includes("is disabled")) {
+    return providerError(502, "Gmail API غير مفعّل في مشروع Google. فعّله من Google Cloud Console ثم أعد المحاولة.", failure.detail);
+  }
+  if (haystack.includes("insufficient") || haystack.includes("insufficientpermissions") || haystack.includes("scope")) {
+    return providerError(403, "لم يُمنح التطبيق إذن قراءة Gmail. افصل البريد وأعد ربطه مع الموافقة على إذن قراءة البريد.", failure.detail);
+  }
+  if (failure.status === 429 || haystack.includes("ratelimit") || haystack.includes("quota")) {
+    return providerError(429, "تجاوزنا حد الطلبات المسموح من Gmail. حاول بعد دقائق.", failure.detail);
+  }
+  return providerError(502, `تعذر قراءة رسائل Gmail (رمز ${failure.status}).`, failure.detail);
+}
+
+function microsoftReadError(failure: { status: number; reason: string; detail: string }) {
+  const haystack = `${failure.reason} ${failure.detail}`.toLowerCase();
+
+  if (failure.status === 401) {
+    return providerError(401, "انتهت صلاحية ربط Outlook. افصل البريد ثم أعد ربطه.", failure.detail);
+  }
+  if (haystack.includes("accessdenied") || haystack.includes("authorization") || haystack.includes("scope")) {
+    return providerError(403, "لم يُمنح التطبيق إذن قراءة Outlook. تأكد من صلاحية Mail.Read ثم أعد الربط.", failure.detail);
+  }
+  if (failure.status === 429) {
+    return providerError(429, "تجاوزنا حد الطلبات المسموح من Outlook. حاول بعد دقائق.", failure.detail);
+  }
+  return providerError(502, `تعذر قراءة رسائل Outlook (رمز ${failure.status}).`, failure.detail);
 }
 
 function tokenKey(userId: number) {
@@ -95,7 +191,10 @@ async function googleAccessToken(connection: typeof bankEmailConnections.$inferS
       grant_type: "refresh_token",
     }),
   });
-  if (!response.ok) throw new Error("تعذر تحديث صلاحية Gmail");
+  if (!response.ok) {
+    const failure = await describeProviderFailure(response);
+    throw providerError(401, "انتهت صلاحية ربط Gmail. افصل البريد ثم أعد ربطه.", failure.detail);
+  }
   const token = await response.json() as { access_token: string; expires_in?: number };
   await db.update(bankEmailConnections).set({
     accessTokenEncrypted: encryptToken(token.access_token, connection.userId),
@@ -127,7 +226,10 @@ async function microsoftAccessToken(connection: typeof bankEmailConnections.$inf
       scope: "openid email offline_access User.Read Mail.Read",
     }),
   });
-  if (!response.ok) throw new Error("تعذر تحديث صلاحية Outlook");
+  if (!response.ok) {
+    const failure = await describeProviderFailure(response);
+    throw providerError(401, "انتهت صلاحية ربط Outlook. افصل البريد ثم أعد ربطه.", failure.detail);
+  }
   const token = await response.json() as { access_token: string; expires_in?: number; refresh_token?: string };
   await db.update(bankEmailConnections).set({
     accessTokenEncrypted: encryptToken(token.access_token, connection.userId),
@@ -228,11 +330,13 @@ async function importParsedEvent(params: {
 async function syncGoogleConnection(userId: number, connection: typeof bankEmailConnections.$inferSelect) {
   const accessToken = await googleAccessToken(connection);
   const headers = { Authorization: `Bearer ${accessToken}` };
+  const searchQuery = buildBankSearchQuery(connection.bankKey as BankKey, connection.customSenders);
+  if (!searchQuery) throw new Error("أضف عنوان مرسل البنك لهذا الربط قبل قراءة الرسائل");
   const listUrl = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
   listUrl.searchParams.set("maxResults", "50");
-  listUrl.searchParams.set("q", buildBankSearchQuery(connection.bankKey as BankKey));
+  listUrl.searchParams.set("q", searchQuery);
   const listResponse = await fetch(listUrl, { headers });
-  if (!listResponse.ok) throw new Error("تعذر قراءة رسائل Gmail");
+  if (!listResponse.ok) throw googleReadError(await describeProviderFailure(listResponse));
   const list = await listResponse.json() as { messages?: Array<{ id: string }> };
   const summary = { checked: list.messages?.length || 0, imported: 0, review: 0, duplicate: 0, ignored: 0 };
 
@@ -253,6 +357,8 @@ async function syncGoogleConnection(userId: number, connection: typeof bankEmail
       payload?: GmailPart & { headers?: Array<{ name?: string; value?: string }> };
     };
     const sender = headerValue(message.payload?.headers, "From");
+    // Gmail's `from:` filter is fuzzy, so re-check the header before parsing anything.
+    if (!senderMatchesBank(connection.bankKey as BankKey, sender, connection.customSenders)) { summary.ignored += 1; continue; }
     const subject = headerValue(message.payload?.headers, "Subject");
     const body = gmailBody(message.payload) || message.snippet || "";
     const parsed = parseBankMessage({ bankKey: connection.bankKey as BankKey, sender, subject, body });
@@ -274,27 +380,23 @@ async function syncGoogleConnection(userId: number, connection: typeof bankEmail
   return summary;
 }
 
-function senderMatchesBank(bankKey: BankKey, sender: string) {
-  const profile = BANK_PROFILES.find((bank) => bank.key === bankKey);
-  if (!profile || profile.key === "other") return true;
-  const normalized = sender.toLowerCase();
-  return profile.senders.some((value) => normalized.includes(value.toLowerCase()));
-}
-
 async function syncMicrosoftConnection(userId: number, connection: typeof bankEmailConnections.$inferSelect) {
+  if (resolveAllowedSenders(connection.bankKey as BankKey, connection.customSenders).length === 0) {
+    throw new Error("أضف عنوان مرسل البنك لهذا الربط قبل قراءة الرسائل");
+  }
   const accessToken = await microsoftAccessToken(connection);
   const url = new URL("https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages");
   url.searchParams.set("$top", "50");
   url.searchParams.set("$select", "id,subject,from,receivedDateTime");
   url.searchParams.set("$orderby", "receivedDateTime desc");
   const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-  if (!response.ok) throw new Error("تعذر قراءة رسائل Outlook");
+  if (!response.ok) throw microsoftReadError(await describeProviderFailure(response));
   const list = await response.json() as { value?: Array<{ id: string; subject?: string; from?: { emailAddress?: { address?: string } }; receivedDateTime?: string }> };
   const summary = { checked: list.value?.length || 0, imported: 0, review: 0, duplicate: 0, ignored: 0 };
 
   for (const message of list.value || []) {
     const sender = message.from?.emailAddress?.address || "";
-    if (!senderMatchesBank(connection.bankKey as BankKey, sender)) { summary.ignored += 1; continue; }
+    if (!senderMatchesBank(connection.bankKey as BankKey, sender, connection.customSenders)) { summary.ignored += 1; continue; }
     const existing = await db.select({ id: bankEmailEvents.id }).from(bankEmailEvents).where(and(
       eq(bankEmailEvents.userId, userId),
       eq(bankEmailEvents.connectionId, connection.id),
@@ -357,6 +459,7 @@ export function registerBankInboxRoutes(app: Express) {
         provider: bankEmailConnections.provider,
         email: bankEmailConnections.email,
         bankKey: bankEmailConnections.bankKey,
+        customSenders: bankEmailConnections.customSenders,
         walletId: bankEmailConnections.walletId,
         autoImport: bankEmailConnections.autoImport,
         lastSyncAt: bankEmailConnections.lastSyncAt,
@@ -372,7 +475,7 @@ export function registerBankInboxRoutes(app: Express) {
           google: { configured: googleConfigured },
           microsoft: { configured: microsoftConfigured },
         },
-        banks: BANK_PROFILES.map(({ key, name }) => ({ key, name })),
+        banks: BANK_PROFILES.map(({ key, name, senders }) => ({ key, name, requiresCustomSender: senders.length === 0 })),
         connections,
         events,
       });
@@ -443,10 +546,12 @@ export function registerBankInboxRoutes(app: Express) {
         eq(bankEmailConnections.bankKey, pending.bankKey),
       ));
       const now = Math.floor(Date.now() / 1000);
+      const customSenders = normalizeSenderList(pending.customSenders).join(",") || null;
       if (existing[0]) {
         await db.update(bankEmailConnections).set({
           walletId: pending.walletId,
           autoImport: pending.autoImport,
+          customSenders,
           accessTokenEncrypted: encryptToken(token.access_token, req.user!.id),
           refreshTokenEncrypted: token.refresh_token ? encryptToken(token.refresh_token, req.user!.id) : existing[0].refreshTokenEncrypted,
           tokenExpiresAt: now + (token.expires_in || 3600),
@@ -458,6 +563,7 @@ export function registerBankInboxRoutes(app: Express) {
           provider: "google",
           email: profile.email,
           bankKey: pending.bankKey,
+          customSenders,
           walletId: pending.walletId,
           autoImport: pending.autoImport,
           accessTokenEncrypted: encryptToken(token.access_token, req.user!.id),
@@ -520,7 +626,7 @@ export function registerBankInboxRoutes(app: Express) {
       if (!email) throw new Error("email missing");
       const existing = await db.select().from(bankEmailConnections).where(and(eq(bankEmailConnections.userId, req.user!.id), eq(bankEmailConnections.provider, "microsoft"), eq(bankEmailConnections.email, email), eq(bankEmailConnections.bankKey, pending.bankKey)));
       const now = Math.floor(Date.now() / 1000);
-      const values = { walletId: pending.walletId, autoImport: pending.autoImport, accessTokenEncrypted: encryptToken(token.access_token, req.user!.id), refreshTokenEncrypted: token.refresh_token ? encryptToken(token.refresh_token, req.user!.id) : existing[0]?.refreshTokenEncrypted || null, tokenExpiresAt: now + (token.expires_in || 3600), updatedAt: now };
+      const values = { walletId: pending.walletId, autoImport: pending.autoImport, customSenders: normalizeSenderList(pending.customSenders).join(",") || null, accessTokenEncrypted: encryptToken(token.access_token, req.user!.id), refreshTokenEncrypted: token.refresh_token ? encryptToken(token.refresh_token, req.user!.id) : existing[0]?.refreshTokenEncrypted || null, tokenExpiresAt: now + (token.expires_in || 3600), updatedAt: now };
       if (existing[0]) {
         await db.update(bankEmailConnections).set(values).where(eq(bankEmailConnections.id, existing[0].id));
       } else {

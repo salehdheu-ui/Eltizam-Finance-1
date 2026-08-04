@@ -15,12 +15,13 @@ import { CurrencyDisplay } from "@/components/ui/currency-display";
     google: { configured: boolean };
     microsoft: { configured: boolean };
   };
-  banks: Array<{ key: string; name: string }>;
+  banks: Array<{ key: string; name: string; requiresCustomSender: boolean }>;
   connections: Array<{
     id: number;
     provider: string;
     email: string;
     bankKey: string;
+    customSenders: string | null;
     walletId: number;
     autoImport: boolean;
     lastSyncAt: number | null;
@@ -51,6 +52,7 @@ export default function BankInbox() {
   const { data: categories = [] } = useCategories();
   const { data: commitments = [] } = useCommitments();
   const [bankKey, setBankKey] = useState("bank_muscat");
+  const [customSenders, setCustomSenders] = useState("");
   const [walletId, setWalletId] = useState("");
   const [autoImport, setAutoImport] = useState(true);
   const [showSetup, setShowSetup] = useState(false);
@@ -73,13 +75,22 @@ export default function BankInbox() {
   }, [walletId, wallets]);
 
   const bankNames = useMemo(() => new Map((data?.banks || []).map((bank) => [bank.key, bank.name])), [data?.banks]);
+  const banksNeedingSender = useMemo(
+    () => new Set((data?.banks || []).filter((bank) => bank.requiresCustomSender).map((bank) => bank.key)),
+    [data?.banks],
+  );
   const walletNames = useMemo(() => new Map(wallets.map((wallet) => [wallet.id, wallet.name])), [wallets]);
   const categoryNames = useMemo(() => new Map(categories.map((category) => [category.id, category.name])), [categories]);
   const commitmentNames = useMemo(() => new Map(commitments.map((commitment) => [commitment.id, commitment.title])), [commitments]);
 
+  const selectedBank = useMemo(() => (data?.banks || []).find((bank) => bank.key === bankKey), [data?.banks, bankKey]);
+  const needsCustomSender = Boolean(selectedBank?.requiresCustomSender);
+  const hasCustomSender = customSenders.trim().length > 0;
+  const isSetupIncomplete = !walletId || (needsCustomSender && !hasCustomSender);
+
   const connectGoogle = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/bank-inbox/google/start", { bankKey, walletId: Number(walletId), autoImport });
+      const response = await apiRequest("POST", "/api/bank-inbox/google/start", { bankKey, customSenders, walletId: Number(walletId), autoImport });
       return response.json() as Promise<{ authUrl: string }>;
     },
     onSuccess: ({ authUrl }) => window.location.assign(authUrl),
@@ -88,7 +99,7 @@ export default function BankInbox() {
 
   const connectMicrosoft = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/bank-inbox/microsoft/start", { bankKey, walletId: Number(walletId), autoImport });
+      const response = await apiRequest("POST", "/api/bank-inbox/microsoft/start", { bankKey, customSenders, walletId: Number(walletId), autoImport });
       return response.json() as Promise<{ authUrl: string }>;
     },
     onSuccess: ({ authUrl }) => window.location.assign(authUrl),
@@ -175,6 +186,22 @@ export default function BankInbox() {
               </label>
             </div>
 
+            {needsCustomSender ? (
+              <label className="space-y-2 text-sm font-semibold">
+                <span>عنوان مرسل إشعارات البنك</span>
+                <input
+                  value={customSenders}
+                  onChange={(event) => setCustomSenders(event.target.value)}
+                  placeholder="alerts@yourbank.com"
+                  dir="ltr"
+                  className="h-11 w-full rounded-xl border bg-background px-3 font-normal"
+                />
+                <span className="block text-xs font-normal leading-5 text-muted-foreground">
+                  افتح رسالة من بنكك وانسخ عنوان المرسل. نقرأ الرسائل الواردة من هذا العنوان فقط، وباقي بريدك لا يُقرأ إطلاقًا. يمكنك إضافة أكثر من عنوان بينها فاصلة.
+                </span>
+              </label>
+            ) : null}
+
             {wallets.length === 0 ? (
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                 أضف حساب البنك أولًا، ثم ارجع للربط.
@@ -190,13 +217,13 @@ export default function BankInbox() {
               <Switch checked={autoImport} onCheckedChange={setAutoImport} />
             </div>
 
-            <Button className="h-12 w-full text-base font-bold" disabled={!walletId || connectGoogle.isPending || !data?.providers.google.configured} onClick={() => connectGoogle.mutate()}>
+            <Button className="h-12 w-full text-base font-bold" disabled={isSetupIncomplete || connectGoogle.isPending || !data?.providers.google.configured} onClick={() => connectGoogle.mutate()}>
               {connectGoogle.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mail className="h-5 w-5" />}
               ربط Gmail
             </Button>
             {!data?.providers.google.configured ? <p className="text-center text-xs text-amber-700">ربط Gmail متاح بعد تفعيل خدمة البريد من إدارة المنصة.</p> : null}
 
-            <Button variant="outline" className="h-12 w-full text-base font-bold" disabled={!walletId || connectMicrosoft.isPending || !data?.providers.microsoft.configured} onClick={() => connectMicrosoft.mutate()}>
+            <Button variant="outline" className="h-12 w-full text-base font-bold" disabled={isSetupIncomplete || connectMicrosoft.isPending || !data?.providers.microsoft.configured} onClick={() => connectMicrosoft.mutate()}>
               {connectMicrosoft.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Inbox className="h-5 w-5" />}
               ربط Outlook
             </Button>
@@ -211,20 +238,30 @@ export default function BankInbox() {
               <div><h2 className="font-bold">البريد مرتبط</h2><p className="text-sm text-muted-foreground">اضغط قراءة الرسائل متى أردت تحديث المعاملات.</p></div>
             </div>
             <div className="space-y-3">
-              {data?.connections.map((connection) => (
-                <div key={connection.id} className="flex flex-col gap-3 rounded-xl border p-3 sm:flex-row sm:items-center">
-                  <div className="flex min-w-0 flex-1 items-center gap-3">
-                    <Mail className="h-5 w-5 shrink-0 text-primary" />
-                    <div className="min-w-0"><p className="truncate font-semibold" dir="ltr">{connection.email}</p><p className="mt-1 text-xs text-muted-foreground">{bankNames.get(connection.bankKey)} · {walletNames.get(connection.walletId)} · {formatDate(connection.lastSyncAt)}</p></div>
+              {data?.connections.map((connection) => {
+                const missingSender = banksNeedingSender.has(connection.bankKey) && !connection.customSenders;
+
+                return (
+                  <div key={connection.id} className="flex flex-col gap-3 rounded-xl border p-3 sm:flex-row sm:items-center">
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <Mail className="h-5 w-5 shrink-0 text-primary" />
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold" dir="ltr">{connection.email}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{bankNames.get(connection.bankKey)} · {walletNames.get(connection.walletId)} · {formatDate(connection.lastSyncAt)}</p>
+                        {missingSender ? (
+                          <p className="mt-1 text-xs text-amber-700">هذا الربط ينقصه عنوان مرسل البنك. افصله ثم أعد ربطه لتحديد العنوان.</p>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button className="flex-1 sm:flex-none" onClick={() => syncConnection.mutate(connection.id)} disabled={syncConnection.isPending || missingSender}>
+                        {syncConnection.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} قراءة الرسائل
+                      </Button>
+                      <Button variant="outline" size="icon" aria-label="فصل البريد" onClick={() => disconnect.mutate(connection.id)}><Unplug className="h-4 w-4" /></Button>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <Button className="flex-1 sm:flex-none" onClick={() => syncConnection.mutate(connection.id)} disabled={syncConnection.isPending}>
-                      {syncConnection.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} قراءة الرسائل
-                    </Button>
-                    <Button variant="outline" size="icon" aria-label="فصل البريد" onClick={() => disconnect.mutate(connection.id)}><Unplug className="h-4 w-4" /></Button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </Card>
 

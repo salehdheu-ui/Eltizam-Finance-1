@@ -83,6 +83,11 @@ const databaseMigrations: DatabaseMigration[] = [
     name: "ensure_integration_settings_table",
     up: async () => { await ensureIntegrationSettingsTable(); },
   },
+  {
+    version: 13,
+    name: "ensure_bank_email_custom_senders_column",
+    up: async () => { await ensureBankEmailCustomSendersColumn(); },
+  },
 ];
 
 async function ensureSchemaMigrationsTable() {
@@ -461,4 +466,10 @@ async function ensureIntegrationSettingsTable() {
   `);
 
   await pgExec("CREATE UNIQUE INDEX IF NOT EXISTS integration_settings_provider_unique ON integration_settings (provider)");
+}
+
+async function ensureBankEmailCustomSendersColumn() {
+  if (!(await columnExists("bank_email_connections", "custom_senders"))) {
+    await pgExec("ALTER TABLE bank_email_connections ADD COLUMN custom_senders TEXT");
+  }
 }

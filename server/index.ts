@@ -153,9 +153,11 @@ app.use((req, res, next) => {
     const validationMessage = err instanceof ZodError
       ? err.issues[0]?.message || "البيانات المرسلة غير صالحة"
       : undefined;
+    // publicMessage is the user-facing half of an error whose full message also
+    // carries upstream detail meant for the log only.
     const message = isProduction && status >= 500
-      ? "حدث خطأ داخلي غير متوقع"
-      : validationMessage || err.message || "Internal Server Error";
+      ? err.publicMessage || "حدث خطأ داخلي غير متوقع"
+      : validationMessage || err.publicMessage || err.message || "Internal Server Error";
 
     console.error("Internal Server Error:", err);
 
