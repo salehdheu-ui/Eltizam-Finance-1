@@ -6,6 +6,7 @@ import { bankEmailConnections, bankEmailEvents, categories, commitments, transac
 import { db } from "./db";
 import { storage } from "./storage";
 import { BANK_PROFILES, buildBankSearchQuery, createMessageFingerprint, parseBankMessage, type BankKey } from "./bank-message-parser";
+import { getProviderConfig, isProviderConfigured, resolveRedirectUri } from "./integration-settings";
 
 const connectSchema = z.object({
   bankKey: z.enum(["bank_muscat", "nbo", "bank_dhofar", "sohar_international", "ahlibank", "oman_arab_bank", "bank_nizwa", "other"]),
@@ -23,13 +24,6 @@ const previewSchema = z.object({
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.isAuthenticated()) return res.status(401).json({ message: "غير مسجل الدخول" });
   next();
-}
-
-function appUrl(req: Request) {
-  const configured = process.env.PUBLIC_APP_URL?.replace(/\/$/, "");
-  if (configured) return configured;
-  const protocol = (req.get("x-forwarded-proto") || req.protocol).split(",")[0].trim();
-  return `${protocol}://${req.get("host")}`;
 }
 
 function tokenKey(userId: number) {
@@ -86,7 +80,8 @@ async function googleAccessToken(connection: typeof bankEmailConnections.$inferS
   if (accessToken && (connection.tokenExpiresAt || 0) > now + 60) return accessToken;
 
   const refreshToken = decryptToken(connection.refreshTokenEncrypted, connection.userId);
-  if (!refreshToken || !process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+  const config = await getProviderConfig("google");
+  if (!refreshToken || !config) {
     throw new Error("انتهت صلاحية ربط Gmail. أعد ربط البريد.");
   }
 
@@ -94,8 +89,8 @@ async function googleAccessToken(connection: typeof bankEmailConnections.$inferS
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_id: process.env.GOOGLE_CLIENT_ID,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET,
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
       refresh_token: refreshToken,
       grant_type: "refresh_token",
     }),
@@ -116,16 +111,17 @@ async function microsoftAccessToken(connection: typeof bankEmailConnections.$inf
   if (accessToken && (connection.tokenExpiresAt || 0) > now + 60) return accessToken;
 
   const refreshToken = decryptToken(connection.refreshTokenEncrypted, connection.userId);
-  if (!refreshToken || !process.env.MICROSOFT_CLIENT_ID || !process.env.MICROSOFT_CLIENT_SECRET) {
+  const config = await getProviderConfig("microsoft");
+  if (!refreshToken || !config) {
     throw new Error("انتهت صلاحية ربط Outlook. أعد ربط البريد.");
   }
-  const tenant = process.env.MICROSOFT_TENANT_ID || "common";
-  const response = await fetch(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, {
+  const tenant = config.tenantId || "common";
+  const response = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_id: process.env.MICROSOFT_CLIENT_ID,
-      client_secret: process.env.MICROSOFT_CLIENT_SECRET,
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
       refresh_token: refreshToken,
       grant_type: "refresh_token",
       scope: "openid email offline_access User.Read Mail.Read",
@@ -367,10 +363,14 @@ export function registerBankInboxRoutes(app: Express) {
         createdAt: bankEmailConnections.createdAt,
       }).from(bankEmailConnections).where(eq(bankEmailConnections.userId, req.user!.id)).orderBy(desc(bankEmailConnections.id));
       const events = await db.select().from(bankEmailEvents).where(eq(bankEmailEvents.userId, req.user!.id)).orderBy(desc(bankEmailEvents.receivedAt)).limit(30);
+      const [googleConfigured, microsoftConfigured] = await Promise.all([
+        isProviderConfigured("google"),
+        isProviderConfigured("microsoft"),
+      ]);
       res.json({
         providers: {
-          google: { configured: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) },
-          microsoft: { configured: Boolean(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET) },
+          google: { configured: googleConfigured },
+          microsoft: { configured: microsoftConfigured },
         },
         banks: BANK_PROFILES.map(({ key, name }) => ({ key, name })),
         connections,
@@ -388,7 +388,8 @@ export function registerBankInboxRoutes(app: Express) {
 
   app.post("/api/bank-inbox/google/start", requireAuth, async (req, res, next) => {
     try {
-      if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+      const config = await getProviderConfig("google");
+      if (!config) {
         return res.status(503).json({ message: "ربط Gmail يحتاج تهيئة مفاتيح Google من إدارة المنصة" });
       }
       const input = connectSchema.parse(req.body);
@@ -396,9 +397,9 @@ export function registerBankInboxRoutes(app: Express) {
       if (!wallet) return res.status(404).json({ message: "المحفظة المحددة غير موجودة" });
       const state = randomBytes(24).toString("base64url");
       (req.session as any).bankEmailOauth = { state, provider: "google", userId: req.user!.id, ...input, createdAt: Date.now() };
-      const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${appUrl(req)}/api/bank-inbox/google/callback`;
+      const redirectUri = resolveRedirectUri(req, "google", config);
       const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-      url.searchParams.set("client_id", process.env.GOOGLE_CLIENT_ID);
+      url.searchParams.set("client_id", config.clientId);
       url.searchParams.set("redirect_uri", redirectUri);
       url.searchParams.set("response_type", "code");
       url.searchParams.set("scope", "openid email https://www.googleapis.com/auth/gmail.readonly");
@@ -416,14 +417,16 @@ export function registerBankInboxRoutes(app: Express) {
       return res.redirect("/bank-inbox?error=oauth_state");
     }
     try {
-      const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${appUrl(req)}/api/bank-inbox/google/callback`;
+      const config = await getProviderConfig("google");
+      if (!config) throw new Error("google integration is not configured");
+      const redirectUri = resolveRedirectUri(req, "google", config);
       const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
           code: String(req.query.code || ""),
-          client_id: process.env.GOOGLE_CLIENT_ID!,
-          client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+          client_id: config.clientId,
+          client_secret: config.clientSecret,
           redirect_uri: redirectUri,
           grant_type: "authorization_code",
         }),
@@ -470,7 +473,8 @@ export function registerBankInboxRoutes(app: Express) {
 
   app.post("/api/bank-inbox/microsoft/start", requireAuth, async (req, res, next) => {
     try {
-      if (!process.env.MICROSOFT_CLIENT_ID || !process.env.MICROSOFT_CLIENT_SECRET) {
+      const config = await getProviderConfig("microsoft");
+      if (!config) {
         return res.status(503).json({ message: "ربط Outlook يحتاج تهيئة مفاتيح Microsoft من إدارة المنصة" });
       }
       const input = connectSchema.parse(req.body);
@@ -478,10 +482,10 @@ export function registerBankInboxRoutes(app: Express) {
       if (!wallet) return res.status(404).json({ message: "المحفظة المحددة غير موجودة" });
       const state = randomBytes(24).toString("base64url");
       (req.session as any).bankEmailOauth = { state, provider: "microsoft", userId: req.user!.id, ...input, createdAt: Date.now() };
-      const tenant = process.env.MICROSOFT_TENANT_ID || "common";
-      const redirectUri = process.env.MICROSOFT_REDIRECT_URI || `${appUrl(req)}/api/bank-inbox/microsoft/callback`;
-      const url = new URL(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize`);
-      url.searchParams.set("client_id", process.env.MICROSOFT_CLIENT_ID);
+      const tenant = config.tenantId || "common";
+      const redirectUri = resolveRedirectUri(req, "microsoft", config);
+      const url = new URL(`https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/authorize`);
+      url.searchParams.set("client_id", config.clientId);
       url.searchParams.set("redirect_uri", redirectUri);
       url.searchParams.set("response_type", "code");
       url.searchParams.set("response_mode", "query");
@@ -498,12 +502,14 @@ export function registerBankInboxRoutes(app: Express) {
       return res.redirect("/bank-inbox?error=oauth_state");
     }
     try {
-      const tenant = process.env.MICROSOFT_TENANT_ID || "common";
-      const redirectUri = process.env.MICROSOFT_REDIRECT_URI || `${appUrl(req)}/api/bank-inbox/microsoft/callback`;
-      const tokenResponse = await fetch(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, {
+      const config = await getProviderConfig("microsoft");
+      if (!config) throw new Error("microsoft integration is not configured");
+      const tenant = config.tenantId || "common";
+      const redirectUri = resolveRedirectUri(req, "microsoft", config);
+      const tokenResponse = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/token`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ code: String(req.query.code || ""), client_id: process.env.MICROSOFT_CLIENT_ID!, client_secret: process.env.MICROSOFT_CLIENT_SECRET!, redirect_uri: redirectUri, grant_type: "authorization_code", scope: "openid email offline_access User.Read Mail.Read" }),
+        body: new URLSearchParams({ code: String(req.query.code || ""), client_id: config.clientId, client_secret: config.clientSecret, redirect_uri: redirectUri, grant_type: "authorization_code", scope: "openid email offline_access User.Read Mail.Read" }),
       });
       if (!tokenResponse.ok) throw new Error("token exchange failed");
       const token = await tokenResponse.json() as { access_token: string; refresh_token?: string; expires_in?: number };

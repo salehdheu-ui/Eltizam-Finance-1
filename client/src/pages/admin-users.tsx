@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { DatabaseBackup, Loader2, Shield, Trash2, UserCheck, UserX, Users } from "lucide-react";
 import { useAdminApprovePasswordReset, useAdminBackups, useAdminCreateManualBackup, useAdminDeleteUser, useAdminPasswordResetRequests, useAdminRejectPasswordReset, useAdminStats, useAdminUpdateUser, useAdminUsers, useUser } from "@/lib/hooks";
 import { formatDate } from "@/lib/utils";
+import AdminIntegrationsCard from "@/components/admin/integrations-card";
 import { useState } from "react";
 
 export default function AdminUsers() {
@@ -172,6 +173,8 @@ export default function AdminUsers() {
           لديك صلاحية إدارة الحسابات والعدادات العامة فقط. لا يتم عرض المحافظ أو المعاملات أو الالتزامات الخاصة بالمستخدمين داخل هذه الصفحة.
         </CardContent>
       </Card>
+
+      <AdminIntegrationsCard />
 
       <Card className="border-border/50 shadow-sm">
         <CardContent className="p-4 space-y-4">

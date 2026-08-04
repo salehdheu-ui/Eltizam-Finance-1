@@ -4,10 +4,26 @@ import { storage } from "./storage";
 import { hashPlainPassword, setupAuth } from "./auth";
 import { writeAuditEvent } from "./audit";
 import { createManualBackup, listAllBackups } from "./backup";
-import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema } from "@shared/schema";
+import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, integrationSettings, upsertIntegrationSettingSchema } from "@shared/schema";
 import { buildWriteQueueKey, enqueueWrite } from "./write-queue";
 import { z } from "zod";
 import { registerBankInboxRoutes } from "./bank-inbox";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
+import {
+  INTEGRATION_PROVIDERS,
+  PROVIDER_CALLBACK_PATHS,
+  PROVIDER_LABELS,
+  decryptSecret,
+  encryptSecret,
+  getIntegrationRecord,
+  getProviderConfig,
+  invalidateProviderCache,
+  maskSecret,
+  resolveAppBaseUrl,
+  testProviderCredentials,
+  type IntegrationProvider,
+} from "./integration-settings";
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.isAuthenticated()) {
@@ -292,6 +308,150 @@ export async function registerRoutes(
         ipAddress: req.ip,
       });
       res.json({ message: "تم حذف المستخدم بنجاح" });
+    } catch (e) { next(e); }
+  });
+
+  async function buildIntegrationView(req: Request, provider: IntegrationProvider) {
+    const [record, effective] = await Promise.all([
+      getIntegrationRecord(provider),
+      getProviderConfig(provider),
+    ]);
+
+    const defaultRedirectUri = `${resolveAppBaseUrl(req)}${PROVIDER_CALLBACK_PATHS[provider]}`;
+    // A saved record stays the source of truth for what the form shows, even while
+    // disabled — otherwise switching the provider off would blank out its fields.
+    const storedSecret = record ? decryptSecret(record.clientSecretEncrypted) : null;
+
+    return {
+      provider,
+      label: PROVIDER_LABELS[provider],
+      configured: Boolean(effective),
+      source: effective?.source ?? null,
+      hasDatabaseRecord: Boolean(record),
+      isEnabled: record?.isEnabled ?? true,
+      clientId: record?.clientId ?? effective?.clientId ?? "",
+      clientSecretMasked: maskSecret(record ? storedSecret : effective?.clientSecret ?? null),
+      tenantId: record?.tenantId ?? effective?.tenantId ?? "",
+      redirectUri: record?.redirectUri ?? "",
+      effectiveRedirectUri: record?.redirectUri || effective?.redirectUri || defaultRedirectUri,
+      defaultRedirectUri,
+      updatedAt: record?.updatedAt ?? null,
+    };
+  }
+
+  function parseIntegrationProvider(value: string | string[]): IntegrationProvider | null {
+    const provider = Array.isArray(value) ? value[0] : value;
+    return INTEGRATION_PROVIDERS.includes(provider as IntegrationProvider) ? (provider as IntegrationProvider) : null;
+  }
+
+  app.get("/api/admin/integrations", requireSystemAdmin, async (req, res, next) => {
+    try {
+      const views = await Promise.all(INTEGRATION_PROVIDERS.map((provider) => buildIntegrationView(req, provider)));
+      res.json(views);
+    } catch (e) { next(e); }
+  });
+
+  app.put("/api/admin/integrations/:provider", requireSystemAdmin, async (req, res, next) => {
+    try {
+      const provider = parseIntegrationProvider(req.params.provider);
+      if (!provider) {
+        return res.status(404).json({ message: "مزوّد غير مدعوم" });
+      }
+
+      const input = upsertIntegrationSettingSchema.parse(req.body);
+      const existing = await getIntegrationRecord(provider);
+      if (!existing && !input.clientSecret) {
+        return res.status(400).json({ message: "يجب إدخال المفتاح السري (Client Secret) عند الحفظ لأول مرة" });
+      }
+
+      const now = Math.floor(Date.now() / 1000);
+      await runQueuedWrite(res, buildWriteQueueKey("admin-integration", provider), async () => {
+        const values = {
+          clientId: input.clientId,
+          tenantId: input.tenantId?.trim() || null,
+          redirectUri: input.redirectUri?.trim() || null,
+          isEnabled: input.isEnabled ?? existing?.isEnabled ?? true,
+          updatedByUserId: req.user!.id,
+          updatedAt: now,
+        };
+
+        if (existing) {
+          return db.update(integrationSettings).set({
+            ...values,
+            ...(input.clientSecret ? { clientSecretEncrypted: encryptSecret(input.clientSecret) } : {}),
+          }).where(eq(integrationSettings.provider, provider));
+        }
+
+        return db.insert(integrationSettings).values({
+          provider,
+          clientSecretEncrypted: encryptSecret(input.clientSecret!),
+          ...values,
+        });
+      });
+
+      invalidateProviderCache(provider);
+      await writeAuditEvent({
+        action: "admin.integration.updated",
+        actorUserId: req.user?.id,
+        actorRole: req.user?.role,
+        targetUserId: null,
+        ipAddress: req.ip,
+        metadata: { provider, secretRotated: Boolean(input.clientSecret), isEnabled: input.isEnabled ?? existing?.isEnabled ?? true },
+      });
+      res.json(await buildIntegrationView(req, provider));
+    } catch (e) { next(e); }
+  });
+
+  app.delete("/api/admin/integrations/:provider", requireSystemAdmin, async (req, res, next) => {
+    try {
+      const provider = parseIntegrationProvider(req.params.provider);
+      if (!provider) {
+        return res.status(404).json({ message: "مزوّد غير مدعوم" });
+      }
+
+      const existing = await getIntegrationRecord(provider);
+      if (!existing) {
+        return res.status(404).json({ message: "لا توجد مفاتيح محفوظة لهذا المزوّد" });
+      }
+
+      await runQueuedWrite(res, buildWriteQueueKey("admin-integration", provider), () =>
+        db.delete(integrationSettings).where(eq(integrationSettings.provider, provider)));
+
+      invalidateProviderCache(provider);
+      await writeAuditEvent({
+        action: "admin.integration.deleted",
+        actorUserId: req.user?.id,
+        actorRole: req.user?.role,
+        targetUserId: null,
+        ipAddress: req.ip,
+        metadata: { provider },
+      });
+      res.json(await buildIntegrationView(req, provider));
+    } catch (e) { next(e); }
+  });
+
+  app.post("/api/admin/integrations/:provider/test", requireSystemAdmin, async (req, res, next) => {
+    try {
+      const provider = parseIntegrationProvider(req.params.provider);
+      if (!provider) {
+        return res.status(404).json({ message: "مزوّد غير مدعوم" });
+      }
+
+      const config = await getProviderConfig(provider);
+      if (!config) {
+        return res.status(400).json({ ok: false, message: "لا توجد مفاتيح مفعّلة لهذا المزوّد. احفظ المفاتيح وفعّلها أولاً." });
+      }
+
+      const result = await testProviderCredentials(config);
+      await writeAuditEvent({
+        action: "admin.integration.tested",
+        actorUserId: req.user?.id,
+        actorRole: req.user?.role,
+        targetUserId: null,
+        ipAddress: req.ip,
+        metadata: { provider, ok: result.ok },
+      });
+      res.json(result);
     } catch (e) { next(e); }
   });
 

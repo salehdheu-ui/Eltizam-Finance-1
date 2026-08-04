@@ -78,6 +78,11 @@ const databaseMigrations: DatabaseMigration[] = [
     name: "ensure_bank_email_import_tables",
     up: async () => { await ensureBankEmailImportTables(); },
   },
+  {
+    version: 12,
+    name: "ensure_integration_settings_table",
+    up: async () => { await ensureIntegrationSettingsTable(); },
+  },
 ];
 
 async function ensureSchemaMigrationsTable() {
@@ -437,4 +442,23 @@ async function ensureBankEmailImportTables() {
 
   await pgExec("CREATE INDEX IF NOT EXISTS bank_email_connections_user_idx ON bank_email_connections (user_id, provider)");
   await pgExec("CREATE INDEX IF NOT EXISTS bank_email_events_user_status_idx ON bank_email_events (user_id, status, received_at DESC)");
+}
+
+async function ensureIntegrationSettingsTable() {
+  await pgExec(`
+    CREATE TABLE IF NOT EXISTS integration_settings (
+      id SERIAL PRIMARY KEY,
+      provider TEXT NOT NULL UNIQUE,
+      client_id TEXT NOT NULL,
+      client_secret_encrypted TEXT NOT NULL,
+      tenant_id TEXT,
+      redirect_uri TEXT,
+      is_enabled BOOLEAN NOT NULL DEFAULT true,
+      updated_by_user_id INTEGER REFERENCES users(id),
+      created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
+      updated_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer
+    )
+  `);
+
+  await pgExec("CREATE UNIQUE INDEX IF NOT EXISTS integration_settings_provider_unique ON integration_settings (provider)");
 }

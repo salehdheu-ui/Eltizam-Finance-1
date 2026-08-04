@@ -87,6 +87,32 @@ export type AdminBackupCollection = {
   manual: AdminBackupRecord[];
 };
 
+export type AdminIntegrationProvider = "google" | "microsoft";
+
+export type AdminIntegration = {
+  provider: AdminIntegrationProvider;
+  label: string;
+  configured: boolean;
+  source: "database" | "environment" | null;
+  hasDatabaseRecord: boolean;
+  isEnabled: boolean;
+  clientId: string;
+  clientSecretMasked: string | null;
+  tenantId: string;
+  redirectUri: string;
+  effectiveRedirectUri: string;
+  defaultRedirectUri: string;
+  updatedAt: number | null;
+};
+
+export type AdminIntegrationPayload = {
+  clientId: string;
+  clientSecret?: string;
+  tenantId?: string | null;
+  redirectUri?: string | null;
+  isEnabled?: boolean;
+};
+
 export function useUser() {
   return useQuery<User | null>({
     queryKey: ["/api/user"],
@@ -189,6 +215,43 @@ export function useAdminDeleteUser() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
+    },
+  });
+}
+
+export function useAdminIntegrations() {
+  return useQuery<AdminIntegration[]>({
+    queryKey: ["/api/admin/integrations"],
+  });
+}
+
+export function useAdminSaveIntegration() {
+  return useMutation({
+    mutationFn: ({ provider, ...data }: AdminIntegrationPayload & { provider: AdminIntegrationProvider }) =>
+      apiRequest("PUT", `/api/admin/integrations/${provider}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/integrations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox"] });
+    },
+  });
+}
+
+export function useAdminDeleteIntegration() {
+  return useMutation({
+    mutationFn: (provider: AdminIntegrationProvider) =>
+      apiRequest("DELETE", `/api/admin/integrations/${provider}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/integrations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox"] });
+    },
+  });
+}
+
+export function useAdminTestIntegration() {
+  return useMutation({
+    mutationFn: async (provider: AdminIntegrationProvider) => {
+      const response = await apiRequest("POST", `/api/admin/integrations/${provider}/test`);
+      return response.json() as Promise<{ ok: boolean; message: string }>;
     },
   });
 }

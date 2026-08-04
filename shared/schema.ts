@@ -181,6 +181,19 @@ export const bankEmailEvents = pgTable("bank_email_events", {
   transactionId: integer("transaction_id").references(() => transactions.id),
   createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
 });
+export const integrationSettings = pgTable("integration_settings", {
+  id: serial("id").primaryKey(),
+  provider: text("provider").notNull().unique(),
+  clientId: text("client_id").notNull(),
+  clientSecretEncrypted: text("client_secret_encrypted").notNull(),
+  tenantId: text("tenant_id"),
+  redirectUri: text("redirect_uri"),
+  isEnabled: boolean("is_enabled").notNull().default(true),
+  updatedByUserId: integer("updated_by_user_id").references(() => users.id),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+  updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
 export const savingsGoals = pgTable("savings_goals", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id),
@@ -352,6 +365,14 @@ export const insertSavingsGoalSchema = createInsertSchema(savingsGoals).pick({
   monthlyAmount: z.number().finite().positive("الادخار الشهري يجب أن يكون أكبر من صفر"),
   years: z.union([z.literal(3), z.literal(5), z.literal(10)]),
 });
+export const upsertIntegrationSettingSchema = z.object({
+  clientId: z.string().trim().min(1, "يجب إدخال معرّف التطبيق (Client ID)").max(300),
+  clientSecret: z.string().trim().min(1, "يجب إدخال المفتاح السري (Client Secret)").max(500).optional(),
+  tenantId: z.string().trim().max(120).nullable().optional(),
+  redirectUri: z.string().trim().url("رابط إعادة التوجيه غير صالح").max(500).nullable().optional(),
+  isEnabled: z.boolean().optional(),
+});
+
 export const insertPasswordResetRequestSchema = createInsertSchema(passwordResetRequests).pick({
   userId: true,
   status: true,
@@ -389,5 +410,7 @@ export type InsertCommitmentProof = z.infer<typeof insertCommitmentProofSchema>;
 export type CommitmentProof = typeof commitmentProofs.$inferSelect;
 export type InsertSavingsGoal = z.infer<typeof insertSavingsGoalSchema>;
 export type SavingsGoal = typeof savingsGoals.$inferSelect;
+export type IntegrationSetting = typeof integrationSettings.$inferSelect;
+export type UpsertIntegrationSetting = z.infer<typeof upsertIntegrationSettingSchema>;
 export type InsertPasswordResetRequest = z.infer<typeof insertPasswordResetRequestSchema>;
 export type PasswordResetRequest = typeof passwordResetRequests.$inferSelect;
