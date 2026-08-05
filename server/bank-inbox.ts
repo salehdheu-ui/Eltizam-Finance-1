@@ -1,11 +1,12 @@
 import type { Express, NextFunction, Request, Response } from "express";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, lt } from "drizzle-orm";
 import { z } from "zod";
 import { bankEmailConnections, bankEmailEvents, categories, commitments, transactions } from "@shared/schema";
 import { db } from "./db";
 import { storage } from "./storage";
-import { BANK_PROFILES, buildBankSearchQuery, createMessageFingerprint, normalizeSenderList, parseBankMessage, resolveAllowedSenders, senderMatchesBank, type BankKey } from "./bank-message-parser";
+import { buildBankAnalysis } from "./bank-analysis";
+import { BANK_PROFILES, buildBankSearchQuery, createMessageFingerprint, detectBalanceGap, normalizeSenderList, parseBankMessage, resolveAllowedSenders, senderMatchesBank, type BankKey } from "./bank-message-parser";
 import { getProviderConfig, isProviderConfigured, resolveRedirectUri } from "./integration-settings";
 import { buildWriteQueueKey, enqueueWrite } from "./write-queue";
 
@@ -267,6 +268,40 @@ async function findAutomaticLinks(userId: number, merchant: string, categoryHint
   return { categoryId, commitmentId: commitment?.id || null };
 }
 
+/**
+ * Banks print a closing balance on every alert, so the balance of the previous
+ * message plus this transaction should equal the balance of this one. Any
+ * leftover means movements happened that we never received an email for — which
+ * is exactly the gap that used to make the running total drift silently.
+ */
+async function measureBalanceGap(
+  userId: number,
+  connectionId: number,
+  receivedAt: number,
+  parsed: NonNullable<ReturnType<typeof parseBankMessage>>,
+) {
+  if (parsed.balanceAfter === null) return null;
+
+  const [previous] = await db
+    .select({ balanceAfter: bankEmailEvents.balanceAfter })
+    .from(bankEmailEvents)
+    .where(and(
+      eq(bankEmailEvents.userId, userId),
+      eq(bankEmailEvents.connectionId, connectionId),
+      lt(bankEmailEvents.receivedAt, receivedAt),
+      isNotNull(bankEmailEvents.balanceAfter),
+    ))
+    .orderBy(desc(bankEmailEvents.receivedAt))
+    .limit(1);
+
+  return detectBalanceGap({
+    previousBalance: previous?.balanceAfter ?? null,
+    direction: parsed.direction,
+    amount: parsed.amount,
+    balanceAfter: parsed.balanceAfter,
+  });
+}
+
 async function importParsedEvent(params: {
   userId: number;
   connection: typeof bankEmailConnections.$inferSelect;
@@ -292,6 +327,7 @@ async function importParsedEvent(params: {
   if (duplicate.length > 0) return { state: "duplicate" as const };
 
   const links = await findAutomaticLinks(params.userId, params.parsed.merchant, params.parsed.categoryHint, params.parsed.amount, params.receivedAt);
+  const gap = await measureBalanceGap(params.userId, params.connection.id, params.receivedAt, params.parsed);
   // The select above cannot prevent a concurrent run from inserting the same
   // message between the check and the write, so let the unique indexes decide.
   const [event] = await db.insert(bankEmailEvents).values({
@@ -306,8 +342,16 @@ async function importParsedEvent(params: {
     receivedAt: params.receivedAt,
     status: "review",
     transactionType: params.parsed.transactionType,
+    direction: params.parsed.direction,
+    channel: params.parsed.channel,
     amount: params.parsed.amount,
+    balanceAfter: params.parsed.balanceAfter,
+    gapAmount: gap?.difference ?? null,
     merchant: params.parsed.merchant,
+    counterparty: params.parsed.counterparty,
+    fromAccount: params.parsed.fromAccount,
+    toAccount: params.parsed.toAccount,
+    reference: params.parsed.reference,
     categoryId: links.categoryId,
     commitmentId: links.commitmentId,
   }).onConflictDoNothing().returning();
@@ -499,6 +543,25 @@ export function registerBankInboxRoutes(app: Express) {
     } catch (error) { next(error); }
   });
 
+  app.get("/api/bank-inbox/analysis", requireAuth, async (req, res, next) => {
+    try {
+      const days = Math.min(365, Math.max(7, Number(req.query.days) || 90));
+      const since = Math.floor(Date.now() / 1000) - days * 86400;
+      const [events, categories] = await Promise.all([
+        db.select().from(bankEmailEvents).where(and(
+          eq(bankEmailEvents.userId, req.user!.id),
+          gte(bankEmailEvents.receivedAt, since),
+        )).orderBy(desc(bankEmailEvents.receivedAt)),
+        storage.getCategories(req.user!.id),
+      ]);
+
+      res.json({
+        days,
+        ...buildBankAnalysis(events, new Map(categories.map((category) => [category.id, category.name]))),
+      });
+    } catch (error) { next(error); }
+  });
+
   app.post("/api/bank-inbox/preview", requireAuth, async (req, res, next) => {
     try {
       const input = previewSchema.parse(req.body);
@@ -660,6 +723,49 @@ export function registerBankInboxRoutes(app: Express) {
       const [connection] = await db.select().from(bankEmailConnections).where(and(eq(bankEmailConnections.id, id), eq(bankEmailConnections.userId, req.user!.id)));
       if (!connection) return res.status(404).json({ message: "ربط البريد غير موجود" });
       return res.json(await syncConnection(req.user!.id, connection));
+    } catch (error) { next(error); }
+  });
+
+  /**
+   * Clears everything this connection imported so the next sync re-reads the same
+   * emails with the current parser. Transactions go through storage.deleteTransaction
+   * so each one gives its amount back to the wallet instead of leaving the balance short.
+   */
+  app.post("/api/bank-inbox/connections/:id/reset", requireAuth, async (req, res, next) => {
+    try {
+      const id = Number(req.params.id);
+      const userId = req.user!.id;
+      const [connection] = await db.select().from(bankEmailConnections).where(and(
+        eq(bankEmailConnections.id, id),
+        eq(bankEmailConnections.userId, userId),
+      ));
+      if (!connection) return res.status(404).json({ message: "ربط البريد غير موجود" });
+
+      const events = await db.select().from(bankEmailEvents).where(and(
+        eq(bankEmailEvents.userId, userId),
+        eq(bankEmailEvents.connectionId, connection.id),
+      ));
+
+      let removedTransactions = 0;
+      for (const event of events) {
+        if (!event.transactionId) continue;
+        try {
+          await storage.deleteTransaction(event.transactionId, userId);
+          removedTransactions += 1;
+        } catch (error) {
+          console.error(`Failed to delete transaction ${event.transactionId} during bank inbox reset:`, error instanceof Error ? error.message : "unknown error");
+        }
+      }
+
+      await db.delete(bankEmailEvents).where(and(
+        eq(bankEmailEvents.userId, userId),
+        eq(bankEmailEvents.connectionId, connection.id),
+      ));
+      await db.update(bankEmailConnections)
+        .set({ lastSyncAt: null, updatedAt: Math.floor(Date.now() / 1000) })
+        .where(eq(bankEmailConnections.id, connection.id));
+
+      res.json({ removedEvents: events.length, removedTransactions });
     } catch (error) { next(error); }
   });
 

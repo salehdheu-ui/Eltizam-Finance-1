@@ -88,6 +88,11 @@ const databaseMigrations: DatabaseMigration[] = [
     name: "ensure_bank_email_custom_senders_column",
     up: async () => { await ensureBankEmailCustomSendersColumn(); },
   },
+  {
+    version: 14,
+    name: "ensure_bank_email_event_analysis_columns",
+    up: async () => { await ensureBankEmailEventAnalysisColumns(); },
+  },
 ];
 
 async function ensureSchemaMigrationsTable() {
@@ -472,4 +477,27 @@ async function ensureBankEmailCustomSendersColumn() {
   if (!(await columnExists("bank_email_connections", "custom_senders"))) {
     await pgExec("ALTER TABLE bank_email_connections ADD COLUMN custom_senders TEXT");
   }
+}
+
+async function ensureBankEmailEventAnalysisColumns() {
+  const columns: Array<[string, string]> = [
+    ["direction", "TEXT"],
+    ["channel", "TEXT"],
+    ["balance_after", "DOUBLE PRECISION"],
+    ["gap_amount", "DOUBLE PRECISION"],
+    ["counterparty", "TEXT"],
+    ["from_account", "TEXT"],
+    ["to_account", "TEXT"],
+    ["reference", "TEXT"],
+  ];
+
+  for (const [name, type] of columns) {
+    if (!(await columnExists("bank_email_events", name))) {
+      await pgExec(`ALTER TABLE bank_email_events ADD COLUMN ${name} ${type}`);
+    }
+  }
+
+  // Existing rows predate direction tracking; derive it from the type we did store.
+  await pgExec("UPDATE bank_email_events SET direction = CASE WHEN transaction_type = 'income' THEN 'credit' ELSE 'debit' END WHERE direction IS NULL AND transaction_type IS NOT NULL");
+  await pgExec("CREATE INDEX IF NOT EXISTS bank_email_events_connection_received_idx ON bank_email_events (connection_id, received_at DESC)");
 }

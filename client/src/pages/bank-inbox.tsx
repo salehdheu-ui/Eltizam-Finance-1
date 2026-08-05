@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowRight, Building2, CheckCircle2, Inbox, Loader2, Mail, RefreshCw, ShieldCheck, Sparkles, Unplug } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, Building2, CheckCircle2, Inbox, Loader2, Mail, RefreshCw, ShieldCheck, Sparkles, Trash2, Unplug, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -30,8 +30,15 @@ import { CurrencyDisplay } from "@/components/ui/currency-display";
     id: number;
     status: string;
     transactionType: string | null;
+    direction: string | null;
+    channel: string | null;
     amount: number | null;
+    balanceAfter: number | null;
+    gapAmount: number | null;
     merchant: string | null;
+    counterparty: string | null;
+    fromAccount: string | null;
+    toAccount: string | null;
     receivedAt: number;
     categoryId: number | null;
     commitmentId: number | null;
@@ -39,15 +46,88 @@ import { CurrencyDisplay } from "@/components/ui/currency-display";
   }>;
 };
 
+type BankAnalysis = {
+  days: number;
+  financial: {
+    totalIn: number;
+    totalOut: number;
+    netFlow: number;
+    transactionCount: number;
+    latestBalance: number | null;
+    byChannel: Array<{ label: string; total: number; count: number }>;
+    gaps: Array<{ id: number; receivedAt: number; difference: number; direction: string }>;
+    gapTotal: number;
+  };
+  personal: {
+    discretionarySpend: number;
+    committedSpend: number;
+    discretionaryShare: number;
+    averageSpend: number;
+    largestSpend: { amount: number; merchant: string | null; receivedAt: number } | null;
+    topCounterparties: Array<{ label: string; total: number; count: number }>;
+    topCategories: Array<{ label: string; total: number; count: number }>;
+    peakHour: number | null;
+    peakWeekday: string | null;
+  };
+};
+
 function formatDate(timestamp: number | null) {
   if (!timestamp) return "لم تتم المزامنة بعد";
   return new Intl.DateTimeFormat("ar-OM", { dateStyle: "medium", timeStyle: "short" }).format(new Date(timestamp * 1000));
+}
+
+type InboxEvent = BankInboxData["events"][number];
+
+// Older rows were stored before direction tracking existed, so fall back to the
+// income/expense type we did record for them.
+function isCredit(event: Pick<InboxEvent, "direction" | "transactionType">) {
+  return (event.direction ?? (event.transactionType === "income" ? "credit" : "debit")) === "credit";
+}
+
+const CHANNEL_LABELS: Record<string, string> = {
+  pos: "شراء بالبطاقة",
+  atm: "سحب نقدي",
+  transfer: "تحويل",
+  bill: "فواتير",
+  salary: "راتب",
+  online: "شراء إلكتروني",
+  fee: "رسوم وعمولات",
+  other: "أخرى",
+};
+
+function RouteLine({ event }: { event: InboxEvent }) {
+  const credit = isCredit(event);
+  const from = event.fromAccount || (credit ? event.counterparty || "جهة خارجية" : "حسابك");
+  const to = event.toAccount || (credit ? "حسابك" : event.counterparty || "جهة خارجية");
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+      <span className={`rounded-full px-2 py-0.5 font-semibold ${credit ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
+        {credit ? "إيداع" : "خصم"}
+      </span>
+      {event.channel ? <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">{CHANNEL_LABELS[event.channel] || event.channel}</span> : null}
+      <span className="flex items-center gap-1 text-muted-foreground">
+        <span className="font-medium text-foreground">{from}</span>
+        <ArrowLeft className="h-3 w-3 shrink-0" />
+        <span className="font-medium text-foreground">{to}</span>
+      </span>
+      {typeof event.balanceAfter === "number" ? (
+        <span className="text-muted-foreground">الرصيد بعدها <CurrencyDisplay amount={event.balanceAfter} fractionDigits={3} /></span>
+      ) : null}
+      {typeof event.gapAmount === "number" && Math.abs(event.gapAmount) >= 0.001 ? (
+        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800">
+          فجوة {event.gapAmount > 0 ? "إيداع" : "خصم"} <CurrencyDisplay amount={Math.abs(event.gapAmount)} fractionDigits={3} /> برسالة لم تصل
+        </span>
+      ) : null}
+    </div>
+  );
 }
 
 export default function BankInbox() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { data, isLoading } = useQuery<BankInboxData>({ queryKey: ["/api/bank-inbox"] });
+  const { data: analysis } = useQuery<BankAnalysis>({ queryKey: ["/api/bank-inbox/analysis"] });
   const { data: wallets = [] } = useWallets();
   const { data: categories = [] } = useCategories();
   const { data: commitments = [] } = useCommitments();
@@ -113,6 +193,7 @@ export default function BankInbox() {
     onSuccess: async (summary) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox/analysis"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/transactions"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] }),
       ]);
@@ -124,7 +205,12 @@ export default function BankInbox() {
   const updateEvent = useMutation({
     mutationFn: ({ id, categoryId, commitmentId }: { id: number; categoryId?: number | null; commitmentId?: number | null }) =>
       apiRequest("PATCH", `/api/bank-inbox/events/${id}`, { categoryId, commitmentId }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox"] }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox/analysis"] }),
+      ]);
+    },
     onError: (error: Error) => toast({ title: "تعذر حفظ الاختيار", description: error.message, variant: "destructive" }),
   });
   const importEvent = useMutation({
@@ -132,6 +218,7 @@ export default function BankInbox() {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox/analysis"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/transactions"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] }),
       ]);
@@ -143,6 +230,27 @@ export default function BankInbox() {
   const disconnect = useMutation({
     mutationFn: (id: number) => apiRequest("DELETE", `/api/bank-inbox/connections/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox"] }),
+  });
+
+  const resetConnection = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await apiRequest("POST", `/api/bank-inbox/connections/${id}/reset`);
+      return response.json() as Promise<{ removedEvents: number; removedTransactions: number }>;
+    },
+    onSuccess: async (summary) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox/analysis"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/transactions"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/wallets"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] }),
+      ]);
+      toast({
+        title: "تم حذف الحركات القديمة",
+        description: `حُذفت ${summary.removedTransactions} معاملة و${summary.removedEvents} رسالة. اضغط قراءة الرسائل لإعادة قراءتها بالمنطق الجديد.`,
+      });
+    },
+    onError: (error: Error) => toast({ title: "تعذر الحذف", description: error.message, variant: "destructive" }),
   });
 
   if (isLoading) {
@@ -257,6 +365,20 @@ export default function BankInbox() {
                       <Button className="flex-1 sm:flex-none" onClick={() => syncConnection.mutate(connection.id)} disabled={syncConnection.isPending || missingSender}>
                         {syncConnection.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} قراءة الرسائل
                       </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        aria-label="حذف الحركات المستوردة وإعادة القراءة"
+                        title="حذف الحركات المستوردة وإعادة القراءة"
+                        disabled={resetConnection.isPending}
+                        onClick={() => {
+                          if (window.confirm("سيحذف هذا كل الحركات التي استوردها هذا الربط ويعيد الأرصدة كما كانت، ثم تقرأ الرسائل من جديد بالمنطق المصحّح. متابعة؟")) {
+                            resetConnection.mutate(connection.id);
+                          }
+                        }}
+                      >
+                        {resetConnection.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                      </Button>
                       <Button variant="outline" size="icon" aria-label="فصل البريد" onClick={() => disconnect.mutate(connection.id)}><Unplug className="h-4 w-4" /></Button>
                     </div>
                   </div>
@@ -273,8 +395,9 @@ export default function BankInbox() {
                   <div key={event.id} className="rounded-xl border p-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0"><p className="truncate font-semibold">{event.merchant || "معاملة بنكية"}</p><p className="mt-1 text-xs text-muted-foreground">{formatDate(event.receivedAt)}{event.categoryId ? ` · ${categoryNames.get(event.categoryId)}` : ""}{event.commitmentId ? ` · مرتبط بـ ${commitmentNames.get(event.commitmentId)}` : ""}</p></div>
-                      <span className={event.transactionType === "income" ? "font-bold text-emerald-600" : "font-bold text-red-600"}>{event.transactionType === "income" ? "+" : "-"}<CurrencyDisplay amount={event.amount || 0} fractionDigits={3} /></span>
+                      <span className={isCredit(event) ? "font-bold text-emerald-600" : "font-bold text-red-600"}>{isCredit(event) ? "+" : "-"}<CurrencyDisplay amount={event.amount || 0} fractionDigits={3} /></span>
                     </div>
+                    <RouteLine event={event} />
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
                       <select
                         aria-label="تصنيف المعاملة"
@@ -303,6 +426,124 @@ export default function BankInbox() {
           ) : null}
         </>
       )}
+
+      {hasConnections && analysis && analysis.financial.transactionCount > 0 ? (
+        <>
+          <Card className="p-4 shadow-sm">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-700"><Wallet className="h-5 w-5" /></div>
+              <div>
+                <h2 className="font-bold">التحليل المالي</h2>
+                <p className="text-sm text-muted-foreground">آخر {analysis.days} يوماً · {analysis.financial.transactionCount} حركة</p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl bg-emerald-50 p-3">
+                <p className="text-xs text-emerald-800">إجمالي الوارد</p>
+                <p className="mt-1 font-bold text-emerald-700"><CurrencyDisplay amount={analysis.financial.totalIn} fractionDigits={3} /></p>
+              </div>
+              <div className="rounded-xl bg-red-50 p-3">
+                <p className="text-xs text-red-800">إجمالي الصادر</p>
+                <p className="mt-1 font-bold text-red-700"><CurrencyDisplay amount={analysis.financial.totalOut} fractionDigits={3} /></p>
+              </div>
+              <div className="rounded-xl bg-muted/50 p-3">
+                <p className="text-xs text-muted-foreground">صافي التدفق</p>
+                <p className={`mt-1 font-bold ${analysis.financial.netFlow >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+                  <CurrencyDisplay amount={analysis.financial.netFlow} fractionDigits={3} />
+                </p>
+              </div>
+            </div>
+
+            {analysis.financial.byChannel.length > 0 ? (
+              <div className="mt-4 space-y-2">
+                <p className="text-sm font-semibold">التوزيع حسب نوع العملية</p>
+                {analysis.financial.byChannel.map((channel) => (
+                  <div key={channel.label} className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2 text-sm">
+                    <span>{channel.label} <span className="text-xs text-muted-foreground">({channel.count})</span></span>
+                    <CurrencyDisplay amount={channel.total} fractionDigits={3} />
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {analysis.financial.gaps.length > 0 ? (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <div className="flex items-center gap-2 font-semibold text-amber-900">
+                  <AlertTriangle className="h-4 w-4" />
+                  {analysis.financial.gaps.length} فجوة في الرصيد
+                </div>
+                <p className="mt-1 text-xs leading-5 text-amber-900">
+                  قارنّا الرصيد المذكور في كل رسالة بالرصيد المتوقع من الرسالة التي قبلها. الفرق يعني حركات حصلت ولم تصلك رسالة بها.
+                  صافي الفرق <CurrencyDisplay amount={analysis.financial.gapTotal} fractionDigits={3} />
+                </p>
+                <div className="mt-2 space-y-1">
+                  {analysis.financial.gaps.slice(0, 4).map((gap) => (
+                    <div key={gap.id} className="flex items-center justify-between text-xs text-amber-900">
+                      <span>{formatDate(gap.receivedAt)}</span>
+                      <span className="font-semibold">{gap.direction === "credit" ? "إيداع" : "خصم"} <CurrencyDisplay amount={Math.abs(gap.difference)} fractionDigits={3} /></span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </Card>
+
+          <Card className="p-4 shadow-sm">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-violet-700"><Sparkles className="h-5 w-5" /></div>
+              <div>
+                <h2 className="font-bold">التحليل الشخصي</h2>
+                <p className="text-sm text-muted-foreground">كيف تنفق فعلياً، لا كم أنفقت فقط.</p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl bg-muted/40 p-3">
+                <p className="text-xs text-muted-foreground">إنفاق اختياري</p>
+                <p className="mt-1 font-bold"><CurrencyDisplay amount={analysis.personal.discretionarySpend} fractionDigits={3} /></p>
+                <p className="mt-1 text-xs text-muted-foreground">{analysis.personal.discretionaryShare}% من صرفك — شراء وسحب نقدي</p>
+              </div>
+              <div className="rounded-xl bg-muted/40 p-3">
+                <p className="text-xs text-muted-foreground">إنفاق ملتزم به</p>
+                <p className="mt-1 font-bold"><CurrencyDisplay amount={analysis.personal.committedSpend} fractionDigits={3} /></p>
+                <p className="mt-1 text-xs text-muted-foreground">فواتير ورسوم وتحويلات</p>
+              </div>
+              <div className="rounded-xl bg-muted/40 p-3">
+                <p className="text-xs text-muted-foreground">متوسط العملية</p>
+                <p className="mt-1 font-bold"><CurrencyDisplay amount={analysis.personal.averageSpend} fractionDigits={3} /></p>
+              </div>
+              {analysis.personal.largestSpend ? (
+                <div className="rounded-xl bg-muted/40 p-3">
+                  <p className="text-xs text-muted-foreground">أكبر عملية</p>
+                  <p className="mt-1 font-bold"><CurrencyDisplay amount={analysis.personal.largestSpend.amount} fractionDigits={3} /></p>
+                  <p className="mt-1 truncate text-xs text-muted-foreground">{analysis.personal.largestSpend.merchant || "غير محدد"}</p>
+                </div>
+              ) : null}
+            </div>
+
+            {analysis.personal.topCounterparties.length > 0 ? (
+              <div className="mt-4 space-y-2">
+                <p className="text-sm font-semibold">أكثر الجهات التي تصرف عندها</p>
+                {analysis.personal.topCounterparties.map((party) => (
+                  <div key={party.label} className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2 text-sm">
+                    <span className="truncate">{party.label} <span className="text-xs text-muted-foreground">({party.count} مرة)</span></span>
+                    <CurrencyDisplay amount={party.total} fractionDigits={3} />
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {analysis.personal.peakWeekday || analysis.personal.peakHour !== null ? (
+              <p className="mt-4 rounded-xl bg-violet-50 p-3 text-sm leading-6 text-violet-900">
+                أكثر صرفك يقع
+                {analysis.personal.peakWeekday ? ` يوم ${analysis.personal.peakWeekday}` : ""}
+                {analysis.personal.peakHour !== null ? ` حول الساعة ${analysis.personal.peakHour}:00` : ""}.
+              </p>
+            ) : null}
+          </Card>
+        </>
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="flex items-center gap-3 rounded-xl bg-muted/50 p-3 text-sm"><ShieldCheck className="h-5 w-5 text-emerald-600" /><span>قراءة فقط</span></div>
