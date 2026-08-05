@@ -6,7 +6,7 @@ import { bankEmailConnections, bankEmailEvents, categories, commitments, transac
 import { db } from "./db";
 import { storage } from "./storage";
 import { buildBankAnalysis } from "./bank-analysis";
-import { BANK_PROFILES, buildBankSearchQuery, createMessageFingerprint, detectBalanceGap, normalizeSenderList, parseBankMessage, resolveAllowedSenders, senderMatchesBank, type BankKey } from "./bank-message-parser";
+import { BANK_PROFILES, buildBankSearchQuery, createMessageFingerprint, detectBalanceGap, messageMatchesAccount, normalizeAccountFilter, normalizeSenderList, parseBankMessage, resolveAllowedSenders, senderMatchesBank, type BankKey } from "./bank-message-parser";
 import { getProviderConfig, isProviderConfigured, resolveRedirectUri } from "./integration-settings";
 import { buildWriteQueueKey, enqueueWrite } from "./write-queue";
 
@@ -14,9 +14,15 @@ const senderEntryPattern = /^[a-z0-9](?:[a-z0-9._+@-]*[a-z0-9])?$/;
 
 const bankKeySchema = z.enum(["bank_muscat", "nbo", "bank_dhofar", "sohar_international", "ahlibank", "oman_arab_bank", "bank_nizwa", "other"]);
 
+const accountFilterSchema = z.string().max(34).optional().default("").refine(
+  (value) => value.trim() === "" || /\d{3,}/.test(value),
+  { message: "أدخل آخر أربعة أرقام من الحساب، مثل 1234" },
+);
+
 const connectSchema = z.object({
   bankKey: bankKeySchema,
   customSenders: z.string().max(500).optional().default(""),
+  accountFilter: accountFilterSchema,
   walletId: z.coerce.number().int().positive(),
   autoImport: z.boolean().optional().default(true),
 }).superRefine((input, ctx) => {
@@ -351,6 +357,7 @@ async function importParsedEvent(params: {
     counterparty: params.parsed.counterparty,
     fromAccount: params.parsed.fromAccount,
     toAccount: params.parsed.toAccount,
+    accountRef: params.parsed.accountRef,
     reference: params.parsed.reference,
     categoryId: links.categoryId,
     commitmentId: links.commitmentId,
@@ -387,7 +394,7 @@ async function syncGoogleConnection(userId: number, connection: typeof bankEmail
   const listResponse = await fetch(listUrl, { headers });
   if (!listResponse.ok) throw googleReadError(await describeProviderFailure(listResponse));
   const list = await listResponse.json() as { messages?: Array<{ id: string }> };
-  const summary = { checked: list.messages?.length || 0, imported: 0, review: 0, duplicate: 0, ignored: 0 };
+  const summary = { checked: list.messages?.length || 0, imported: 0, review: 0, duplicate: 0, ignored: 0, otherAccount: 0 };
 
   for (const item of list.messages || []) {
     const existing = await db.select({ id: bankEmailEvents.id }).from(bankEmailEvents).where(and(
@@ -410,6 +417,7 @@ async function syncGoogleConnection(userId: number, connection: typeof bankEmail
     if (!senderMatchesBank(connection.bankKey as BankKey, sender, connection.customSenders)) { summary.ignored += 1; continue; }
     const subject = headerValue(message.payload?.headers, "Subject");
     const body = gmailBody(message.payload) || message.snippet || "";
+    if (!messageMatchesAccount(`${subject}\n${body}`, connection.accountFilter)) { summary.otherAccount += 1; continue; }
     const parsed = parseBankMessage({ bankKey: connection.bankKey as BankKey, sender, subject, body });
     if (!parsed) { summary.ignored += 1; continue; }
     const result = await importParsedEvent({
@@ -441,7 +449,7 @@ async function syncMicrosoftConnection(userId: number, connection: typeof bankEm
   const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
   if (!response.ok) throw microsoftReadError(await describeProviderFailure(response));
   const list = await response.json() as { value?: Array<{ id: string; subject?: string; from?: { emailAddress?: { address?: string } }; receivedDateTime?: string }> };
-  const summary = { checked: list.value?.length || 0, imported: 0, review: 0, duplicate: 0, ignored: 0 };
+  const summary = { checked: list.value?.length || 0, imported: 0, review: 0, duplicate: 0, ignored: 0, otherAccount: 0 };
 
   for (const message of list.value || []) {
     const sender = message.from?.emailAddress?.address || "";
@@ -457,6 +465,7 @@ async function syncMicrosoftConnection(userId: number, connection: typeof bankEm
     const detail = await detailResponse.json() as { subject?: string; receivedDateTime?: string; bodyPreview?: string; body?: { content?: string; contentType?: string } };
     const subject = detail.subject || message.subject || "";
     const body = detail.body?.contentType?.toLowerCase() === "html" ? htmlToText(detail.body.content || "") : (detail.body?.content || detail.bodyPreview || "");
+    if (!messageMatchesAccount(`${subject}\n${body}`, connection.accountFilter)) { summary.otherAccount += 1; continue; }
     const parsed = parseBankMessage({ bankKey: connection.bankKey as BankKey, sender, subject, body });
     if (!parsed) { summary.ignored += 1; continue; }
     const receivedAt = Math.floor(new Date(detail.receivedDateTime || message.receivedDateTime || Date.now()).getTime() / 1000);
@@ -521,12 +530,27 @@ export function registerBankInboxRoutes(app: Express) {
         email: bankEmailConnections.email,
         bankKey: bankEmailConnections.bankKey,
         customSenders: bankEmailConnections.customSenders,
+        accountFilter: bankEmailConnections.accountFilter,
         walletId: bankEmailConnections.walletId,
         autoImport: bankEmailConnections.autoImport,
         lastSyncAt: bankEmailConnections.lastSyncAt,
         createdAt: bankEmailConnections.createdAt,
       }).from(bankEmailConnections).where(eq(bankEmailConnections.userId, req.user!.id)).orderBy(desc(bankEmailConnections.id));
       const events = await db.select().from(bankEmailEvents).where(eq(bankEmailEvents.userId, req.user!.id)).orderBy(desc(bankEmailEvents.receivedAt)).limit(30);
+      // Which accounts actually show up in this mailbox, so the user picks one
+      // they can recognise instead of guessing the digits from memory.
+      const accountRows = await db
+        .select({ accountRef: bankEmailEvents.accountRef, connectionId: bankEmailEvents.connectionId })
+        .from(bankEmailEvents)
+        .where(and(eq(bankEmailEvents.userId, req.user!.id), isNotNull(bankEmailEvents.accountRef)));
+      const detectedAccounts = Object.values(
+        accountRows.reduce<Record<string, { accountRef: string; connectionId: number; count: number }>>((acc, row) => {
+          const key = `${row.connectionId}:${row.accountRef}`;
+          if (!acc[key]) acc[key] = { accountRef: row.accountRef!, connectionId: row.connectionId, count: 0 };
+          acc[key].count += 1;
+          return acc;
+        }, {}),
+      ).sort((a, b) => b.count - a.count);
       const [googleConfigured, microsoftConfigured] = await Promise.all([
         isProviderConfigured("google"),
         isProviderConfigured("microsoft"),
@@ -537,6 +561,7 @@ export function registerBankInboxRoutes(app: Express) {
           microsoft: { configured: microsoftConfigured },
         },
         banks: BANK_PROFILES.map(({ key, name, senders }) => ({ key, name, requiresCustomSender: senders.length === 0 })),
+        detectedAccounts,
         connections,
         events,
       });
@@ -627,11 +652,13 @@ export function registerBankInboxRoutes(app: Express) {
       ));
       const now = Math.floor(Date.now() / 1000);
       const customSenders = normalizeSenderList(pending.customSenders).join(",") || null;
+      const accountFilter = normalizeAccountFilter(pending.accountFilter);
       if (existing[0]) {
         await db.update(bankEmailConnections).set({
           walletId: pending.walletId,
           autoImport: pending.autoImport,
           customSenders,
+          accountFilter,
           accessTokenEncrypted: encryptToken(token.access_token, req.user!.id),
           refreshTokenEncrypted: token.refresh_token ? encryptToken(token.refresh_token, req.user!.id) : existing[0].refreshTokenEncrypted,
           tokenExpiresAt: now + (token.expires_in || 3600),
@@ -644,6 +671,7 @@ export function registerBankInboxRoutes(app: Express) {
           email: profile.email,
           bankKey: pending.bankKey,
           customSenders,
+          accountFilter,
           walletId: pending.walletId,
           autoImport: pending.autoImport,
           accessTokenEncrypted: encryptToken(token.access_token, req.user!.id),
@@ -706,7 +734,7 @@ export function registerBankInboxRoutes(app: Express) {
       if (!email) throw new Error("email missing");
       const existing = await db.select().from(bankEmailConnections).where(and(eq(bankEmailConnections.userId, req.user!.id), eq(bankEmailConnections.provider, "microsoft"), eq(bankEmailConnections.email, email), eq(bankEmailConnections.bankKey, pending.bankKey)));
       const now = Math.floor(Date.now() / 1000);
-      const values = { walletId: pending.walletId, autoImport: pending.autoImport, customSenders: normalizeSenderList(pending.customSenders).join(",") || null, accessTokenEncrypted: encryptToken(token.access_token, req.user!.id), refreshTokenEncrypted: token.refresh_token ? encryptToken(token.refresh_token, req.user!.id) : existing[0]?.refreshTokenEncrypted || null, tokenExpiresAt: now + (token.expires_in || 3600), updatedAt: now };
+      const values = { walletId: pending.walletId, autoImport: pending.autoImport, customSenders: normalizeSenderList(pending.customSenders).join(",") || null, accountFilter: normalizeAccountFilter(pending.accountFilter), accessTokenEncrypted: encryptToken(token.access_token, req.user!.id), refreshTokenEncrypted: token.refresh_token ? encryptToken(token.refresh_token, req.user!.id) : existing[0]?.refreshTokenEncrypted || null, tokenExpiresAt: now + (token.expires_in || 3600), updatedAt: now };
       if (existing[0]) {
         await db.update(bankEmailConnections).set(values).where(eq(bankEmailConnections.id, existing[0].id));
       } else {
@@ -723,6 +751,57 @@ export function registerBankInboxRoutes(app: Express) {
       const [connection] = await db.select().from(bankEmailConnections).where(and(eq(bankEmailConnections.id, id), eq(bankEmailConnections.userId, req.user!.id)));
       if (!connection) return res.status(404).json({ message: "ربط البريد غير موجود" });
       return res.json(await syncConnection(req.user!.id, connection));
+    } catch (error) { next(error); }
+  });
+
+  /**
+   * Lets an existing connection be re-scoped without going through OAuth again —
+   * picking the account to follow should not cost the user a re-authorisation.
+   */
+  app.patch("/api/bank-inbox/connections/:id", requireAuth, async (req, res, next) => {
+    try {
+      const input = z.object({
+        accountFilter: accountFilterSchema,
+        walletId: z.coerce.number().int().positive().optional(),
+        autoImport: z.boolean().optional(),
+        customSenders: z.string().max(500).optional(),
+      }).parse(req.body);
+
+      const id = Number(req.params.id);
+      const userId = req.user!.id;
+      const [connection] = await db.select().from(bankEmailConnections).where(and(
+        eq(bankEmailConnections.id, id),
+        eq(bankEmailConnections.userId, userId),
+      ));
+      if (!connection) return res.status(404).json({ message: "ربط البريد غير موجود" });
+
+      if (input.walletId) {
+        const wallet = await storage.getWallet(input.walletId, userId);
+        if (!wallet) return res.status(404).json({ message: "المحفظة المحددة غير موجودة" });
+      }
+
+      if (input.customSenders !== undefined) {
+        const entries = normalizeSenderList(input.customSenders);
+        if (resolveAllowedSenders(connection.bankKey as BankKey, entries).length === 0) {
+          return res.status(400).json({ message: "اكتب عنوان المرسل الذي يصلك منه إشعار البنك حتى نقرأ رسائله فقط" });
+        }
+      }
+
+      const [updated] = await db.update(bankEmailConnections).set({
+        accountFilter: normalizeAccountFilter(input.accountFilter),
+        ...(input.walletId ? { walletId: input.walletId } : {}),
+        ...(input.autoImport !== undefined ? { autoImport: input.autoImport } : {}),
+        ...(input.customSenders !== undefined ? { customSenders: normalizeSenderList(input.customSenders).join(",") || null } : {}),
+        updatedAt: Math.floor(Date.now() / 1000),
+      }).where(eq(bankEmailConnections.id, connection.id)).returning({
+        id: bankEmailConnections.id,
+        accountFilter: bankEmailConnections.accountFilter,
+        walletId: bankEmailConnections.walletId,
+        autoImport: bankEmailConnections.autoImport,
+        customSenders: bankEmailConnections.customSenders,
+      });
+
+      res.json(updated);
     } catch (error) { next(error); }
   });
 

@@ -98,6 +98,11 @@ const databaseMigrations: DatabaseMigration[] = [
     name: "ensure_bank_email_transaction_fk_set_null",
     up: async () => { await ensureBankEmailTransactionForeignKey(); },
   },
+  {
+    version: 16,
+    name: "ensure_bank_email_account_scope_columns",
+    up: async () => { await ensureBankEmailAccountScopeColumns(); },
+  },
 ];
 
 async function ensureSchemaMigrationsTable() {
@@ -490,6 +495,15 @@ async function ensureBankEmailCustomSendersColumn() {
  * imported transaction, resetting a connection, and removing a user. Setting it
  * to NULL on delete keeps the link honest without holding the transaction hostage.
  */
+async function ensureBankEmailAccountScopeColumns() {
+  if (!(await columnExists("bank_email_connections", "account_filter"))) {
+    await pgExec("ALTER TABLE bank_email_connections ADD COLUMN account_filter TEXT");
+  }
+  if (!(await columnExists("bank_email_events", "account_ref"))) {
+    await pgExec("ALTER TABLE bank_email_events ADD COLUMN account_ref TEXT");
+  }
+}
+
 async function ensureBankEmailTransactionForeignKey() {
   await pgExec("ALTER TABLE bank_email_events DROP CONSTRAINT IF EXISTS bank_email_events_transaction_id_fkey");
   await pgExec("ALTER TABLE bank_email_events ADD CONSTRAINT bank_email_events_transaction_id_fkey FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL");

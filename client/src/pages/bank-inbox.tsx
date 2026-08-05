@@ -16,12 +16,14 @@ import { CurrencyDisplay } from "@/components/ui/currency-display";
     microsoft: { configured: boolean };
   };
   banks: Array<{ key: string; name: string; requiresCustomSender: boolean }>;
+  detectedAccounts: Array<{ accountRef: string; connectionId: number; count: number }>;
   connections: Array<{
     id: number;
     provider: string;
     email: string;
     bankKey: string;
     customSenders: string | null;
+    accountFilter: string | null;
     walletId: number;
     autoImport: boolean;
     lastSyncAt: number | null;
@@ -133,6 +135,9 @@ export default function BankInbox() {
   const { data: commitments = [] } = useCommitments();
   const [bankKey, setBankKey] = useState("bank_muscat");
   const [customSenders, setCustomSenders] = useState("");
+  const [accountFilter, setAccountFilter] = useState("");
+  const [editingConnectionId, setEditingConnectionId] = useState<number | null>(null);
+  const [accountDraft, setAccountDraft] = useState("");
   const [walletId, setWalletId] = useState("");
   const [autoImport, setAutoImport] = useState(true);
   const [showSetup, setShowSetup] = useState(false);
@@ -170,7 +175,7 @@ export default function BankInbox() {
 
   const connectGoogle = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/bank-inbox/google/start", { bankKey, customSenders, walletId: Number(walletId), autoImport });
+      const response = await apiRequest("POST", "/api/bank-inbox/google/start", { bankKey, customSenders, accountFilter, walletId: Number(walletId), autoImport });
       return response.json() as Promise<{ authUrl: string }>;
     },
     onSuccess: ({ authUrl }) => window.location.assign(authUrl),
@@ -179,7 +184,7 @@ export default function BankInbox() {
 
   const connectMicrosoft = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/bank-inbox/microsoft/start", { bankKey, customSenders, walletId: Number(walletId), autoImport });
+      const response = await apiRequest("POST", "/api/bank-inbox/microsoft/start", { bankKey, customSenders, accountFilter, walletId: Number(walletId), autoImport });
       return response.json() as Promise<{ authUrl: string }>;
     },
     onSuccess: ({ authUrl }) => window.location.assign(authUrl),
@@ -230,6 +235,20 @@ export default function BankInbox() {
   const disconnect = useMutation({
     mutationFn: (id: number) => apiRequest("DELETE", `/api/bank-inbox/connections/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox"] }),
+  });
+
+  const updateConnection = useMutation({
+    mutationFn: ({ id, accountFilter: nextFilter }: { id: number; accountFilter: string }) =>
+      apiRequest("PATCH", `/api/bank-inbox/connections/${id}`, { accountFilter: nextFilter }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox"] });
+      setEditingConnectionId(null);
+      toast({
+        title: "تم تحديد الحساب",
+        description: "احذف الحركات القديمة ثم اضغط قراءة الرسائل ليُعاد بناء الحساب من رسائله وحدها.",
+      });
+    },
+    onError: (error: Error) => toast({ title: "تعذر الحفظ", description: error.message, variant: "destructive" }),
   });
 
   const resetConnection = useMutation({
@@ -310,6 +329,21 @@ export default function BankInbox() {
               </label>
             ) : null}
 
+            <label className="space-y-2 text-sm font-semibold">
+              <span>رقم الحساب المراد متابعته <span className="font-normal text-muted-foreground">(اختياري)</span></span>
+              <input
+                value={accountFilter}
+                onChange={(event) => setAccountFilter(event.target.value)}
+                placeholder="آخر 4 أرقام، مثل 1234"
+                dir="ltr"
+                inputMode="numeric"
+                className="h-11 w-full rounded-xl border bg-background px-3 font-normal"
+              />
+              <span className="block text-xs font-normal leading-5 text-muted-foreground">
+                لديك أكثر من حساب في نفس البنك؟ حدّد آخر أربعة أرقام للحساب الذي تريد متابعته، فنقرأ رسائله وحده. اتركه فارغاً لمتابعة كل الحسابات معاً.
+              </span>
+            </label>
+
             {wallets.length === 0 ? (
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                 أضف حساب البنك أولًا، ثم ارجع للربط.
@@ -349,13 +383,34 @@ export default function BankInbox() {
               {data?.connections.map((connection) => {
                 const missingSender = banksNeedingSender.has(connection.bankKey) && !connection.customSenders;
 
+                const connectionAccounts = (data?.detectedAccounts || []).filter((account) => account.connectionId === connection.id);
+                const isEditing = editingConnectionId === connection.id;
+
                 return (
-                  <div key={connection.id} className="flex flex-col gap-3 rounded-xl border p-3 sm:flex-row sm:items-center">
+                  <div key={connection.id} className="rounded-xl border p-3">
+                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                     <div className="flex min-w-0 flex-1 items-center gap-3">
                       <Mail className="h-5 w-5 shrink-0 text-primary" />
                       <div className="min-w-0">
                         <p className="truncate font-semibold" dir="ltr">{connection.email}</p>
                         <p className="mt-1 text-xs text-muted-foreground">{bankNames.get(connection.bankKey)} · {walletNames.get(connection.walletId)} · {formatDate(connection.lastSyncAt)}</p>
+                        <p className="mt-1 text-xs">
+                          {connection.accountFilter ? (
+                            <span className="text-emerald-700">يتابع الحساب المنتهي بـ <span dir="ltr">{connection.accountFilter}</span> فقط</span>
+                          ) : (
+                            <span className="text-amber-700">يتابع كل حسابات هذا البنك — قد تختلط أرصدتها</span>
+                          )}
+                          <button
+                            type="button"
+                            className="mr-2 underline"
+                            onClick={() => {
+                              setEditingConnectionId(isEditing ? null : connection.id);
+                              setAccountDraft(connection.accountFilter || "");
+                            }}
+                          >
+                            {isEditing ? "إلغاء" : "تغيير"}
+                          </button>
+                        </p>
                         {missingSender ? (
                           <p className="mt-1 text-xs text-amber-700">هذا الربط ينقصه عنوان مرسل البنك. افصله ثم أعد ربطه لتحديد العنوان.</p>
                         ) : null}
@@ -381,6 +436,55 @@ export default function BankInbox() {
                       </Button>
                       <Button variant="outline" size="icon" aria-label="فصل البريد" onClick={() => disconnect.mutate(connection.id)}><Unplug className="h-4 w-4" /></Button>
                     </div>
+                   </div>
+
+                   {isEditing ? (
+                     <div className="mt-3 space-y-3 rounded-xl bg-muted/40 p-3">
+                       <label className="block space-y-2 text-sm font-semibold">
+                         <span>الحساب الذي تريد متابعته</span>
+                         <input
+                           value={accountDraft}
+                           onChange={(event) => setAccountDraft(event.target.value)}
+                           placeholder="آخر 4 أرقام، مثل 1234"
+                           dir="ltr"
+                           inputMode="numeric"
+                           className="h-11 w-full rounded-xl border bg-background px-3 font-normal"
+                         />
+                       </label>
+
+                       {connectionAccounts.length > 0 ? (
+                         <div className="space-y-2">
+                           <p className="text-xs text-muted-foreground">حسابات ظهرت في رسائلك — اضغط أحدها لاختياره:</p>
+                           <div className="flex flex-wrap gap-2">
+                             {connectionAccounts.map((account) => (
+                               <button
+                                 key={account.accountRef}
+                                 type="button"
+                                 onClick={() => setAccountDraft(account.accountRef)}
+                                 className={`rounded-full border px-3 py-1 text-xs ${accountDraft === account.accountRef ? "border-primary bg-primary/10 font-semibold text-primary" : "bg-background"}`}
+                               >
+                                 <span dir="ltr">{account.accountRef}</span> · {account.count} رسالة
+                               </button>
+                             ))}
+                           </div>
+                         </div>
+                       ) : (
+                         <p className="text-xs text-muted-foreground">لم نتعرّف على أرقام حسابات في الرسائل المقروءة بعد. افتح رسالة من بنكك وانسخ آخر أربعة أرقام من رقم الحساب.</p>
+                       )}
+
+                       <div className="flex gap-2">
+                         <Button
+                           onClick={() => updateConnection.mutate({ id: connection.id, accountFilter: accountDraft })}
+                           disabled={updateConnection.isPending}
+                         >
+                           {updateConnection.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "حفظ"}
+                         </Button>
+                         <Button variant="outline" onClick={() => updateConnection.mutate({ id: connection.id, accountFilter: "" })} disabled={updateConnection.isPending}>
+                           متابعة كل الحسابات
+                         </Button>
+                       </div>
+                     </div>
+                   ) : null}
                   </div>
                 );
               })}

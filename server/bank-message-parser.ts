@@ -17,6 +17,7 @@ export type ParsedBankMessage = {
   counterparty: string | null;
   fromAccount: string | null;
   toAccount: string | null;
+  accountRef: string | null;
   reference: string | null;
   categoryHint: string | null;
   confidence: number;
@@ -200,6 +201,46 @@ function extractAccounts(text: string) {
   return { fromAccount: first(fromPatterns), toAccount: first(toPatterns) };
 }
 
+/**
+ * Every account or card the message names, reduced to its last four digits.
+ * Banks mask the rest anyway, and four digits is what a customer recognises
+ * as "my account".
+ */
+export function extractAccountReferences(text: string) {
+  const patterns = [
+    /(?:a\/c|acc(?:ount)?|card)\s*(?:no\.?|number|ending(?:\s+(?:with|in))?)?\s*[:\-]?\s*([Xx*•\d][Xx*•\d\- ]{2,24})/gi,
+    /(?:حساب(?:ك|كم)?|الحساب|بطاقت(?:ك|كم)?|البطاقة)\s*(?:رقم|المنتهية\s*(?:بـ|ب)?)?\s*[:\-]?\s*([Xx*•\d][Xx*•\d\- ]{2,24})/g,
+  ];
+
+  const references = new Set<string>();
+  for (const pattern of patterns) {
+    pattern.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(text)) !== null) {
+      const digits = match[1].replace(/\D/g, "");
+      if (digits.length >= 3) references.add(digits.slice(-4));
+    }
+  }
+  return Array.from(references);
+}
+
+export function normalizeAccountFilter(value: string | null | undefined) {
+  const digits = (value || "").replace(/\D/g, "");
+  return digits ? digits.slice(-4) : null;
+}
+
+/**
+ * With several accounts at one bank every alert arrives from the same sender,
+ * so without this the balances of different accounts interleave and the
+ * reconciliation compares one account's closing balance against another's.
+ * A message naming no account is skipped rather than guessed at.
+ */
+export function messageMatchesAccount(text: string, accountFilter: string | null | undefined) {
+  const filter = normalizeAccountFilter(accountFilter);
+  if (!filter) return true;
+  return extractAccountReferences(text).includes(filter);
+}
+
 function extractCounterparty(text: string) {
   const patterns = [
     /(?:at|merchant)\s*[:\-]?\s*([^,.;\n]{2,60})/i,
@@ -318,6 +359,7 @@ export function parseBankMessage(input: { bankKey: BankKey; sender: string; subj
     counterparty,
     fromAccount,
     toAccount,
+    accountRef: extractAccountReferences(combined)[0] ?? null,
     reference: extractReference(combined),
     categoryHint: inferCategory(combined),
     confidence: (input.sender ? 0.92 : 0.78) * (confident ? 1 : 0.75),
