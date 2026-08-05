@@ -16,6 +16,18 @@ import {
   type PasswordResetRequest, type InsertPasswordResetRequest,
 } from "@shared/schema";
 
+/**
+ * A failure the user can act on. Thrown as a bare Error these reach the handler
+ * without a status, become 500s, and production replaces the message with
+ * "unexpected error" — hiding the one line that says what to fix.
+ */
+function userError(message: string) {
+  const error = new Error(message) as Error & { status: number; publicMessage: string };
+  error.status = 400;
+  error.publicMessage = message;
+  return error;
+}
+
 function isObligationEnded(obligation: Pick<Obligation, "endDate">) {
   return !!obligation.endDate && obligation.endDate <= Math.floor(Date.now() / 1000);
 }
@@ -72,7 +84,7 @@ export interface IStorage {
 
   getTransactions(userId: number): Promise<(Transaction & { categoryName?: string | null; categoryIcon?: string | null; walletName?: string | null })[]>;
   getTransactionsByType(userId: number, type: string): Promise<Transaction[]>;
-  createTransaction(userId: number, transaction: InsertTransaction): Promise<Transaction>;
+  createTransaction(userId: number, transaction: InsertTransaction, options?: { allowOverdraft?: boolean; settleBalanceTo?: number | null }): Promise<Transaction>;
   createTransfer(userId: number, transfer: { sourceWalletId: number; targetWalletId: number; amount: number; note?: string | null }): Promise<Transaction>;
   deleteTransaction(id: number, userId: number): Promise<void>;
 
@@ -272,7 +284,7 @@ export class DatabaseStorage implements IStorage {
   async createSavingsGoal(userId: number, goal: InsertSavingsGoal): Promise<SavingsGoal> {
     const wallet = await this.getWallet(goal.walletId, userId);
     if (!wallet) {
-      throw new Error("المحفظة المحددة غير موجودة");
+      throw userError("المحفظة المحددة غير موجودة");
     }
 
     const now = Math.floor(Date.now() / 1000);
@@ -341,17 +353,33 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(transactions.date), desc(transactions.id));
   }
 
-  async createTransaction(userId: number, transaction: InsertTransaction): Promise<Transaction> {
+  /**
+   * `allowOverdraft` is for movements the bank already carried out. Refusing to
+   * record a debit because our copy of the balance is lower does not undo it at
+   * the bank — it just widens the gap between the app and reality.
+   *
+   * `settleBalanceTo` takes the closing balance the bank stated and makes it the
+   * wallet's balance, so a missed alert self-corrects on the next one instead of
+   * leaving the running total permanently off.
+   */
+  async createTransaction(
+    userId: number,
+    transaction: InsertTransaction,
+    options: { allowOverdraft?: boolean; settleBalanceTo?: number | null } = {},
+  ): Promise<Transaction> {
     if (transaction.walletId) {
       const wallet = await this.getWallet(transaction.walletId, userId);
       if (wallet) {
-        if ((transaction.type === "expense" || transaction.type === "debt") && transaction.amount > wallet.balance) {
-          throw new Error("المبلغ أكبر من الرصيد المتاح في المحفظة");
+        if (!options.allowOverdraft && (transaction.type === "expense" || transaction.type === "debt") && transaction.amount > wallet.balance) {
+          throw userError("المبلغ أكبر من الرصيد المتاح في المحفظة");
         }
 
         const [created] = await db.insert(transactions).values({ ...transaction, userId }).returning();
         const delta = transaction.type === "income" ? transaction.amount : -transaction.amount;
-        await this.updateWallet(wallet.id, userId, { balance: wallet.balance + delta });
+        const nextBalance = typeof options.settleBalanceTo === "number"
+          ? options.settleBalanceTo
+          : wallet.balance + delta;
+        await this.updateWallet(wallet.id, userId, { balance: nextBalance });
         return created;
       }
     }
@@ -362,18 +390,18 @@ export class DatabaseStorage implements IStorage {
 
   async createTransfer(userId: number, transfer: { sourceWalletId: number; targetWalletId: number; amount: number; note?: string | null }): Promise<Transaction> {
     if (transfer.sourceWalletId === transfer.targetWalletId) {
-      throw new Error("يجب اختيار محفظتين مختلفتين للتحويل");
+      throw userError("يجب اختيار محفظتين مختلفتين للتحويل");
     }
 
     const sourceWallet = await this.getWallet(transfer.sourceWalletId, userId);
     const targetWallet = await this.getWallet(transfer.targetWalletId, userId);
 
     if (!sourceWallet || !targetWallet) {
-      throw new Error("تعذر العثور على إحدى المحافظ المحددة");
+      throw userError("تعذر العثور على إحدى المحافظ المحددة");
     }
 
     if (transfer.amount > sourceWallet.balance) {
-      throw new Error("المبلغ أكبر من الرصيد المتاح في المحفظة");
+      throw userError("المبلغ أكبر من الرصيد المتاح في المحفظة");
     }
 
     const pairId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -524,7 +552,7 @@ export class DatabaseStorage implements IStorage {
 
   async getCommitmentSteps(commitmentId: number, userId: number): Promise<CommitmentStep[]> {
     const commitment = await this.getCommitmentById(commitmentId, userId);
-    if (!commitment) throw new Error("الالتزام غير موجود");
+    if (!commitment) throw userError("الالتزام غير موجود");
 
     return db
       .select()
@@ -557,7 +585,7 @@ export class DatabaseStorage implements IStorage {
         eq(commitmentSteps.userId, userId),
       ));
 
-    if (!step) throw new Error("الخطوة غير موجودة");
+    if (!step) throw userError("الخطوة غير موجودة");
 
     const nextCompleted = !step.isCompleted;
     const [updated] = await db
@@ -583,7 +611,7 @@ export class DatabaseStorage implements IStorage {
 
   async getCommitmentProofs(commitmentId: number, userId: number): Promise<CommitmentProof[]> {
     const commitment = await this.getCommitmentById(commitmentId, userId);
-    if (!commitment) throw new Error("الالتزام غير موجود");
+    if (!commitment) throw userError("الالتزام غير موجود");
 
     return db
       .select()
@@ -653,7 +681,7 @@ export class DatabaseStorage implements IStorage {
       .returning();
 
     if (!updated) {
-      throw new Error("الالتزام غير موجود");
+      throw userError("الالتزام غير موجود");
     }
 
     return updated;
@@ -718,7 +746,7 @@ export class DatabaseStorage implements IStorage {
   async toggleObligation(id: number, userId: number): Promise<Obligation> {
     const obligation = await this.getObligationById(id, userId);
     if (!obligation) {
-      throw new Error("الالتزام غير موجود");
+      throw userError("الالتزام غير موجود");
     }
     return this.updateObligation(id, userId, { isActive: !obligation.isActive });
   }
@@ -726,11 +754,11 @@ export class DatabaseStorage implements IStorage {
   async getVariableObligationMonthStatuses(obligationId: number, userId: number): Promise<VariableObligationMonthStatus[]> {
     const obligation = await this.getObligationById(obligationId, userId);
     if (!obligation) {
-      throw new Error("الالتزام غير موجود");
+      throw userError("الالتزام غير موجود");
     }
 
     if (obligation.scheduleType !== "variable") {
-      throw new Error("هذه الصفحة مخصصة للالتزامات المتغيرة فقط");
+      throw userError("هذه الصفحة مخصصة للالتزامات المتغيرة فقط");
     }
 
     return db
@@ -743,11 +771,11 @@ export class DatabaseStorage implements IStorage {
   async upsertVariableObligationMonthStatus(obligationId: number, userId: number, data: InsertVariableObligationMonthStatus): Promise<VariableObligationMonthStatus> {
     const obligation = await this.getObligationById(obligationId, userId);
     if (!obligation) {
-      throw new Error("الالتزام غير موجود");
+      throw userError("الالتزام غير موجود");
     }
 
     if (obligation.scheduleType !== "variable") {
-      throw new Error("يمكن تحديث حالات الأشهر للالتزام المتغير فقط");
+      throw userError("يمكن تحديث حالات الأشهر للالتزام المتغير فقط");
     }
 
     const [existing] = await db
@@ -796,11 +824,11 @@ export class DatabaseStorage implements IStorage {
   async applyVariableObligationPayment(obligationId: number, userId: number, amount: number): Promise<{ allocatedMonths: number; monthKeys: string[] }> {
     const obligation = await this.getObligationById(obligationId, userId);
     if (!obligation) {
-      throw new Error("الالتزام غير موجود");
+      throw userError("الالتزام غير موجود");
     }
 
     if (obligation.scheduleType !== "variable") {
-      throw new Error("هذا الإجراء متاح للالتزامات المتغيرة فقط");
+      throw userError("هذا الإجراء متاح للالتزامات المتغيرة فقط");
     }
 
     if (amount <= 0 || obligation.amount <= 0) {

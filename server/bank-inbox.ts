@@ -367,7 +367,7 @@ async function importParsedEvent(params: {
       type: params.parsed.transactionType,
       amount: params.parsed.amount,
       note: `من البريد البنكي · ${params.parsed.merchant}`,
-    });
+    }, { allowOverdraft: true, settleBalanceTo: params.parsed.balanceAfter });
     await db.update(transactions).set({ date: params.receivedAt }).where(eq(transactions.id, transaction.id));
     const [imported] = await db.update(bankEmailEvents).set({ status: "imported", transactionId: transaction.id }).where(eq(bankEmailEvents.id, event.id)).returning();
     return { state: "imported" as const, event: imported };
@@ -806,7 +806,7 @@ export function registerBankInboxRoutes(app: Express) {
         type: event.transactionType,
         amount: event.amount,
         note: `من البريد البنكي · ${event.merchant || "معاملة بنكية"}`,
-      });
+      }, { allowOverdraft: true, settleBalanceTo: event.balanceAfter });
       await db.update(transactions).set({ date: event.receivedAt }).where(eq(transactions.id, transaction.id));
       const [updated] = await db.update(bankEmailEvents).set({ status: "imported", transactionId: transaction.id }).where(eq(bankEmailEvents.id, id)).returning();
       res.json(updated);
