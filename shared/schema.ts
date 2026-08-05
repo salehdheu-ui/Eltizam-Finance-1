@@ -192,6 +192,25 @@ export const bankEmailEvents = pgTable("bank_email_events", {
   transactionId: integer("transaction_id").references(() => transactions.id),
   createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
 });
+/**
+ * What the user decided a payee should be filed under. Written whenever they
+ * correct a suggestion, then applied to every later message from that payee so
+ * the same correction is never asked for twice.
+ */
+export const bankCategoryRules = pgTable("bank_category_rules", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  matchKey: text("match_key").notNull(),
+  matchLabel: text("match_label").notNull(),
+  categoryId: integer("category_id").references(() => categories.id, { onDelete: "set null" }),
+  commitmentId: integer("commitment_id").references(() => commitments.id, { onDelete: "set null" }),
+  hitCount: integer("hit_count").notNull().default(0),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+  updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
+export type BankCategoryRule = typeof bankCategoryRules.$inferSelect;
+
 export const integrationSettings = pgTable("integration_settings", {
   id: serial("id").primaryKey(),
   provider: text("provider").notNull().unique(),

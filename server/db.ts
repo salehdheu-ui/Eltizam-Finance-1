@@ -103,6 +103,11 @@ const databaseMigrations: DatabaseMigration[] = [
     name: "ensure_bank_email_account_scope_columns",
     up: async () => { await ensureBankEmailAccountScopeColumns(); },
   },
+  {
+    version: 17,
+    name: "ensure_bank_category_rules_table",
+    up: async () => { await ensureBankCategoryRulesTable(); },
+  },
 ];
 
 async function ensureSchemaMigrationsTable() {
@@ -495,6 +500,25 @@ async function ensureBankEmailCustomSendersColumn() {
  * imported transaction, resetting a connection, and removing a user. Setting it
  * to NULL on delete keeps the link honest without holding the transaction hostage.
  */
+async function ensureBankCategoryRulesTable() {
+  await pgExec(`
+    CREATE TABLE IF NOT EXISTS bank_category_rules (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      match_key TEXT NOT NULL,
+      match_label TEXT NOT NULL,
+      category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+      commitment_id INTEGER REFERENCES commitments(id) ON DELETE SET NULL,
+      hit_count INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
+      updated_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
+      UNIQUE(user_id, match_key)
+    )
+  `);
+
+  await pgExec("CREATE INDEX IF NOT EXISTS bank_category_rules_user_idx ON bank_category_rules (user_id, updated_at DESC)");
+}
+
 async function ensureBankEmailAccountScopeColumns() {
   if (!(await columnExists("bank_email_connections", "account_filter"))) {
     await pgExec("ALTER TABLE bank_email_connections ADD COLUMN account_filter TEXT");

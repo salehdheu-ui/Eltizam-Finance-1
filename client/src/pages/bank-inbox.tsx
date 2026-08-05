@@ -208,13 +208,23 @@ export default function BankInbox() {
   });
 
   const updateEvent = useMutation({
-    mutationFn: ({ id, categoryId, commitmentId }: { id: number; categoryId?: number | null; commitmentId?: number | null }) =>
-      apiRequest("PATCH", `/api/bank-inbox/events/${id}`, { categoryId, commitmentId }),
-    onSuccess: async () => {
+    mutationFn: async ({ id, categoryId, commitmentId }: { id: number; categoryId?: number | null; commitmentId?: number | null }) => {
+      const response = await apiRequest("PATCH", `/api/bank-inbox/events/${id}`, { categoryId, commitmentId });
+      return response.json() as Promise<{ ruleSaved: boolean; ruleLabel: string | null; appliedToPending: number }>;
+    },
+    onSuccess: async (result) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox/analysis"] }),
       ]);
+      if (result.ruleSaved && result.ruleLabel) {
+        toast({
+          title: "حفظنا هذا التصنيف",
+          description: result.appliedToPending > 0
+            ? `سنستخدمه تلقائياً لـ ${result.ruleLabel} مستقبلاً، وطبّقناه على ${result.appliedToPending} حركة معلقة من نفس الجهة.`
+            : `سنستخدمه تلقائياً لكل حركة قادمة من ${result.ruleLabel}.`,
+        });
+      }
     },
     onError: (error: Error) => toast({ title: "تعذر حفظ الاختيار", description: error.message, variant: "destructive" }),
   });

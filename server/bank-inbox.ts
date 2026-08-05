@@ -2,7 +2,7 @@ import type { Express, NextFunction, Request, Response } from "express";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
 import { and, desc, eq, gte, isNotNull, lt } from "drizzle-orm";
 import { z } from "zod";
-import { bankEmailConnections, bankEmailEvents, categories, commitments, transactions } from "@shared/schema";
+import { bankCategoryRules, bankEmailConnections, bankEmailEvents, categories, commitments, transactions } from "@shared/schema";
 import { db } from "./db";
 import { storage } from "./storage";
 import { buildBankAnalysis } from "./bank-analysis";
@@ -251,27 +251,65 @@ function headerValue(headers: Array<{ name?: string; value?: string }> | undefin
   return headers?.find((header) => header.name?.toLowerCase() === name.toLowerCase())?.value || "";
 }
 
-async function findAutomaticLinks(userId: number, merchant: string, categoryHint: string | null, amount: number, receivedAt: number) {
-  const [categories, activeCommitments, learnedEvents] = await Promise.all([
+/**
+ * The key a saved decision is filed under. Banks mask payee names inconsistently
+ * in case and spacing, so both are flattened to keep one payee from splitting
+ * into several rules.
+ */
+export function buildRuleKey(counterparty: string | null | undefined, merchant: string | null | undefined) {
+  const source = (counterparty || merchant || "").trim().toUpperCase().replace(/\s+/g, " ");
+  return source || null;
+}
+
+async function findSavedRule(userId: number, ruleKey: string | null) {
+  if (!ruleKey) return null;
+  const [rule] = await db.select().from(bankCategoryRules).where(and(
+    eq(bankCategoryRules.userId, userId),
+    eq(bankCategoryRules.matchKey, ruleKey),
+  ));
+  return rule ?? null;
+}
+
+async function findAutomaticLinks(
+  userId: number,
+  merchant: string,
+  categoryHint: string | null,
+  amount: number,
+  receivedAt: number,
+  counterparty?: string | null,
+) {
+  const ruleKey = buildRuleKey(counterparty, merchant);
+  const [categories, activeCommitments, savedRule] = await Promise.all([
     storage.getCategories(userId),
     db.select().from(commitments).where(and(eq(commitments.userId, userId), eq(commitments.status, "active"))),
-    db.select().from(bankEmailEvents).where(and(eq(bankEmailEvents.userId, userId), eq(bankEmailEvents.merchant, merchant))).orderBy(desc(bankEmailEvents.id)),
+    findSavedRule(userId, ruleKey),
   ]);
 
-  const learnedCategoryId = learnedEvents.find((event) => event.categoryId)?.categoryId || null;
   const hintedCategoryId = categoryHint
     ? categories.find((category) => category.name.includes(categoryHint) || categoryHint.includes(category.name))?.id || null
     : null;
-  const categoryId = learnedCategoryId || hintedCategoryId;
 
-  const commitment = activeCommitments.find((item) => {
+  // A decision the user made themselves outranks anything we infer from keywords.
+  const categoryId = savedRule?.categoryId ?? hintedCategoryId;
+
+  const matchedCommitment = activeCommitments.find((item) => {
     if (item.type !== "financial" || item.amount === null) return false;
     const amountMatches = Math.abs(item.amount - amount) <= Math.max(0.01, amount * 0.02);
     const dateMatches = !item.dueDate || Math.abs(item.dueDate - receivedAt) <= 7 * 86400;
     return amountMatches && dateMatches;
   });
 
-  return { categoryId, commitmentId: commitment?.id || null };
+  if (savedRule) {
+    await db.update(bankCategoryRules)
+      .set({ hitCount: savedRule.hitCount + 1, updatedAt: Math.floor(Date.now() / 1000) })
+      .where(eq(bankCategoryRules.id, savedRule.id));
+  }
+
+  return {
+    categoryId,
+    commitmentId: savedRule?.commitmentId ?? matchedCommitment?.id ?? null,
+    matchedRule: Boolean(savedRule),
+  };
 }
 
 /**
@@ -332,7 +370,7 @@ async function importParsedEvent(params: {
   ));
   if (duplicate.length > 0) return { state: "duplicate" as const };
 
-  const links = await findAutomaticLinks(params.userId, params.parsed.merchant, params.parsed.categoryHint, params.parsed.amount, params.receivedAt);
+  const links = await findAutomaticLinks(params.userId, params.parsed.merchant, params.parsed.categoryHint, params.parsed.amount, params.receivedAt, params.parsed.counterparty);
   const gap = await measureBalanceGap(params.userId, params.connection.id, params.receivedAt, params.parsed);
   // The select above cannot prevent a concurrent run from inserting the same
   // message between the check and the write, so let the unique indexes decide.
@@ -867,7 +905,63 @@ export function registerBankInboxRoutes(app: Express) {
       if (event.transactionId && input.categoryId !== undefined) {
         await db.update(transactions).set({ categoryId: input.categoryId }).where(and(eq(transactions.id, event.transactionId), eq(transactions.userId, req.user!.id)));
       }
-      res.json(updated);
+
+      // The correction is the point: remember it for this payee and stop asking.
+      const ruleKey = buildRuleKey(event.counterparty, event.merchant);
+      let appliedToPending = 0;
+      if (ruleKey) {
+        const now = Math.floor(Date.now() / 1000);
+        await db.insert(bankCategoryRules).values({
+          userId,
+          matchKey: ruleKey,
+          matchLabel: event.counterparty || event.merchant || ruleKey,
+          categoryId: input.categoryId ?? null,
+          commitmentId: input.commitmentId ?? null,
+          updatedAt: now,
+        }).onConflictDoUpdate({
+          target: [bankCategoryRules.userId, bankCategoryRules.matchKey],
+          set: {
+            ...(input.categoryId !== undefined ? { categoryId: input.categoryId } : {}),
+            ...(input.commitmentId !== undefined ? { commitmentId: input.commitmentId } : {}),
+            matchLabel: event.counterparty || event.merchant || ruleKey,
+            updatedAt: now,
+          },
+        });
+
+        // Sibling suggestions from the same payee should follow the decision now,
+        // rather than making the user repeat it once per message.
+        const siblings = await db.select({ id: bankEmailEvents.id, counterparty: bankEmailEvents.counterparty, merchant: bankEmailEvents.merchant })
+          .from(bankEmailEvents)
+          .where(and(eq(bankEmailEvents.userId, userId), eq(bankEmailEvents.status, "review")));
+
+        const sameParty = siblings.filter((sibling) => sibling.id !== id && buildRuleKey(sibling.counterparty, sibling.merchant) === ruleKey);
+        for (const sibling of sameParty) {
+          await db.update(bankEmailEvents).set(input).where(and(eq(bankEmailEvents.id, sibling.id), eq(bankEmailEvents.userId, userId)));
+        }
+        appliedToPending = sameParty.length;
+      }
+
+      res.json({ ...updated, ruleSaved: Boolean(ruleKey), ruleLabel: updated.counterparty || updated.merchant, appliedToPending });
+    } catch (error) { next(error); }
+  });
+
+  app.get("/api/bank-inbox/rules", requireAuth, async (req, res, next) => {
+    try {
+      const rules = await db.select().from(bankCategoryRules)
+        .where(eq(bankCategoryRules.userId, req.user!.id))
+        .orderBy(desc(bankCategoryRules.updatedAt));
+      res.json(rules);
+    } catch (error) { next(error); }
+  });
+
+  app.delete("/api/bank-inbox/rules/:id", requireAuth, async (req, res, next) => {
+    try {
+      const deleted = await db.delete(bankCategoryRules).where(and(
+        eq(bankCategoryRules.id, Number(req.params.id)),
+        eq(bankCategoryRules.userId, req.user!.id),
+      )).returning({ id: bankCategoryRules.id });
+      if (deleted.length === 0) return res.status(404).json({ message: "القاعدة غير موجودة" });
+      res.json({ message: "تم حذف القاعدة" });
     } catch (error) { next(error); }
   });
 

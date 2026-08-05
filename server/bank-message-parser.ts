@@ -161,6 +161,9 @@ function detectChannel(text: string, direction: TransactionDirection): Transacti
   if (/bill\s*payment|utility|فاتورة|فواتير|سداد/i.test(text)) return "bill";
   if (/\bpos\b|point\s*of\s*sale|purchase|card\s*transaction|شراء|نقطة\s*بيع|بطاقة/i.test(text)) return "pos";
   if (/transfer|remittance|حوالة|تحويل/i.test(text)) return "transfer";
+  // "debited from A/C … to <party>" names both ends, which is a transfer even
+  // when the bank never uses the word.
+  if (/\bfrom\s+(?:your\s+)?(?:a\/c|acc(?:ount)?)\b[^\n]*?\bto\b/i.test(text)) return "transfer";
   if (/online|e-?commerce|internet|إنترنت|أونلاين/i.test(text)) return "online";
   if (/fee|charge|commission|رسوم|عمولة/i.test(text)) return "fee";
   return direction === "credit" ? "transfer" : "other";
@@ -174,26 +177,38 @@ function cleanEntity(value: string) {
     .trim();
 }
 
-function maskAccount(value: string) {
-  const digits = value.replace(/\D/g, "");
-  if (digits.length <= 4) return value.trim();
-  return `••••${digits.slice(-4)}`;
+// Banks mask account digits with any of these; Bank Nizwa uses '#'.
+const ACCOUNT_CHARS = String.raw`[Xx*•#\d]`;
+const ACCOUNT_BODY = String.raw`[Xx*•#\d\- ]`;
+
+/**
+ * Reduces an account as printed to a comparable shape while keeping the digits
+ * the bank chose to reveal. Bank Nizwa shows "01610######001" — first five and
+ * last three — so collapsing to "the last four digits" would throw away the part
+ * that identifies the account and keep digits that are not even visible.
+ */
+export function normalizeAccountToken(raw: string) {
+  return raw.trim().toUpperCase().replace(/[\s\-]/g, "").replace(/[#X*•]+/g, "*");
+}
+
+function displayAccount(value: string) {
+  return normalizeAccountToken(value).replace(/\*/g, "••••");
 }
 
 function extractAccounts(text: string) {
   const fromPatterns = [
-    new RegExp(String.raw`(?:from|debited\s+from)\s+(?:your\s+)?(?:a\/c|acc(?:ount)?|card)\s*(?:no\.?|number)?\s*[:\-]?\s*([X\*x•\d\-]{4,25})`, "i"),
-    new RegExp(String.raw`من\s*(?:حسابك|الحساب|بطاقتك|البطاقة)\s*(?:رقم)?\s*[:\-]?\s*([X\*x•\d\-]{4,25})`, ""),
+    new RegExp(String.raw`(?:from|debited\s+from)\s+(?:your\s+)?(?:a\/c|acc(?:ount)?|card)\s*(?:no\.?|number)?\s*[:\-]?\s*(${ACCOUNT_CHARS}${ACCOUNT_BODY}{3,24})`, "i"),
+    new RegExp(String.raw`من\s*(?:حسابك|الحساب|بطاقتك|البطاقة)\s*(?:رقم)?\s*[:\-]?\s*(${ACCOUNT_CHARS}${ACCOUNT_BODY}{3,24})`, ""),
   ];
   const toPatterns = [
-    new RegExp(String.raw`(?:to|credited\s+to)\s+(?:a\/c|acc(?:ount)?|card)\s*(?:no\.?|number)?\s*[:\-]?\s*([X\*x•\d\-]{4,25})`, "i"),
-    new RegExp(String.raw`إلى\s*(?:حساب|الحساب|بطاقة|البطاقة)\s*(?:رقم)?\s*[:\-]?\s*([X\*x•\d\-]{4,25})`, ""),
+    new RegExp(String.raw`(?:to|credited\s+to)\s+(?:a\/c|acc(?:ount)?|card)\s*(?:no\.?|number)?\s*[:\-]?\s*(${ACCOUNT_CHARS}${ACCOUNT_BODY}{3,24})`, "i"),
+    new RegExp(String.raw`إلى\s*(?:حساب|الحساب|بطاقة|البطاقة)\s*(?:رقم)?\s*[:\-]?\s*(${ACCOUNT_CHARS}${ACCOUNT_BODY}{3,24})`, ""),
   ];
 
   const first = (patterns: RegExp[]) => {
     for (const pattern of patterns) {
       const match = text.match(pattern);
-      if (match?.[1]) return maskAccount(match[1]);
+      if (match?.[1]) return displayAccount(match[1]);
     }
     return null;
   };
@@ -202,14 +217,15 @@ function extractAccounts(text: string) {
 }
 
 /**
- * Every account or card the message names, reduced to its last four digits.
- * Banks mask the rest anyway, and four digits is what a customer recognises
- * as "my account".
+ * Every account or card the message names, in the shape the bank printed it.
+ * Keeping the shape matters: banks reveal different parts of the number, so a
+ * fixed "last four digits" rule silently loses the identifying part for any
+ * bank that masks the tail.
  */
 export function extractAccountReferences(text: string) {
   const patterns = [
-    /(?:a\/c|acc(?:ount)?|card)\s*(?:no\.?|number|ending(?:\s+(?:with|in))?)?\s*[:\-]?\s*([Xx*•\d][Xx*•\d\- ]{2,24})/gi,
-    /(?:حساب(?:ك|كم)?|الحساب|بطاقت(?:ك|كم)?|البطاقة)\s*(?:رقم|المنتهية\s*(?:بـ|ب)?)?\s*[:\-]?\s*([Xx*•\d][Xx*•\d\- ]{2,24})/g,
+    new RegExp(String.raw`(?:a\/c|acc(?:ount)?|card)\s*(?:no\.?|number|ending(?:\s+(?:with|in))?)?\s*[:\-]?\s*(${ACCOUNT_CHARS}${ACCOUNT_BODY}{2,24})`, "gi"),
+    new RegExp(String.raw`(?:حساب(?:ك|كم)?|الحساب|بطاقت(?:ك|كم)?|البطاقة)\s*(?:رقم|المنتهية\s*(?:بـ|ب)?)?\s*[:\-]?\s*(${ACCOUNT_CHARS}${ACCOUNT_BODY}{2,24})`, "g"),
   ];
 
   const references = new Set<string>();
@@ -217,16 +233,34 @@ export function extractAccountReferences(text: string) {
     pattern.lastIndex = 0;
     let match: RegExpExecArray | null;
     while ((match = pattern.exec(text)) !== null) {
-      const digits = match[1].replace(/\D/g, "");
-      if (digits.length >= 3) references.add(digits.slice(-4));
+      const token = normalizeAccountToken(match[1]);
+      if (token.replace(/\D/g, "").length >= 3) references.add(token);
     }
   }
   return Array.from(references);
 }
 
 export function normalizeAccountFilter(value: string | null | undefined) {
-  const digits = (value || "").replace(/\D/g, "");
-  return digits ? digits.slice(-4) : null;
+  const trimmed = (value || "").trim();
+  if (!trimmed) return null;
+  const token = normalizeAccountToken(trimmed);
+  return token.replace(/\D/g, "").length >= 3 ? token : null;
+}
+
+/**
+ * An exact token is what the user gets by picking a detected account. A filter
+ * typed as bare digits is treated as the visible tail of the number, which is
+ * how someone reads their own account off a message.
+ */
+export function accountRefMatches(reference: string, filter: string) {
+  const normalizedReference = normalizeAccountToken(reference);
+  const normalizedFilter = normalizeAccountToken(filter);
+  if (normalizedReference === normalizedFilter) return true;
+
+  if (/^\d+$/.test(normalizedFilter)) {
+    return normalizedReference.replace(/\D/g, "").endsWith(normalizedFilter);
+  }
+  return false;
 }
 
 /**
@@ -238,12 +272,14 @@ export function normalizeAccountFilter(value: string | null | undefined) {
 export function messageMatchesAccount(text: string, accountFilter: string | null | undefined) {
   const filter = normalizeAccountFilter(accountFilter);
   if (!filter) return true;
-  return extractAccountReferences(text).includes(filter);
+  return extractAccountReferences(text).some((reference) => accountRefMatches(reference, filter));
 }
 
 function extractCounterparty(text: string) {
   const patterns = [
     /(?:at|merchant)\s*[:\-]?\s*([^,.;\n]{2,60})/i,
+    // A payee name the bank partly masked, e.g. "to MAHM#######LFAN".
+    /(?:paid\s+to|transferred\s+to|to)\s+([A-Z0-9#*•]{4,40})(?![^\s,.;])/,
     /(?:paid\s+to|transferred\s+to|to)\s+([A-Z][^,.;\n]{2,60})/,
     /(?:received\s+from|transferred\s+from|from)\s+([A-Z][^,.;\n]{2,60})/,
     /(?:لدى|المتجر|التاجر)\s*[:\-]?\s*([^،,.؛\n]{2,60})/,
