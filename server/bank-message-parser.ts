@@ -275,22 +275,43 @@ export function messageMatchesAccount(text: string, accountFilter: string | null
   return extractAccountReferences(text).some((reference) => accountRefMatches(reference, filter));
 }
 
+/**
+ * Wording that belongs to the email around the alert rather than to the payee.
+ * Without this the mail client's own boilerplate gets filed as a merchant, and
+ * every transaction from that "merchant" lands in one meaningless bucket.
+ */
+const BOILERPLATE = /attach|unsubscrib|disclaim|confidential|copyright|all rights|do not reply|no-?reply|click here|https?:|www\.|@|customer\s+(?:care|service)|helpline|call\s+us|terms|privacy|this\s+(?:message|email|is)|please|thank|dear|بريد|الرسالة|خدمة\s*العملاء|اضغط|الشروط|الخصوصية|شكرا|عزيزي/i;
+
+function isPlausibleCounterparty(value: string) {
+  if (value.length < 2 || value.length > 60) return false;
+  if (BOILERPLATE.test(value)) return false;
+  // A bare amount ("OMR 382") is the transaction, not who it went to.
+  if (/^(?:OMR|R\.?O\.?|ر\.?\s?ع\.?|ريال)?[\s:.\-]*[\d,.]+$/i.test(value)) return false;
+  // "A/C 01610######001" is the account the money left, not the payee. Filing it
+  // as one would key saved decisions on the account instead of who was paid.
+  if (/^(?:a\/c|acc(?:ount)?|card|حساب|الحساب|بطاقة|البطاقة)\b/i.test(value)) return false;
+  // Needs at least one letter; pure punctuation or digits identify nobody.
+  return /[A-Za-z؀-ۿ]/.test(value);
+}
+
 function extractCounterparty(text: string) {
   const patterns = [
-    /(?:at|merchant)\s*[:\-]?\s*([^,.;\n]{2,60})/i,
+    // \b matters: without it "at" matches inside "attachments" and captures the
+    // mail footer as the payee.
+    /\b(?:at|merchant)\b\s*[:\-]?\s*([^,.;\n]{2,60})/i,
     // A payee name the bank partly masked, e.g. "to MAHM#######LFAN".
-    /(?:paid\s+to|transferred\s+to|to)\s+([A-Z0-9#*•]{4,40})(?![^\s,.;])/,
-    /(?:paid\s+to|transferred\s+to|to)\s+([A-Z][^,.;\n]{2,60})/,
-    /(?:received\s+from|transferred\s+from|from)\s+([A-Z][^,.;\n]{2,60})/,
-    /(?:لدى|المتجر|التاجر)\s*[:\-]?\s*([^،,.؛\n]{2,60})/,
-    /(?:إلى|من)\s+(?!حساب|الحساب|بطاقة|البطاقة)([^،,.؛\n]{2,60})/,
+    /\b(?:paid\s+to|transferred\s+to|to)\s+([A-Z0-9#*•]{4,40})(?![^\s,.;])/,
+    /\b(?:paid\s+to|transferred\s+to|to)\s+([A-Z][^,.;\n]{2,60})/,
+    /\b(?:received\s+from|transferred\s+from|from)\s+([A-Z][^,.;\n]{2,60})/,
+    /(?<!\S)(?:لدى|المتجر|التاجر)\s*[:\-]?\s*([^،,.؛\n]{2,60})/,
+    /(?<!\S)(?:إلى|من)\s+(?!حساب|الحساب|بطاقة|البطاقة)([^،,.؛\n]{2,60})/,
   ];
+
   for (const pattern of patterns) {
     const match = text.match(pattern);
-    if (match?.[1]) {
-      const cleaned = cleanEntity(match[1]);
-      if (cleaned.length >= 2) return cleaned;
-    }
+    if (!match?.[1]) continue;
+    const cleaned = cleanEntity(match[1]);
+    if (isPlausibleCounterparty(cleaned)) return cleaned;
   }
   return null;
 }
@@ -301,18 +322,61 @@ function extractReference(text: string) {
   return match?.[1] ?? null;
 }
 
-function inferCategory(text: string) {
-  const rules: Array<[string, RegExp]> = [
-    ["مطاعم", /restaurant|cafe|coffee|مطعم|مقهى/i],
-    ["وقود", /fuel|petrol|shell|oman oil|نفط|وقود/i],
-    ["اتصالات", /omantel|ooredoo|vodafone|telecom|اتصالات/i],
-    ["بقالة", /grocery|supermarket|lulu|carrefour|nesto|بقالة|سوبرماركت/i],
-    ["صحة", /hospital|clinic|pharmacy|صيدلية|مستشفى|عيادة/i],
-    ["فواتير", /electricity|water|bill|كهرباء|مياه|فاتورة/i],
-    ["تسوق", /mall|store|shop|amazon|متجر|تسوق/i],
-    ["راتب", /salary|payroll|راتب/i],
-  ];
-  return rules.find(([, rule]) => rule.test(text))?.[0] ?? null;
+/**
+ * Keywords need real boundaries: unanchored, "lab" matches inside "Available",
+ * "rent" inside "current" and "lease" inside "please", so a plain balance line
+ * would file itself under health, rent and housing at once.
+ */
+function categoryPattern(...words: string[]) {
+  const parts = words.map((word) => (
+    /^[\x20-\x7E]+$/.test(word)
+      ? String.raw`\b${word}\b`
+      : String.raw`(?<!\p{L})${word}(?!\p{L})`
+  ));
+  return new RegExp(parts.join("|"), "iu");
+}
+
+/** Matched against the payee first, so a word in the bank's prose cannot outvote it. */
+const CATEGORY_RULES: Array<[string, RegExp]> = [
+  ["مطاعم", categoryPattern("restaurant", "cafe", "coffee", "kfc", "mcdonald", "pizza", "burger", "bakery", "juice", "starbucks", "subway", "talabat", "akeed", "مطعم", "مقهى", "كافيه", "قهوة", "مخبز", "عصير", "بيتزا", "برجر")],
+  ["وقود", categoryPattern("fuel", "petrol", "shell", "oman\\s*oil", "al\\s*maha", "naft", "ola\\s*energy", "نفط", "وقود", "محطة", "المها")],
+  ["اتصالات", categoryPattern("omantel", "ooredoo", "vodafone", "renna", "friendi", "telecom", "recharge", "عمانتل", "اوريدو", "فودافون", "اتصالات")],
+  ["بقالة", categoryPattern("grocery", "supermarket", "hypermarket", "lulu", "carrefour", "nesto", "sultan\\s*center", "al\\s*meera", "safeer", "khimji", "بقالة", "سوبرماركت", "هايبر", "لولو", "كارفور", "نستو")],
+  ["صحة", categoryPattern("hospital", "clinic", "pharmacy", "medical", "dental", "badr\\s*al\\s*samaa", "صيدلية", "مستشفى", "عيادة", "أسنان", "مختبر")],
+  ["فواتير", categoryPattern("electricity", "mazoon", "majan", "nama", "utility", "كهرباء", "مياه", "فاتورة", "فواتير", "مزون", "نماء")],
+  ["مواصلات", categoryPattern("taxi", "uber", "careem", "otaxi", "parking", "mwasalat", "airline", "oman\\s*air", "salam\\s*air", "flight", "تاكسي", "كريم", "مواصلات", "مواقف", "طيران")],
+  ["تعليم", categoryPattern("school", "university", "college", "tuition", "مدرسة", "جامعة", "كلية", "تعليم")],
+  ["تسوق", categoryPattern("mall", "store", "shop", "amazon", "shein", "namshi", "centrepoint", "متجر", "تسوق", "مول", "أمازون")],
+  ["ترفيه", categoryPattern("cinema", "netflix", "spotify", "shahid", "osn", "playstation", "entertainment", "سينما", "نتفلكس", "شاهد", "ترفيه", "ألعاب")],
+  ["تأمين", categoryPattern("insurance", "takaful", "تأمين", "تكافل")],
+  ["إيجار", categoryPattern("rent", "rental", "lease", "إيجار", "ايجار")],
+  ["راتب", categoryPattern("salary", "payroll", "wages", "راتب", "رواتب", "أجور")],
+];
+
+/**
+ * Falls back to what the operation itself was when no payee keyword matches.
+ * An ATM withdrawal or a bank fee is a meaningful category on its own, and
+ * leaving it uncategorised is what makes every row read as "أخرى".
+ */
+const CATEGORY_BY_CHANNEL: Partial<Record<TransactionChannel, string>> = {
+  atm: "سحب نقدي",
+  transfer: "تحويلات",
+  bill: "فواتير",
+  salary: "راتب",
+  fee: "رسوم بنكية",
+  online: "تسوق",
+};
+
+function inferCategory(text: string, counterparty: string | null, channel: TransactionChannel) {
+  const byCounterparty = counterparty
+    ? CATEGORY_RULES.find(([, rule]) => rule.test(counterparty))?.[0]
+    : undefined;
+  if (byCounterparty) return byCounterparty;
+
+  const byText = CATEGORY_RULES.find(([, rule]) => rule.test(text))?.[0];
+  if (byText) return byText;
+
+  return CATEGORY_BY_CHANNEL[channel] ?? null;
 }
 
 export function normalizeSenderList(value: string | null | undefined) {
@@ -397,7 +461,7 @@ export function parseBankMessage(input: { bankKey: BankKey; sender: string; subj
     toAccount,
     accountRef: extractAccountReferences(combined)[0] ?? null,
     reference: extractReference(combined),
-    categoryHint: inferCategory(combined),
+    categoryHint: inferCategory(combined, counterparty, channel),
     confidence: (input.sender ? 0.92 : 0.78) * (confident ? 1 : 0.75),
   };
 }

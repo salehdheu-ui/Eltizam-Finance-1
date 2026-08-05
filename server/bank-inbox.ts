@@ -270,6 +270,41 @@ async function findSavedRule(userId: number, ruleKey: string | null) {
   return rule ?? null;
 }
 
+const CATEGORY_ICONS: Record<string, string> = {
+  "مطاعم": "🍽️", "وقود": "⛽", "اتصالات": "📱", "بقالة": "🛒", "صحة": "🏥",
+  "فواتير": "🧾", "مواصلات": "🚗", "تعليم": "🎓", "تسوق": "🛍️", "ترفيه": "🎬",
+  "تأمين": "🛡️", "إيجار": "🏠", "راتب": "💰", "سحب نقدي": "🏧", "تحويلات": "🔄",
+  "رسوم بنكية": "🏦",
+};
+
+/**
+ * A hint is only useful if it can point at a real category. Creating the missing
+ * one keeps imported spending broken down by where it went instead of collapsing
+ * every row into the same uncategorised bucket.
+ */
+async function resolveCategoryId(userId: number, hint: string | null, type: "income" | "expense") {
+  if (!hint) return null;
+
+  const categories = await storage.getCategories(userId);
+  const existing = categories.find((category) =>
+    category.type === type && (category.name.includes(hint) || hint.includes(category.name)));
+  if (existing) return existing.id;
+
+  try {
+    const created = await storage.createCategory(userId, {
+      name: hint,
+      type,
+      icon: CATEGORY_ICONS[hint] || "📝",
+      color: "bg-slate-100 text-slate-600",
+      budget: 0,
+    });
+    return created.id;
+  } catch (error) {
+    console.error(`Failed to create category "${hint}" for user ${userId}:`, error instanceof Error ? error.message : "unknown error");
+    return null;
+  }
+}
+
 async function findAutomaticLinks(
   userId: number,
   merchant: string,
@@ -277,17 +312,18 @@ async function findAutomaticLinks(
   amount: number,
   receivedAt: number,
   counterparty?: string | null,
+  transactionType: "income" | "expense" = "expense",
 ) {
   const ruleKey = buildRuleKey(counterparty, merchant);
-  const [categories, activeCommitments, savedRule] = await Promise.all([
-    storage.getCategories(userId),
+  const [activeCommitments, savedRule] = await Promise.all([
     db.select().from(commitments).where(and(eq(commitments.userId, userId), eq(commitments.status, "active"))),
     findSavedRule(userId, ruleKey),
   ]);
 
-  const hintedCategoryId = categoryHint
-    ? categories.find((category) => category.name.includes(categoryHint) || categoryHint.includes(category.name))?.id || null
-    : null;
+  // Only reach for a category when no saved decision already answers this.
+  const hintedCategoryId = savedRule?.categoryId
+    ? null
+    : await resolveCategoryId(userId, categoryHint, transactionType);
 
   // A decision the user made themselves outranks anything we infer from keywords.
   const categoryId = savedRule?.categoryId ?? hintedCategoryId;
@@ -370,7 +406,7 @@ async function importParsedEvent(params: {
   ));
   if (duplicate.length > 0) return { state: "duplicate" as const };
 
-  const links = await findAutomaticLinks(params.userId, params.parsed.merchant, params.parsed.categoryHint, params.parsed.amount, params.receivedAt, params.parsed.counterparty);
+  const links = await findAutomaticLinks(params.userId, params.parsed.merchant, params.parsed.categoryHint, params.parsed.amount, params.receivedAt, params.parsed.counterparty, params.parsed.transactionType);
   const gap = await measureBalanceGap(params.userId, params.connection.id, params.receivedAt, params.parsed);
   // The select above cannot prevent a concurrent run from inserting the same
   // message between the check and the write, so let the unique indexes decide.
