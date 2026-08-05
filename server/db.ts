@@ -93,6 +93,11 @@ const databaseMigrations: DatabaseMigration[] = [
     name: "ensure_bank_email_event_analysis_columns",
     up: async () => { await ensureBankEmailEventAnalysisColumns(); },
   },
+  {
+    version: 15,
+    name: "ensure_bank_email_transaction_fk_set_null",
+    up: async () => { await ensureBankEmailTransactionForeignKey(); },
+  },
 ];
 
 async function ensureSchemaMigrationsTable() {
@@ -443,7 +448,7 @@ async function ensureBankEmailImportTables() {
       merchant TEXT,
       category_id INTEGER REFERENCES categories(id),
       commitment_id INTEGER REFERENCES commitments(id),
-      transaction_id INTEGER REFERENCES transactions(id),
+      transaction_id INTEGER REFERENCES transactions(id) ON DELETE SET NULL,
       created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
       UNIQUE(user_id, connection_id, provider_message_id),
       UNIQUE(user_id, fingerprint)
@@ -477,6 +482,17 @@ async function ensureBankEmailCustomSendersColumn() {
   if (!(await columnExists("bank_email_connections", "custom_senders"))) {
     await pgExec("ALTER TABLE bank_email_connections ADD COLUMN custom_senders TEXT");
   }
+}
+
+/**
+ * The event row remembers which transaction it produced. Left as NO ACTION that
+ * reference blocks deleting the transaction at all — which broke deleting an
+ * imported transaction, resetting a connection, and removing a user. Setting it
+ * to NULL on delete keeps the link honest without holding the transaction hostage.
+ */
+async function ensureBankEmailTransactionForeignKey() {
+  await pgExec("ALTER TABLE bank_email_events DROP CONSTRAINT IF EXISTS bank_email_events_transaction_id_fkey");
+  await pgExec("ALTER TABLE bank_email_events ADD CONSTRAINT bank_email_events_transaction_id_fkey FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL");
 }
 
 async function ensureBankEmailEventAnalysisColumns() {

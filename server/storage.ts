@@ -1,7 +1,7 @@
-import { eq, and, asc, desc, like } from "drizzle-orm";
+import { eq, and, asc, desc, like, inArray } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, wallets, categories, transactions, recurringIncomes, obligations, variableObligationMonthStatuses, commitments, commitmentSteps, commitmentProofs, savingsGoals, passwordResetRequests,
+  users, wallets, categories, transactions, recurringIncomes, obligations, variableObligationMonthStatuses, commitments, commitmentSteps, commitmentProofs, savingsGoals, passwordResetRequests, bankEmailEvents,
   type User, type InsertUser,
   type Wallet, type InsertWallet,
   type Category, type InsertCategory,
@@ -405,6 +405,19 @@ export class DatabaseStorage implements IStorage {
     return outgoing;
   }
 
+  /**
+   * A bank inbox event keeps a reference to the transaction it produced, so the
+   * row has to let go of it before Postgres will allow the delete. Without this
+   * the foreign key rejects deleting any transaction that came from an email.
+   */
+  private async detachBankEmailEvents(transactionIds: number[], userId: number) {
+    if (transactionIds.length === 0) return;
+    await db
+      .update(bankEmailEvents)
+      .set({ transactionId: null })
+      .where(and(eq(bankEmailEvents.userId, userId), inArray(bankEmailEvents.transactionId, transactionIds)));
+  }
+
   async deleteTransaction(id: number, userId: number): Promise<void> {
     const [tx] = await db.select().from(transactions).where(and(eq(transactions.id, id), eq(transactions.userId, userId)));
     const transferMeta = this.parseTransferNote(tx?.note);
@@ -424,6 +437,7 @@ export class DatabaseStorage implements IStorage {
         }
       }
 
+      await this.detachBankEmailEvents(pairTransactions.map((pairTx) => pairTx.id), userId);
       await db.delete(transactions).where(and(eq(transactions.userId, userId), like(transactions.note, `__transfer__:${transferMeta.pairId}:%`)));
       return;
     }
@@ -435,6 +449,8 @@ export class DatabaseStorage implements IStorage {
         await this.updateWallet(wallet.id, userId, { balance: wallet.balance + delta });
       }
     }
+
+    await this.detachBankEmailEvents([id], userId);
     await db.delete(transactions).where(and(eq(transactions.id, id), eq(transactions.userId, userId)));
   }
 
