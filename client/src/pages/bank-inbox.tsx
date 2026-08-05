@@ -271,15 +271,22 @@ export default function BankInbox() {
   });
 
   const updateConnection = useMutation({
-    mutationFn: ({ id, accountFilter: nextFilter }: { id: number; accountFilter: string }) =>
-      apiRequest("PATCH", `/api/bank-inbox/connections/${id}`, { accountFilter: nextFilter }),
-    onSuccess: async () => {
+    mutationFn: async ({ id, accountFilter: nextFilter }: { id: number; accountFilter: string; resync?: boolean }) => {
+      const response = await apiRequest("PATCH", `/api/bank-inbox/connections/${id}`, { accountFilter: nextFilter });
+      return response.json() as Promise<{ id: number; accountFilter: string | null }>;
+    },
+    onSuccess: async (saved, variables) => {
       await queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox"] });
       setEditingConnectionId(null);
       toast({
-        title: "تم تحديد الحساب",
-        description: "احذف الحركات القديمة ثم اضغط قراءة الرسائل ليُعاد بناء الحساب من رسائله وحدها.",
+        title: saved.accountFilter ? `تم تحديد الحساب ${saved.accountFilter}` : "تمت متابعة كل الحسابات",
+        description: variables.resync
+          ? "نقرأ الرسائل الآن بهذا الحساب…"
+          : "اضغط قراءة الرسائل لإعادة البناء على هذا الحساب.",
       });
+      // Reading straight away is the whole point of choosing an account, and it
+      // saves the user a third click that is easy to forget.
+      if (variables.resync) syncConnection.mutate(variables.id);
     },
     onError: (error: Error) => toast({ title: "تعذر الحفظ", description: error.message, variant: "destructive" }),
   });
@@ -495,13 +502,17 @@ export default function BankInbox() {
 
                        {connectionAccounts.length > 0 ? (
                          <div className="space-y-2">
-                           <p className="text-xs text-muted-foreground">حسابات ظهرت في رسائلك — اضغط أحدها لاختياره:</p>
+                           <p className="text-xs text-muted-foreground">حسابات ظهرت في رسائلك — اضغط أحدها ليُحفظ وتُقرأ رسائله فوراً:</p>
                            <div className="flex flex-wrap gap-2">
                              {connectionAccounts.map((account) => (
                                <button
                                  key={account.accountRef}
                                  type="button"
-                                 onClick={() => setAccountDraft(account.accountRef)}
+                                 disabled={updateConnection.isPending}
+                                 onClick={() => {
+                                   setAccountDraft(account.accountRef);
+                                   updateConnection.mutate({ id: connection.id, accountFilter: account.accountRef, resync: true });
+                                 }}
                                  className={`rounded-full border px-3 py-1 text-xs ${accountDraft === account.accountRef ? "border-primary bg-primary/10 font-semibold text-primary" : "bg-background"}`}
                                >
                                  <span dir="ltr">{account.accountRef}</span>{account.count > 0 ? ` · ${account.count} رسالة` : ""}
@@ -515,12 +526,12 @@ export default function BankInbox() {
 
                        <div className="flex gap-2">
                          <Button
-                           onClick={() => updateConnection.mutate({ id: connection.id, accountFilter: accountDraft })}
+                           onClick={() => updateConnection.mutate({ id: connection.id, accountFilter: accountDraft, resync: true })}
                            disabled={updateConnection.isPending}
                          >
-                           {updateConnection.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "حفظ"}
+                           {updateConnection.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "حفظ وقراءة"}
                          </Button>
-                         <Button variant="outline" onClick={() => updateConnection.mutate({ id: connection.id, accountFilter: "" })} disabled={updateConnection.isPending}>
+                         <Button variant="outline" onClick={() => updateConnection.mutate({ id: connection.id, accountFilter: "", resync: true })} disabled={updateConnection.isPending}>
                            متابعة كل الحسابات
                          </Button>
                        </div>
