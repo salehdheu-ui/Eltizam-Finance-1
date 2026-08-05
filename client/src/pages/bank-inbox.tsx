@@ -138,6 +138,7 @@ export default function BankInbox() {
   const [accountFilter, setAccountFilter] = useState("");
   const [editingConnectionId, setEditingConnectionId] = useState<number | null>(null);
   const [accountDraft, setAccountDraft] = useState("");
+  const [observedAccounts, setObservedAccounts] = useState<string[]>([]);
   const [walletId, setWalletId] = useState("");
   const [autoImport, setAutoImport] = useState(true);
   const [showSetup, setShowSetup] = useState(false);
@@ -193,7 +194,10 @@ export default function BankInbox() {
   const syncConnection = useMutation({
     mutationFn: async (id: number) => {
       const response = await apiRequest("POST", `/api/bank-inbox/connections/${id}/sync`);
-      return response.json() as Promise<{ checked: number; imported: number; review: number; duplicate: number }>;
+      return response.json() as Promise<{
+        checked: number; imported: number; review: number; duplicate: number;
+        otherAccount: number; observedAccounts: string[];
+      }>;
     },
     onSuccess: async (summary) => {
       await Promise.all([
@@ -202,7 +206,26 @@ export default function BankInbox() {
         queryClient.invalidateQueries({ queryKey: ["/api/transactions"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] }),
       ]);
-      toast({ title: "اكتملت قراءة البريد", description: `تمت إضافة ${summary.imported}، وتحتاج ${summary.review} للمراجعة.` });
+
+      setObservedAccounts(summary.observedAccounts || []);
+
+      // Everything filtered out is the case worth explaining — otherwise the
+      // screen just says zero and gives the user nothing to act on.
+      if (summary.imported === 0 && summary.review === 0 && summary.otherAccount > 0) {
+        toast({
+          title: `تخطّينا ${summary.otherAccount} رسالة`,
+          description: summary.observedAccounts?.length
+            ? `لا تطابق الحساب المحدد. الحسابات الموجودة فعلاً في رسائلك: ${summary.observedAccounts.join("، ")} — اضغط تغيير واختر منها.`
+            : "لا تطابق الحساب المحدد، ولم نتعرّف على رقم حساب في أي منها. جرّب متابعة كل الحسابات.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "اكتملت قراءة البريد",
+        description: `تمت إضافة ${summary.imported}، وتحتاج ${summary.review} للمراجعة.${summary.otherAccount > 0 ? ` وتخطّينا ${summary.otherAccount} تخص حسابات أخرى.` : ""}`,
+      });
     },
     onError: (error: Error) => toast({ title: "تعذرت المزامنة", description: error.message, variant: "destructive" }),
   });
@@ -393,7 +416,15 @@ export default function BankInbox() {
               {data?.connections.map((connection) => {
                 const missingSender = banksNeedingSender.has(connection.bankKey) && !connection.customSenders;
 
-                const connectionAccounts = (data?.detectedAccounts || []).filter((account) => account.connectionId === connection.id);
+                const importedAccounts = (data?.detectedAccounts || []).filter((account) => account.connectionId === connection.id);
+                // Accounts seen during the last sync count too, including ones the
+                // current filter rejected — those are exactly what the user needs.
+                const connectionAccounts = [
+                  ...importedAccounts,
+                  ...observedAccounts
+                    .filter((reference) => !importedAccounts.some((account) => account.accountRef === reference))
+                    .map((reference) => ({ accountRef: reference, connectionId: connection.id, count: 0 })),
+                ];
                 const isEditing = editingConnectionId === connection.id;
 
                 return (
@@ -473,13 +504,13 @@ export default function BankInbox() {
                                  onClick={() => setAccountDraft(account.accountRef)}
                                  className={`rounded-full border px-3 py-1 text-xs ${accountDraft === account.accountRef ? "border-primary bg-primary/10 font-semibold text-primary" : "bg-background"}`}
                                >
-                                 <span dir="ltr">{account.accountRef}</span> · {account.count} رسالة
+                                 <span dir="ltr">{account.accountRef}</span>{account.count > 0 ? ` · ${account.count} رسالة` : ""}
                                </button>
                              ))}
                            </div>
                          </div>
                        ) : (
-                         <p className="text-xs text-muted-foreground">لم نتعرّف على أرقام حسابات في الرسائل المقروءة بعد. افتح رسالة من بنكك وانسخ آخر أربعة أرقام من رقم الحساب.</p>
+                         <p className="text-xs text-muted-foreground">اضغط «قراءة الرسائل» أولاً — سنعرض لك عندها أرقام الحسابات الموجودة في بريدك لتختار منها.</p>
                        )}
 
                        <div className="flex gap-2">

@@ -6,7 +6,7 @@ import { bankCategoryRules, bankEmailConnections, bankEmailEvents, categories, c
 import { db } from "./db";
 import { storage } from "./storage";
 import { buildBankAnalysis } from "./bank-analysis";
-import { BANK_PROFILES, buildBankSearchQuery, createMessageFingerprint, detectBalanceGap, messageMatchesAccount, normalizeAccountFilter, normalizeSenderList, parseBankMessage, resolveAllowedSenders, senderMatchesBank, type BankKey } from "./bank-message-parser";
+import { BANK_PROFILES, buildBankSearchQuery, createMessageFingerprint, detectBalanceGap, extractAccountReferences, messageMatchesAccount, normalizeAccountFilter, normalizeSenderList, parseBankMessage, resolveAllowedSenders, senderMatchesBank, type BankKey } from "./bank-message-parser";
 import { getProviderConfig, isProviderConfigured, resolveRedirectUri } from "./integration-settings";
 import { buildWriteQueueKey, enqueueWrite } from "./write-queue";
 
@@ -433,6 +433,7 @@ async function syncGoogleConnection(userId: number, connection: typeof bankEmail
   if (!listResponse.ok) throw googleReadError(await describeProviderFailure(listResponse));
   const list = await listResponse.json() as { messages?: Array<{ id: string }> };
   const summary = { checked: list.messages?.length || 0, imported: 0, review: 0, duplicate: 0, ignored: 0, otherAccount: 0 };
+  const observedAccounts = new Set<string>();
 
   for (const item of list.messages || []) {
     const existing = await db.select({ id: bankEmailEvents.id }).from(bankEmailEvents).where(and(
@@ -455,6 +456,9 @@ async function syncGoogleConnection(userId: number, connection: typeof bankEmail
     if (!senderMatchesBank(connection.bankKey as BankKey, sender, connection.customSenders)) { summary.ignored += 1; continue; }
     const subject = headerValue(message.payload?.headers, "Subject");
     const body = gmailBody(message.payload) || message.snippet || "";
+    // Record what the mailbox actually holds even when we skip it, so a filter
+    // that matches nothing can be corrected instead of dead-ending.
+    extractAccountReferences(`${subject}\n${body}`).forEach((reference) => observedAccounts.add(reference));
     if (!messageMatchesAccount(`${subject}\n${body}`, connection.accountFilter)) { summary.otherAccount += 1; continue; }
     const parsed = parseBankMessage({ bankKey: connection.bankKey as BankKey, sender, subject, body });
     if (!parsed) { summary.ignored += 1; continue; }
@@ -472,7 +476,7 @@ async function syncGoogleConnection(userId: number, connection: typeof bankEmail
   }
 
   await db.update(bankEmailConnections).set({ lastSyncAt: Math.floor(Date.now() / 1000), updatedAt: Math.floor(Date.now() / 1000) }).where(eq(bankEmailConnections.id, connection.id));
-  return summary;
+  return { ...summary, observedAccounts: Array.from(observedAccounts) };
 }
 
 async function syncMicrosoftConnection(userId: number, connection: typeof bankEmailConnections.$inferSelect) {
@@ -488,6 +492,7 @@ async function syncMicrosoftConnection(userId: number, connection: typeof bankEm
   if (!response.ok) throw microsoftReadError(await describeProviderFailure(response));
   const list = await response.json() as { value?: Array<{ id: string; subject?: string; from?: { emailAddress?: { address?: string } }; receivedDateTime?: string }> };
   const summary = { checked: list.value?.length || 0, imported: 0, review: 0, duplicate: 0, ignored: 0, otherAccount: 0 };
+  const observedAccounts = new Set<string>();
 
   for (const message of list.value || []) {
     const sender = message.from?.emailAddress?.address || "";
@@ -503,6 +508,9 @@ async function syncMicrosoftConnection(userId: number, connection: typeof bankEm
     const detail = await detailResponse.json() as { subject?: string; receivedDateTime?: string; bodyPreview?: string; body?: { content?: string; contentType?: string } };
     const subject = detail.subject || message.subject || "";
     const body = detail.body?.contentType?.toLowerCase() === "html" ? htmlToText(detail.body.content || "") : (detail.body?.content || detail.bodyPreview || "");
+    // Record what the mailbox actually holds even when we skip it, so a filter
+    // that matches nothing can be corrected instead of dead-ending.
+    extractAccountReferences(`${subject}\n${body}`).forEach((reference) => observedAccounts.add(reference));
     if (!messageMatchesAccount(`${subject}\n${body}`, connection.accountFilter)) { summary.otherAccount += 1; continue; }
     const parsed = parseBankMessage({ bankKey: connection.bankKey as BankKey, sender, subject, body });
     if (!parsed) { summary.ignored += 1; continue; }
@@ -512,7 +520,7 @@ async function syncMicrosoftConnection(userId: number, connection: typeof bankEm
   }
 
   await db.update(bankEmailConnections).set({ lastSyncAt: Math.floor(Date.now() / 1000), updatedAt: Math.floor(Date.now() / 1000) }).where(eq(bankEmailConnections.id, connection.id));
-  return summary;
+  return { ...summary, observedAccounts: Array.from(observedAccounts) };
 }
 /**
  * The scheduler and the manual "read messages" button hit the same connection, so
