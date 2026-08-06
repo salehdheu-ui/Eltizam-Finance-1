@@ -730,9 +730,11 @@ export async function registerRoutes(
             if (sibling.transactionId) {
               await db.update(transactions).set({ categoryId: input.categoryId })
                 .where(and(eq(transactions.id, sibling.transactionId), eq(transactions.userId, userId)));
+              // Only rows that reached the transactions list are visible changes,
+              // so pending suggestions must not inflate what we report back.
+              appliedToOthers += 1;
             }
           }
-          appliedToOthers = sameParty.length;
         }
       }
 
