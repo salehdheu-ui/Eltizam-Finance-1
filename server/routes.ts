@@ -4,12 +4,12 @@ import { storage } from "./storage";
 import { hashPlainPassword, setupAuth } from "./auth";
 import { writeAuditEvent } from "./audit";
 import { createManualBackup, listAllBackups } from "./backup";
-import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, integrationSettings, upsertIntegrationSettingSchema } from "@shared/schema";
+import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, integrationSettings, upsertIntegrationSettingSchema, transactions, categories, bankEmailEvents, bankCategoryRules } from "@shared/schema";
 import { buildWriteQueueKey, enqueueWrite } from "./write-queue";
 import { z } from "zod";
-import { registerBankInboxRoutes } from "./bank-inbox";
+import { buildRuleKey, registerBankInboxRoutes } from "./bank-inbox";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   INTEGRATION_PROVIDERS,
   PROVIDER_CALLBACK_PATHS,
@@ -655,6 +655,88 @@ export async function registerRoutes(
         () => storage.createTransaction(req.user!.id, data),
       );
       res.status(201).json(tx);
+    } catch (e) { next(e); }
+  });
+
+  /**
+   * Recategorising a transaction that came from a bank email also teaches the
+   * inbox, so the same payee is filed correctly next time without the user
+   * having to make the same correction again.
+   */
+  app.patch("/api/transactions/:id", requireAuth, async (req, res, next) => {
+    try {
+      const input = z.object({
+        categoryId: z.number().int().positive().nullable(),
+      }).parse(req.body);
+
+      const transactionId = parseRouteId(req.params.id);
+      const userId = req.user!.id;
+
+      const [existing] = await db.select().from(transactions)
+        .where(and(eq(transactions.id, transactionId), eq(transactions.userId, userId)));
+      if (!existing) return res.status(404).json({ message: "الحركة غير موجودة" });
+
+      if (input.categoryId) {
+        const [ownedCategory] = await db.select({ id: categories.id }).from(categories)
+          .where(and(eq(categories.id, input.categoryId), eq(categories.userId, userId)));
+        if (!ownedCategory) return res.status(404).json({ message: "التصنيف المحدد غير موجود" });
+      }
+
+      const [updated] = await db.update(transactions)
+        .set({ categoryId: input.categoryId })
+        .where(and(eq(transactions.id, transactionId), eq(transactions.userId, userId)))
+        .returning();
+
+      const [linkedEvent] = await db.select().from(bankEmailEvents)
+        .where(and(eq(bankEmailEvents.transactionId, transactionId), eq(bankEmailEvents.userId, userId)));
+
+      let ruleLabel: string | null = null;
+      let appliedToOthers = 0;
+
+      if (linkedEvent) {
+        await db.update(bankEmailEvents).set({ categoryId: input.categoryId })
+          .where(eq(bankEmailEvents.id, linkedEvent.id));
+
+        const ruleKey = buildRuleKey(linkedEvent.counterparty, linkedEvent.merchant);
+        if (ruleKey) {
+          const now = Math.floor(Date.now() / 1000);
+          ruleLabel = linkedEvent.counterparty || linkedEvent.merchant || ruleKey;
+          await db.insert(bankCategoryRules).values({
+            userId,
+            matchKey: ruleKey,
+            matchLabel: ruleLabel,
+            categoryId: input.categoryId,
+            updatedAt: now,
+          }).onConflictDoUpdate({
+            target: [bankCategoryRules.userId, bankCategoryRules.matchKey],
+            set: { categoryId: input.categoryId, matchLabel: ruleLabel, updatedAt: now },
+          });
+
+          // The decision is about the payee, not this one row, so every other
+          // transaction already imported from them follows it too.
+          const siblings = await db.select({
+            id: bankEmailEvents.id,
+            transactionId: bankEmailEvents.transactionId,
+            counterparty: bankEmailEvents.counterparty,
+            merchant: bankEmailEvents.merchant,
+          }).from(bankEmailEvents).where(eq(bankEmailEvents.userId, userId));
+
+          const sameParty = siblings.filter((sibling) =>
+            sibling.id !== linkedEvent.id && buildRuleKey(sibling.counterparty, sibling.merchant) === ruleKey);
+
+          for (const sibling of sameParty) {
+            await db.update(bankEmailEvents).set({ categoryId: input.categoryId })
+              .where(eq(bankEmailEvents.id, sibling.id));
+            if (sibling.transactionId) {
+              await db.update(transactions).set({ categoryId: input.categoryId })
+                .where(and(eq(transactions.id, sibling.transactionId), eq(transactions.userId, userId)));
+            }
+          }
+          appliedToOthers = sameParty.length;
+        }
+      }
+
+      res.json({ ...updated, ruleSaved: Boolean(ruleLabel), ruleLabel, appliedToOthers });
     } catch (e) { next(e); }
   });
 

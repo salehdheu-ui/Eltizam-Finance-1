@@ -256,6 +256,22 @@ export function useAdminTestIntegration() {
   });
 }
 
+export function useUpdateTransactionCategory() {
+  return useMutation({
+    mutationFn: async ({ id, categoryId }: { id: number; categoryId: number | null }) => {
+      const response = await apiRequest("PATCH", `/api/transactions/${id}`, { categoryId });
+      return response.json() as Promise<{ id: number; ruleSaved: boolean; ruleLabel: string | null; appliedToOthers: number }>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/reports/summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox/analysis"] });
+    },
+  });
+}
+
 export function useDashboard() {
   return useQuery<{
     totalBalance: number;

@@ -1,4 +1,4 @@
-import { Filter, Search, Calendar, Loader2, Trash2, Wallet, PieChart, ArrowLeftRight } from "lucide-react";
+import { Filter, Search, Calendar, Loader2, Trash2, Wallet, PieChart, ArrowLeftRight, Pencil } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { CurrencyDisplay } from "@/components/ui/currency-display";
@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { cn, formatCurrency, formatRelativeArabicDate, formatTime, normalizeArabicText, toDate } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useMemo, useState } from "react";
-import { useTransactions, useDeleteTransaction, useWallets, useCategories } from "@/lib/hooks";
+import { useTransactions, useDeleteTransaction, useWallets, useCategories, useUpdateTransactionCategory } from "@/lib/hooks";
 import { useToast } from "@/hooks/use-toast";
 import type { Transaction } from "@shared/schema";
 
@@ -59,7 +59,31 @@ export default function Transactions() {
   const { data: wallets = [] } = useWallets();
   const { data: categories = [] } = useCategories();
   const deleteTransaction = useDeleteTransaction();
+  const updateCategory = useUpdateTransactionCategory();
+  const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const { toast } = useToast();
+
+  const handleChangeCategory = async (categoryId: number | null) => {
+    if (!editingTx) return;
+    try {
+      const result = await updateCategory.mutateAsync({ id: editingTx.id, categoryId });
+      setEditingTx(null);
+      toast({
+        title: "تم تحديث التصنيف",
+        description: result.ruleSaved && result.ruleLabel
+          ? result.appliedToOthers > 0
+            ? `طبّقناه على ${result.appliedToOthers} حركة أخرى من ${result.ruleLabel}، وسنستخدمه لكل حركة قادمة منها.`
+            : `وسنستخدمه تلقائياً لكل حركة قادمة من ${result.ruleLabel}.`
+          : undefined,
+      });
+    } catch (error) {
+      toast({
+        title: "تعذر تحديث التصنيف",
+        description: error instanceof Error ? error.message : "حاول مرة أخرى",
+        variant: "destructive",
+      });
+    }
+  };
 
   const filteredTransactions = useMemo(() => {
     return transactions
@@ -247,16 +271,31 @@ export default function Transactions() {
                             {tx.date && formatRelativeArabicDate(tx.date)} {tx.date && `• ${formatTime(tx.date)}`}
                           </span>
                         </div>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-8 w-8 text-muted-foreground/50 hover:text-destructive shrink-0"
-                          onClick={() => handleDelete(tx.id)}
-                          disabled={deleteTransaction.isPending}
-                          data-testid={`button-delete-${tx.id}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        <div className="flex shrink-0 items-center">
+                          {!isTransferTransaction(tx.note) ? (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground/50 hover:text-primary"
+                              onClick={() => setEditingTx(tx)}
+                              aria-label="تغيير التصنيف"
+                              title="تغيير التصنيف"
+                              data-testid={`button-edit-category-${tx.id}`}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          ) : null}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground/50 hover:text-destructive"
+                            onClick={() => handleDelete(tx.id)}
+                            disabled={deleteTransaction.isPending}
+                            data-testid={`button-delete-${tx.id}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -274,6 +313,49 @@ export default function Transactions() {
           )}
         </div>
       </div>
+
+      <Dialog open={editingTx !== null} onOpenChange={(open) => { if (!open) setEditingTx(null); }}>
+        <DialogContent dir="rtl" className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>تغيير التصنيف</DialogTitle>
+            <DialogDescription>
+              {editingTx ? normalizeArabicText(editingTx.note) || "معاملة" : ""}
+              {editingTx?.note?.includes("من البريد البنكي")
+                ? " — سنتذكر اختيارك ونطبّقه تلقائياً على كل حركة قادمة من نفس الجهة."
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-[50vh] space-y-2 overflow-y-auto">
+            {categories
+              .filter((category) => !editingTx || category.type === editingTx.type)
+              .map((category) => (
+                <button
+                  key={category.id}
+                  type="button"
+                  disabled={updateCategory.isPending}
+                  onClick={() => handleChangeCategory(category.id)}
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-xl border p-3 text-right transition",
+                    editingTx?.categoryId === category.id ? "border-primary bg-primary/5 font-semibold" : "hover:bg-muted/50",
+                  )}
+                >
+                  <span className="text-lg">{category.icon}</span>
+                  <span className="flex-1">{category.name}</span>
+                  {editingTx?.categoryId === category.id ? <span className="text-xs text-primary">الحالي</span> : null}
+                </button>
+              ))}
+          </div>
+
+          <Button
+            variant="outline"
+            onClick={() => handleChangeCategory(null)}
+            disabled={updateCategory.isPending}
+          >
+            {updateCategory.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "بدون تصنيف"}
+          </Button>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
