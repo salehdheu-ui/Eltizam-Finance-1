@@ -86,8 +86,11 @@ export default function Transactions() {
   const updateCategory = useUpdateTransactionCategory();
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [newCategoryName, setNewCategoryName] = useState("");
+  const [applyToAll, setApplyToAll] = useState(true);
   const createCategory = useCreateCategory();
   const { toast } = useToast();
+
+  const isFromBankInbox = Boolean(editingTx?.note?.includes("من البريد البنكي"));
 
   /**
    * Categorising is only useful with a name that means something to the user,
@@ -128,7 +131,7 @@ export default function Transactions() {
   const handleChangeCategory = async (categoryId: number | null) => {
     if (!editingTx) return;
     try {
-      const result = await updateCategory.mutateAsync({ id: editingTx.id, categoryId });
+      const result = await updateCategory.mutateAsync({ id: editingTx.id, categoryId, applyToAll });
       setEditingTx(null);
       toast({
         title: "تم تحديث التصنيف",
@@ -136,7 +139,9 @@ export default function Transactions() {
           ? result.appliedToOthers > 0
             ? `طبّقناه على ${result.appliedToOthers} حركة أخرى من ${result.ruleLabel}، وسنستخدمه لكل حركة قادمة منها.`
             : `وسنستخدمه تلقائياً لكل حركة قادمة من ${result.ruleLabel}.`
-          : undefined,
+          : isFromBankInbox
+            ? "على هذه الحركة وحدها — لم نغيّر شيئاً آخر."
+            : undefined,
       });
     } catch (error) {
       toast({
@@ -376,17 +381,49 @@ export default function Transactions() {
         </div>
       </div>
 
-      <Dialog open={editingTx !== null} onOpenChange={(open) => { if (!open) { setEditingTx(null); setNewCategoryName(""); } }}>
+      <Dialog open={editingTx !== null} onOpenChange={(open) => { if (!open) { setEditingTx(null); setNewCategoryName(""); setApplyToAll(true); } }}>
         <DialogContent dir="rtl" className="max-w-md">
           <DialogHeader>
             <DialogTitle>تغيير التصنيف</DialogTitle>
             <DialogDescription>
               {editingTx ? normalizeArabicText(editingTx.note) || "معاملة" : ""}
-              {editingTx?.note?.includes("من البريد البنكي")
-                ? " — سنتذكر اختيارك ونطبّقه تلقائياً على كل حركة قادمة من نفس الجهة."
-                : ""}
             </DialogDescription>
           </DialogHeader>
+
+          {isFromBankInbox ? (
+            <div className="space-y-2 rounded-xl bg-muted/40 p-3">
+              <p className="text-sm font-semibold">نطاق التغيير</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setApplyToAll(false)}
+                  className={cn(
+                    "rounded-xl border p-3 text-center text-sm transition",
+                    !applyToAll ? "border-primary bg-primary/5 font-semibold text-primary" : "bg-background hover:bg-muted/50",
+                  )}
+                >
+                  مرة واحدة
+                  <span className="mt-1 block text-xs font-normal text-muted-foreground">هذه الحركة فقط</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setApplyToAll(true)}
+                  className={cn(
+                    "rounded-xl border p-3 text-center text-sm transition",
+                    applyToAll ? "border-primary bg-primary/5 font-semibold text-primary" : "bg-background hover:bg-muted/50",
+                  )}
+                >
+                  مستمر
+                  <span className="mt-1 block text-xs font-normal text-muted-foreground">وكل حركات هذه الجهة</span>
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {applyToAll
+                  ? "سنصحّح حركاتها السابقة أيضاً ونصنّف رسائلها القادمة تلقائياً."
+                  : "لن نغيّر حركات أخرى ولن نتذكر هذا الاختيار."}
+              </p>
+            </div>
+          ) : null}
 
           <div className="max-h-[50vh] space-y-2 overflow-y-auto">
             {categories

@@ -667,6 +667,9 @@ export async function registerRoutes(
     try {
       const input = z.object({
         categoryId: z.number().int().positive().nullable(),
+        // Whether this is a decision about the payee or a one-off correction.
+        // Remembering a one-off would quietly re-file every other row from them.
+        applyToAll: z.boolean().optional().default(true),
       }).parse(req.body);
 
       const transactionId = parseRouteId(req.params.id);
@@ -697,7 +700,7 @@ export async function registerRoutes(
         await db.update(bankEmailEvents).set({ categoryId: input.categoryId })
           .where(eq(bankEmailEvents.id, linkedEvent.id));
 
-        const ruleKey = buildRuleKey(linkedEvent.counterparty, linkedEvent.merchant);
+        const ruleKey = input.applyToAll ? buildRuleKey(linkedEvent.counterparty, linkedEvent.merchant) : null;
         if (ruleKey) {
           const now = Math.floor(Date.now() / 1000);
           ruleLabel = linkedEvent.counterparty || linkedEvent.merchant || ruleKey;

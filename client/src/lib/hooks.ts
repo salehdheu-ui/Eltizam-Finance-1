@@ -258,8 +258,8 @@ export function useAdminTestIntegration() {
 
 export function useUpdateTransactionCategory() {
   return useMutation({
-    mutationFn: async ({ id, categoryId }: { id: number; categoryId: number | null }) => {
-      const response = await apiRequest("PATCH", `/api/transactions/${id}`, { categoryId });
+    mutationFn: async ({ id, categoryId, applyToAll = true }: { id: number; categoryId: number | null; applyToAll?: boolean }) => {
+      const response = await apiRequest("PATCH", `/api/transactions/${id}`, { categoryId, applyToAll });
       return response.json() as Promise<{ id: number; ruleSaved: boolean; ruleLabel: string | null; appliedToOthers: number }>;
     },
     onSuccess: () => {
