@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { cn, formatCurrency, formatRelativeArabicDate, formatTime, normalizeArabicText, toDate } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useMemo, useState } from "react";
-import { useTransactions, useDeleteTransaction, useWallets, useCategories, useUpdateTransactionCategory } from "@/lib/hooks";
+import { useTransactions, useDeleteTransaction, useWallets, useCategories, useUpdateTransactionCategory, useCreateCategory } from "@/lib/hooks";
 import { useToast } from "@/hooks/use-toast";
 import type { Transaction } from "@shared/schema";
 
@@ -40,6 +40,30 @@ const defaultIcons: Record<string, string> = {
   "صحة": "💊", "تسوق": "🛍️", "فواتير": "📄",
 };
 
+/** Gives a typed-in category a fitting icon instead of a generic note glyph. */
+const ICON_HINTS: Array<[string, RegExp]> = [
+  ["🍽️", /مطعم|مطاعم|أكل|اكل|طعام|كافيه|مقهى|قهوة|وجب/],
+  ["⛽", /بنزين|بترول|وقود|محطة/],
+  ["🛒", /بقالة|سوبر|تموين|مشتريات/],
+  ["🏥", /صحة|طبي|دواء|صيدلية|مستشفى|علاج/],
+  ["🏠", /إيجار|ايجار|سكن|منزل|بيت/],
+  ["🚗", /سيارة|مواصلات|تاكسي|نقل|بنشر|صيانة/],
+  ["🎓", /تعليم|مدرسة|جامعة|دراسة|دورة/],
+  ["👨‍👩‍👧", /أسرة|اسرة|عائلة|أهل|اهل|والد|والدة/],
+  ["🤝", /دين|ديون|سداد|قرض|سلف/],
+  ["🎁", /هدية|هدايا|مناسبة|عيد/],
+  ["✈️", /سفر|طيران|رحلة|سياحة/],
+  ["📱", /اتصالات|جوال|هاتف|نت|إنترنت|انترنت/],
+  ["🧾", /فاتورة|فواتير|كهرباء|ماء|مياه/],
+  ["🛍️", /تسوق|ملابس|كماليات|هدوم/],
+  ["💰", /راتب|دخل|مكافأة|أرباح/],
+  ["🔄", /تحويل|تحويلات/],
+];
+
+function suggestCategoryIcon(name: string) {
+  return ICON_HINTS.find(([, pattern]) => pattern.test(name))?.[0] ?? "📝";
+}
+
 const defaultBgs: Record<string, string> = {
   "طعام": "bg-orange-100 dark:bg-orange-950",
   "وقود": "bg-blue-100 dark:bg-blue-950",
@@ -61,7 +85,45 @@ export default function Transactions() {
   const deleteTransaction = useDeleteTransaction();
   const updateCategory = useUpdateTransactionCategory();
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const createCategory = useCreateCategory();
   const { toast } = useToast();
+
+  /**
+   * Categorising is only useful with a name that means something to the user,
+   * and the list can only ever offer what they already made. Creating one here
+   * keeps the correction in a single step instead of sending them elsewhere.
+   */
+  const handleCreateAndApply = async () => {
+    const name = newCategoryName.trim();
+    if (!editingTx || !name) return;
+
+    const alreadyExists = categories.find(
+      (category) => category.type === editingTx.type && category.name.trim() === name,
+    );
+    if (alreadyExists) {
+      await handleChangeCategory(alreadyExists.id);
+      return;
+    }
+
+    try {
+      const created = await createCategory.mutateAsync({
+        name,
+        icon: suggestCategoryIcon(name),
+        type: editingTx.type,
+        color: editingTx.type === "income" ? "bg-emerald-100 text-emerald-600" : "bg-orange-100 text-orange-600",
+        budget: 0,
+      });
+      setNewCategoryName("");
+      await handleChangeCategory(created.id);
+    } catch (error) {
+      toast({
+        title: "تعذر إنشاء التصنيف",
+        description: error instanceof Error ? error.message : "حاول مرة أخرى",
+        variant: "destructive",
+      });
+    }
+  };
 
   const handleChangeCategory = async (categoryId: number | null) => {
     if (!editingTx) return;
@@ -314,7 +376,7 @@ export default function Transactions() {
         </div>
       </div>
 
-      <Dialog open={editingTx !== null} onOpenChange={(open) => { if (!open) setEditingTx(null); }}>
+      <Dialog open={editingTx !== null} onOpenChange={(open) => { if (!open) { setEditingTx(null); setNewCategoryName(""); } }}>
         <DialogContent dir="rtl" className="max-w-md">
           <DialogHeader>
             <DialogTitle>تغيير التصنيف</DialogTitle>
@@ -345,6 +407,35 @@ export default function Transactions() {
                   {editingTx?.categoryId === category.id ? <span className="text-xs text-primary">الحالي</span> : null}
                 </button>
               ))}
+          </div>
+
+          <div className="space-y-2 border-t pt-3">
+            <label className="text-sm font-semibold" htmlFor="new-category-name">تصنيف جديد</label>
+            <div className="flex gap-2">
+              <Input
+                id="new-category-name"
+                value={newCategoryName}
+                onChange={(event) => setNewCategoryName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    handleCreateAndApply();
+                  }
+                }}
+                placeholder="مثل: مطاعم"
+                maxLength={40}
+                className="flex-1"
+              />
+              <Button
+                onClick={handleCreateAndApply}
+                disabled={!newCategoryName.trim() || createCategory.isPending || updateCategory.isPending}
+              >
+                {createCategory.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "إضافة"}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              يُنشأ التصنيف ويُطبَّق على هذه الحركة مباشرة، ويظهر في القائمة للحركات القادمة.
+            </p>
           </div>
 
           <Button

@@ -327,7 +327,10 @@ export function useCategories() {
 
 export function useCreateCategory() {
   return useMutation({
-    mutationFn: (data: CategoryPayload) => apiRequest("POST", "/api/categories", data),
+    mutationFn: async (data: CategoryPayload) => {
+      const response = await apiRequest("POST", "/api/categories", data);
+      return response.json() as Promise<Category>;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/categories"] });
     },
