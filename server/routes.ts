@@ -4,11 +4,13 @@ import { storage } from "./storage";
 import { hashPlainPassword, setupAuth } from "./auth";
 import { writeAuditEvent } from "./audit";
 import { createManualBackup, listAllBackups } from "./backup";
-import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, integrationSettings, upsertIntegrationSettingSchema, transactions, categories, bankEmailEvents, bankCategoryRules, automationLog, commitmentOccurrences, commitments } from "@shared/schema";
+import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, integrationSettings, upsertIntegrationSettingSchema, transactions, categories, bankEmailEvents, bankCategoryRules, automationLog, commitmentOccurrences, commitments, notificationPreferences } from "@shared/schema";
 import { buildWriteQueueKey, enqueueWrite } from "./write-queue";
 import { z } from "zod";
 import { buildRuleKey, registerBankInboxRoutes } from "./bank-inbox";
 import { postponeOccurrence, runAutomationForUser, startAutomationEngine, undoAutomationEntry } from "./automation";
+import { getPreferences, getPublicVapidKey, notify, removePushSubscription, savePushSubscription } from "./notifications";
+import { canSendMail } from "./mail";
 import { db } from "./db";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import {
@@ -926,6 +928,86 @@ export async function registerRoutes(
       res.json({ message: "تم حذف الهدف الادخاري بنجاح" });
     } catch (e) { next(e); }
   });
+  app.get("/api/notifications/preferences", requireAuth, async (req, res, next) => {
+    try {
+      const preferences = await getPreferences(req.user!.id);
+      res.json({
+        ...preferences,
+        pushPublicKey: getPublicVapidKey(),
+        channels: {
+          email: canSendMail(),
+          push: Boolean(getPublicVapidKey()),
+          telegram: Boolean(process.env.TELEGRAM_BOT_TOKEN?.trim()),
+          whatsapp: Boolean(process.env.WHATSAPP_TOKEN?.trim() && process.env.WHATSAPP_PHONE_ID?.trim()),
+        },
+      });
+    } catch (e) { next(e); }
+  });
+
+  app.patch("/api/notifications/preferences", requireAuth, async (req, res, next) => {
+    try {
+      const input = z.object({
+        emailEnabled: z.boolean().optional(),
+        pushEnabled: z.boolean().optional(),
+        telegramEnabled: z.boolean().optional(),
+        telegramChatId: z.string().trim().max(64).nullable().optional(),
+        whatsappEnabled: z.boolean().optional(),
+        whatsappNumber: z.string().trim().max(32).nullable().optional(),
+        webhookUrl: z.string().trim().url().max(500).nullable().optional().or(z.literal("")),
+        weeklySummary: z.boolean().optional(),
+        quietHoursStart: z.number().int().min(0).max(23).nullable().optional(),
+        quietHoursEnd: z.number().int().min(0).max(23).nullable().optional(),
+      }).parse(req.body);
+
+      await getPreferences(req.user!.id);
+      const [updated] = await db.update(notificationPreferences)
+        .set({
+          ...input,
+          webhookUrl: input.webhookUrl === "" ? null : input.webhookUrl,
+          updatedAt: Math.floor(Date.now() / 1000),
+        })
+        .where(eq(notificationPreferences.userId, req.user!.id))
+        .returning();
+
+      res.json(updated);
+    } catch (e) { next(e); }
+  });
+
+  app.post("/api/notifications/push/subscribe", requireAuth, async (req, res, next) => {
+    try {
+      const subscription = z.object({
+        endpoint: z.string().url(),
+        keys: z.object({ p256dh: z.string().min(1), auth: z.string().min(1) }),
+      }).parse(req.body);
+
+      await savePushSubscription(req.user!.id, subscription);
+      res.json({ message: "تم تفعيل الإشعارات على هذا الجهاز" });
+    } catch (e) { next(e); }
+  });
+
+  app.post("/api/notifications/push/unsubscribe", requireAuth, async (req, res, next) => {
+    try {
+      const { endpoint } = z.object({ endpoint: z.string().url() }).parse(req.body);
+      await removePushSubscription(req.user!.id, endpoint);
+      res.json({ message: "تم إيقاف الإشعارات على هذا الجهاز" });
+    } catch (e) { next(e); }
+  });
+
+  /** Sends a real notification through every enabled channel so the user can see
+   *  which ones actually arrive rather than trusting the toggles. */
+  app.post("/api/notifications/test", requireAuth, async (req, res, next) => {
+    try {
+      const result = await notify({
+        userId: req.user!.id,
+        title: "تجربة الإشعارات",
+        body: "وصلتك هذه الرسالة، فالقناة تعمل.",
+        dedupeKey: `test:${Date.now()}`,
+        urgent: true,
+      });
+      res.json(result);
+    } catch (e) { next(e); }
+  });
+
   /** What the engine has done lately, newest first, with what can be reversed. */
   app.get("/api/automation/log", requireAuth, async (req, res, next) => {
     try {

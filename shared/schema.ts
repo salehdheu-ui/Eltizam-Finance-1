@@ -169,6 +169,68 @@ export const automationLog = pgTable("automation_log", {
 export type CommitmentOccurrence = typeof commitmentOccurrences.$inferSelect;
 export type AutomationLogEntry = typeof automationLog.$inferSelect;
 
+/** Where a user wants to be reached, and how quiet they want it kept. */
+export const notificationPreferences = pgTable("notification_preferences", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
+  emailEnabled: boolean("email_enabled").notNull().default(true),
+  pushEnabled: boolean("push_enabled").notNull().default(true),
+  telegramEnabled: boolean("telegram_enabled").notNull().default(false),
+  telegramChatId: text("telegram_chat_id"),
+  whatsappEnabled: boolean("whatsapp_enabled").notNull().default(false),
+  whatsappNumber: text("whatsapp_number"),
+  webhookUrl: text("webhook_url"),
+  weeklySummary: boolean("weekly_summary").notNull().default(true),
+  quietHoursStart: integer("quiet_hours_start"),
+  quietHoursEnd: integer("quiet_hours_end"),
+  updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
+/** A browser subscribed to push. Keyed by endpoint because that is what the
+ *  push service treats as the identity of a device. */
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
+/**
+ * One attempted delivery. Recorded before sending so a crash mid-send cannot
+ * silently drop a reminder, and deduplicated so a retry does not notify twice.
+ */
+export const notificationDeliveries = pgTable("notification_deliveries", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  channel: text("channel").notNull(),
+  dedupeKey: text("dedupe_key").notNull(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  status: text("status").notNull().default("pending"),
+  error: text("error"),
+  sentAt: integer("sent_at"),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
+/** Contracts, invoices and receipts attached to a commitment. */
+export const commitmentDocuments = pgTable("commitment_documents", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  commitmentId: integer("commitment_id").references(() => commitments.id, { onDelete: "cascade" }),
+  fileName: text("file_name").notNull(),
+  storedName: text("stored_name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  extractedText: text("extracted_text"),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
+export type NotificationPreference = typeof notificationPreferences.$inferSelect;
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+export type CommitmentDocument = typeof commitmentDocuments.$inferSelect;
+
 export const commitmentSteps = pgTable("commitment_steps", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id),

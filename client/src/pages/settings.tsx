@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { OmaniCurrencySymbol } from "@/components/ui/currency-display";
 import { cn } from "@/lib/utils";
+import NotificationSettings from "@/components/notification-settings";
 import { useUser, useLogout, useUpdateUser, useChangePassword } from "@/lib/hooks";
 
 const currencies = [
@@ -185,6 +186,8 @@ export default function Settings() {
             </Button>
           </div>
         </Card>
+
+        <NotificationSettings />
 
         <div className="grid gap-6 xl:grid-cols-2 xl:items-start">
         <div className="space-y-4">

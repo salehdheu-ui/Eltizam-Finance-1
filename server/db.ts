@@ -113,6 +113,11 @@ const databaseMigrations: DatabaseMigration[] = [
     name: "ensure_commitment_automation_tables",
     up: async () => { await ensureCommitmentAutomationTables(); },
   },
+  {
+    version: 19,
+    name: "ensure_notification_tables",
+    up: async () => { await ensureNotificationTables(); },
+  },
 ];
 
 async function ensureSchemaMigrationsTable() {
@@ -505,6 +510,65 @@ async function ensureBankEmailCustomSendersColumn() {
  * imported transaction, resetting a connection, and removing a user. Setting it
  * to NULL on delete keeps the link honest without holding the transaction hostage.
  */
+async function ensureNotificationTables() {
+  await pgExec(`
+    CREATE TABLE IF NOT EXISTS notification_preferences (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+      email_enabled BOOLEAN NOT NULL DEFAULT true,
+      push_enabled BOOLEAN NOT NULL DEFAULT true,
+      telegram_enabled BOOLEAN NOT NULL DEFAULT false,
+      telegram_chat_id TEXT,
+      whatsapp_enabled BOOLEAN NOT NULL DEFAULT false,
+      whatsapp_number TEXT,
+      webhook_url TEXT,
+      weekly_summary BOOLEAN NOT NULL DEFAULT true,
+      quiet_hours_start INTEGER,
+      quiet_hours_end INTEGER,
+      updated_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer
+    );
+
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      endpoint TEXT NOT NULL UNIQUE,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer
+    );
+
+    CREATE TABLE IF NOT EXISTS notification_deliveries (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      channel TEXT NOT NULL,
+      dedupe_key TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      error TEXT,
+      sent_at INTEGER,
+      created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
+      UNIQUE(user_id, channel, dedupe_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS commitment_documents (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      commitment_id INTEGER REFERENCES commitments(id) ON DELETE CASCADE,
+      file_name TEXT NOT NULL,
+      stored_name TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL,
+      extracted_text TEXT,
+      created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer
+    );
+  `);
+
+  await pgExec("CREATE INDEX IF NOT EXISTS push_subscriptions_user_idx ON push_subscriptions (user_id)");
+  await pgExec("CREATE INDEX IF NOT EXISTS notification_deliveries_user_idx ON notification_deliveries (user_id, created_at DESC)");
+  await pgExec("CREATE INDEX IF NOT EXISTS commitment_documents_commitment_idx ON commitment_documents (user_id, commitment_id, created_at DESC)");
+}
+
 async function ensureCommitmentAutomationTables() {
   const commitmentColumns: Array<[string, string]> = [
     ["reminder_days_before", "INTEGER NOT NULL DEFAULT 3"],

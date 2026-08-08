@@ -7,6 +7,7 @@ import {
   type Commitment,
 } from "@shared/schema";
 import { db } from "./db";
+import { notify } from "./notifications";
 
 const DAY = 86400;
 
@@ -160,12 +161,24 @@ async function raiseReminders(commitment: Commitment) {
       .set({ remindedAt: now() })
       .where(eq(commitmentOccurrences.id, occurrence.id));
 
+    const dueLabel = new Date(occurrence.dueDate * 1000).toLocaleDateString("ar-OM");
     await record({
       userId: commitment.userId,
       action: "reminder_due",
-      summary: `تذكير: ${commitment.title} يستحق ${new Date(occurrence.dueDate * 1000).toLocaleDateString("ar-OM")}`,
+      summary: `تذكير: ${commitment.title} يستحق ${dueLabel}`,
       commitmentId: commitment.id,
       occurrenceId: occurrence.id,
+    });
+
+    // A reminder that never leaves the app is not a reminder.
+    await notify({
+      userId: commitment.userId,
+      title: `تذكير: ${commitment.title}`,
+      body: `يستحق ${dueLabel}${commitment.amount ? ` · ${commitment.amount} ر.ع` : ""}${commitment.delegatedTo ? ` · بعهدة ${commitment.delegatedTo}` : ""}`,
+      dedupeKey: `reminder:${occurrence.id}`,
+      url: `/commitments/${commitment.id}`,
+    }).catch((error) => {
+      console.error("Reminder notification failed:", error instanceof Error ? error.message : "unknown");
     });
   }
 
@@ -219,12 +232,25 @@ async function escalate(commitment: Commitment) {
       .where(eq(commitmentOccurrences.id, occurrence.id));
 
     const overdueDays = Math.floor((now() - occurrence.dueDate) / DAY);
+    const summary = `${commitment.title} متأخر ${overdueDays} يوماً${commitment.delegatedTo ? ` — بعهدة ${commitment.delegatedTo}` : ""}`;
     await record({
       userId: commitment.userId,
       action: "escalated",
-      summary: `${commitment.title} متأخر ${overdueDays} يوماً${commitment.delegatedTo ? ` — بعهدة ${commitment.delegatedTo}` : ""}`,
+      summary,
       commitmentId: commitment.id,
       occurrenceId: occurrence.id,
+    });
+
+    // Escalation is the case the user set a tolerance for, so it overrides quiet hours.
+    await notify({
+      userId: commitment.userId,
+      title: "التزام متأخر",
+      body: summary,
+      dedupeKey: `escalation:${occurrence.id}`,
+      url: `/commitments/${commitment.id}`,
+      urgent: true,
+    }).catch((error) => {
+      console.error("Escalation notification failed:", error instanceof Error ? error.message : "unknown");
     });
   }
 
