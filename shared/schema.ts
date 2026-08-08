@@ -122,9 +122,53 @@ export const commitments = pgTable("commitments", {
   personName: text("person_name"),
   assetName: text("asset_name"),
   notes: text("notes").default(""),
+  reminderDaysBefore: integer("reminder_days_before").notNull().default(3),
+  escalateAfterDays: integer("escalate_after_days"),
+  delegatedTo: text("delegated_to"),
+  autoCloseOnProof: boolean("auto_close_on_proof").notNull().default(true),
   createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
   updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
 });
+/**
+ * One dated instance of a commitment. A recurring commitment is a rule; these
+ * are the times it actually comes due, so a missed August does not disappear
+ * the moment September is generated.
+ */
+export const commitmentOccurrences = pgTable("commitment_occurrences", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  commitmentId: integer("commitment_id").notNull().references(() => commitments.id, { onDelete: "cascade" }),
+  dueDate: integer("due_date").notNull(),
+  status: text("status").notNull().default("pending"),
+  amount: doublePrecision("amount"),
+  completedAt: integer("completed_at"),
+  postponedFrom: integer("postponed_from"),
+  remindedAt: integer("reminded_at"),
+  escalatedAt: integer("escalated_at"),
+  note: text("note").default(""),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
+/**
+ * What the engine did on its own, in the user's words, with enough state to put
+ * it back. Automation the user cannot see or reverse is automation they cannot
+ * trust with anything that matters.
+ */
+export const automationLog = pgTable("automation_log", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  action: text("action").notNull(),
+  summary: text("summary").notNull(),
+  commitmentId: integer("commitment_id").references(() => commitments.id, { onDelete: "cascade" }),
+  occurrenceId: integer("occurrence_id").references(() => commitmentOccurrences.id, { onDelete: "cascade" }),
+  undoPayload: text("undo_payload"),
+  undoneAt: integer("undone_at"),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
+export type CommitmentOccurrence = typeof commitmentOccurrences.$inferSelect;
+export type AutomationLogEntry = typeof automationLog.$inferSelect;
+
 export const commitmentSteps = pgTable("commitment_steps", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id),
@@ -350,6 +394,10 @@ export const insertCommitmentSchema = createInsertSchema(commitments).pick({
   personName: true,
   assetName: true,
   notes: true,
+  reminderDaysBefore: true,
+  escalateAfterDays: true,
+  delegatedTo: true,
+  autoCloseOnProof: true,
 }).extend({
   title: z.string().trim().min(1, "يجب إدخال اسم الالتزام").max(160),
   type: z.enum(["financial", "government", "home", "vehicle", "health", "family", "work", "personal"]),
@@ -360,6 +408,10 @@ export const insertCommitmentSchema = createInsertSchema(commitments).pick({
   personName: z.string().trim().max(120).nullable().optional(),
   assetName: z.string().trim().max(120).nullable().optional(),
   notes: z.string().max(1000).nullable().optional(),
+  reminderDaysBefore: z.number().int().min(0).max(60).optional(),
+  escalateAfterDays: z.number().int().min(1).max(365).nullable().optional(),
+  delegatedTo: z.string().trim().max(120).nullable().optional(),
+  autoCloseOnProof: z.boolean().optional(),
 });
 export const insertCommitmentStepSchema = createInsertSchema(commitmentSteps).pick({
   title: true,

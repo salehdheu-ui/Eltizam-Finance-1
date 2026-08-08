@@ -108,6 +108,11 @@ const databaseMigrations: DatabaseMigration[] = [
     name: "ensure_bank_category_rules_table",
     up: async () => { await ensureBankCategoryRulesTable(); },
   },
+  {
+    version: 18,
+    name: "ensure_commitment_automation_tables",
+    up: async () => { await ensureCommitmentAutomationTables(); },
+  },
 ];
 
 async function ensureSchemaMigrationsTable() {
@@ -500,6 +505,57 @@ async function ensureBankEmailCustomSendersColumn() {
  * imported transaction, resetting a connection, and removing a user. Setting it
  * to NULL on delete keeps the link honest without holding the transaction hostage.
  */
+async function ensureCommitmentAutomationTables() {
+  const commitmentColumns: Array<[string, string]> = [
+    ["reminder_days_before", "INTEGER NOT NULL DEFAULT 3"],
+    ["escalate_after_days", "INTEGER"],
+    ["delegated_to", "TEXT"],
+    ["auto_close_on_proof", "BOOLEAN NOT NULL DEFAULT true"],
+  ];
+
+  for (const [name, definition] of commitmentColumns) {
+    if (!(await columnExists("commitments", name))) {
+      await pgExec(`ALTER TABLE commitments ADD COLUMN ${name} ${definition}`);
+    }
+  }
+
+  await pgExec(`
+    CREATE TABLE IF NOT EXISTS commitment_occurrences (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      commitment_id INTEGER NOT NULL REFERENCES commitments(id) ON DELETE CASCADE,
+      due_date INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      amount DOUBLE PRECISION,
+      completed_at INTEGER,
+      postponed_from INTEGER,
+      reminded_at INTEGER,
+      escalated_at INTEGER,
+      note TEXT DEFAULT '',
+      created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
+      UNIQUE(commitment_id, due_date)
+    )
+  `);
+
+  await pgExec(`
+    CREATE TABLE IF NOT EXISTS automation_log (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      action TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      commitment_id INTEGER REFERENCES commitments(id) ON DELETE CASCADE,
+      occurrence_id INTEGER REFERENCES commitment_occurrences(id) ON DELETE CASCADE,
+      undo_payload TEXT,
+      undone_at INTEGER,
+      created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer
+    )
+  `);
+
+  await pgExec("CREATE INDEX IF NOT EXISTS commitment_occurrences_due_idx ON commitment_occurrences (user_id, status, due_date)");
+  await pgExec("CREATE INDEX IF NOT EXISTS commitment_occurrences_commitment_idx ON commitment_occurrences (commitment_id, due_date)");
+  await pgExec("CREATE INDEX IF NOT EXISTS automation_log_user_idx ON automation_log (user_id, created_at DESC)");
+}
+
 async function ensureBankCategoryRulesTable() {
   await pgExec(`
     CREATE TABLE IF NOT EXISTS bank_category_rules (

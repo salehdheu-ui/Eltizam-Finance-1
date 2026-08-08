@@ -25,6 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useCommitments, useCreateCommitment, useDeleteCommitment, useUpdateCommitmentStatus } from "@/lib/hooks";
 import type { Commitment } from "@shared/schema";
+import AutomationPanel from "@/components/automation-panel";
 
 const typeOptions = [
   { value: "financial", label: "مالي", icon: WalletCards },
@@ -130,6 +131,8 @@ export default function Commitments() {
         <h1 className="text-2xl font-bold">التزاماتي</h1>
         <p className="mt-1 text-sm text-muted-foreground">كل ما تريد تذكره أو إنجازه أو متابعته، مالياً أو شخصياً.</p>
       </div>
+
+      <AutomationPanel />
 
       <Card className="border-primary/15 bg-gradient-to-br from-primary/5 to-background">
         <CardHeader className="pb-3">

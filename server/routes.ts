@@ -4,12 +4,13 @@ import { storage } from "./storage";
 import { hashPlainPassword, setupAuth } from "./auth";
 import { writeAuditEvent } from "./audit";
 import { createManualBackup, listAllBackups } from "./backup";
-import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, integrationSettings, upsertIntegrationSettingSchema, transactions, categories, bankEmailEvents, bankCategoryRules } from "@shared/schema";
+import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, integrationSettings, upsertIntegrationSettingSchema, transactions, categories, bankEmailEvents, bankCategoryRules, automationLog, commitmentOccurrences, commitments } from "@shared/schema";
 import { buildWriteQueueKey, enqueueWrite } from "./write-queue";
 import { z } from "zod";
 import { buildRuleKey, registerBankInboxRoutes } from "./bank-inbox";
+import { postponeOccurrence, runAutomationForUser, startAutomationEngine, undoAutomationEntry } from "./automation";
 import { db } from "./db";
-import { and, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import {
   INTEGRATION_PROVIDERS,
   PROVIDER_CALLBACK_PATHS,
@@ -159,6 +160,7 @@ export async function registerRoutes(
 ): Promise<Server> {
   setupAuth(app);
   registerBankInboxRoutes(app);
+  startAutomationEngine();
 
   app.get("/api/admin/stats", requireSystemAdmin, async (_req, res, next) => {
     try {
@@ -924,6 +926,110 @@ export async function registerRoutes(
       res.json({ message: "تم حذف الهدف الادخاري بنجاح" });
     } catch (e) { next(e); }
   });
+  /** What the engine has done lately, newest first, with what can be reversed. */
+  app.get("/api/automation/log", requireAuth, async (req, res, next) => {
+    try {
+      const entries = await db.select().from(automationLog)
+        .where(eq(automationLog.userId, req.user!.id))
+        .orderBy(desc(automationLog.createdAt))
+        .limit(50);
+
+      res.json(entries.map((entry) => ({
+        id: entry.id,
+        action: entry.action,
+        summary: entry.summary,
+        commitmentId: entry.commitmentId,
+        occurrenceId: entry.occurrenceId,
+        canUndo: Boolean(entry.undoPayload) && !entry.undoneAt,
+        undoneAt: entry.undoneAt,
+        createdAt: entry.createdAt,
+      })));
+    } catch (e) { next(e); }
+  });
+
+  app.post("/api/automation/log/:id/undo", requireAuth, async (req, res, next) => {
+    try {
+      const result = await undoAutomationEntry(req.user!.id, parseRouteId(req.params.id));
+      if (!result.ok) return res.status(400).json({ message: result.message });
+      res.json(result);
+    } catch (e) { next(e); }
+  });
+
+  /** Lets the user pull the engine forward instead of waiting for its next pass. */
+  app.post("/api/automation/run", requireAuth, async (req, res, next) => {
+    try {
+      const totals = await runAutomationForUser(req.user!.id);
+      res.json(totals);
+    } catch (e) { next(e); }
+  });
+
+  app.get("/api/commitments/:id/occurrences", requireAuth, async (req, res, next) => {
+    try {
+      const commitmentId = parseRouteId(req.params.id);
+      const rows = await db.select().from(commitmentOccurrences).where(and(
+        eq(commitmentOccurrences.commitmentId, commitmentId),
+        eq(commitmentOccurrences.userId, req.user!.id),
+      )).orderBy(asc(commitmentOccurrences.dueDate));
+      res.json(rows);
+    } catch (e) { next(e); }
+  });
+
+  /** Upcoming and overdue across every commitment — what the home screen needs. */
+  app.get("/api/occurrences", requireAuth, async (req, res, next) => {
+    try {
+      const rows = await db.select({
+        id: commitmentOccurrences.id,
+        commitmentId: commitmentOccurrences.commitmentId,
+        dueDate: commitmentOccurrences.dueDate,
+        status: commitmentOccurrences.status,
+        amount: commitmentOccurrences.amount,
+        postponedFrom: commitmentOccurrences.postponedFrom,
+        escalatedAt: commitmentOccurrences.escalatedAt,
+        title: commitments.title,
+        type: commitments.type,
+        delegatedTo: commitments.delegatedTo,
+      })
+        .from(commitmentOccurrences)
+        .innerJoin(commitments, eq(commitments.id, commitmentOccurrences.commitmentId))
+        .where(and(
+          eq(commitmentOccurrences.userId, req.user!.id),
+          sql`${commitmentOccurrences.status} in ('pending','missed')`,
+        ))
+        .orderBy(asc(commitmentOccurrences.dueDate))
+        .limit(100);
+      res.json(rows);
+    } catch (e) { next(e); }
+  });
+
+  app.post("/api/occurrences/:id/postpone", requireAuth, async (req, res, next) => {
+    try {
+      const { days } = z.object({ days: z.number().int().min(1).max(365) }).parse(req.body);
+      const result = await postponeOccurrence(req.user!.id, parseRouteId(req.params.id), days);
+      if (!result.ok) return res.status(404).json({ message: result.message });
+      res.json(result);
+    } catch (e) { next(e); }
+  });
+
+  app.patch("/api/occurrences/:id", requireAuth, async (req, res, next) => {
+    try {
+      const { status } = z.object({
+        status: z.enum(["pending", "completed", "missed", "skipped"]),
+      }).parse(req.body);
+
+      const occurrenceId = parseRouteId(req.params.id);
+      const [updated] = await db.update(commitmentOccurrences)
+        .set({ status, completedAt: status === "completed" ? Math.floor(Date.now() / 1000) : null })
+        .where(and(
+          eq(commitmentOccurrences.id, occurrenceId),
+          eq(commitmentOccurrences.userId, req.user!.id),
+        ))
+        .returning();
+
+      if (!updated) return res.status(404).json({ message: "الموعد غير موجود" });
+      res.json(updated);
+    } catch (e) { next(e); }
+  });
+
   app.get("/api/commitments/:id/steps", requireAuth, async (req, res, next) => {
     try {
       res.json(await storage.getCommitmentSteps(parseRouteId(req.params.id), req.user!.id));
