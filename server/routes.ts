@@ -13,6 +13,7 @@ import { getPreferences, getPublicVapidKey, notify, removePushSubscription, save
 import { canSendMail } from "./mail";
 import { buildWeeklySummary, detectRecurring, detectRisks, simulateDecision } from "./insights";
 import { buildCalendarFeed, calendarToken, deleteDocument, documentsRoot, getDocument, isAllowedDocument, listDocuments, MAX_DOCUMENT_BYTES, storeDocument } from "./documents";
+import { isClaudeConfigured, readDocument, understandCommitment } from "./understanding";
 import multer from "multer";
 import path from "path";
 import { db } from "./db";
@@ -946,6 +947,35 @@ export async function registerRoutes(
       res.json({ message: "تم حذف الهدف الادخاري بنجاح" });
     } catch (e) { next(e); }
   });
+  /** Turns a typed or dictated sentence into a draft commitment. Works on rules
+   *  alone; Claude is consulted only when the sentence is ambiguous. */
+  app.post("/api/understand/commitment", requireAuth, async (req, res, next) => {
+    try {
+      const { text } = z.object({ text: z.string().trim().min(2).max(500) }).parse(req.body);
+      res.json(await understandCommitment(text));
+    } catch (e) { next(e); }
+  });
+
+  /** Reads an uploaded contract or invoice. Needs an AI key — there is no
+   *  offline path to understanding an arbitrary scanned document. */
+  app.post("/api/understand/document", requireAuth, uploadDocument.single("file"), async (req, res, next) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "لم يُرفق ملف" });
+      if (!isClaudeConfigured()) {
+        return res.status(503).json({ message: "قراءة المستندات تحتاج تفعيل الذكاء الاصطناعي من إدارة المنصة" });
+      }
+
+      res.json(await readDocument({
+        base64: req.file.buffer.toString("base64"),
+        mimeType: req.file.mimetype,
+      }));
+    } catch (e) { next(e); }
+  });
+
+  app.get("/api/understand/status", requireAuth, async (_req, res) => {
+    res.json({ aiConfigured: isClaudeConfigured() });
+  });
+
   app.post("/api/documents", requireAuth, uploadDocument.single("file"), async (req, res, next) => {
     try {
       if (!req.file) return res.status(400).json({ message: "لم يُرفق ملف" });
