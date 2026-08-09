@@ -11,6 +11,7 @@ import { buildRuleKey, registerBankInboxRoutes } from "./bank-inbox";
 import { postponeOccurrence, runAutomationForUser, startAutomationEngine, undoAutomationEntry } from "./automation";
 import { getPreferences, getPublicVapidKey, notify, removePushSubscription, savePushSubscription } from "./notifications";
 import { canSendMail } from "./mail";
+import { buildWeeklySummary, detectRecurring, detectRisks, simulateDecision } from "./insights";
 import { db } from "./db";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import {
@@ -928,6 +929,74 @@ export async function registerRoutes(
       res.json({ message: "تم حذف الهدف الادخاري بنجاح" });
     } catch (e) { next(e); }
   });
+  /** Risks, unnoticed subscriptions and the week in numbers — all computed from
+   *  the user's own data, so this works without any AI provider configured. */
+  app.get("/api/insights", requireAuth, async (req, res, next) => {
+    try {
+      const userId = req.user!.id;
+      const [allTransactions, wallets, upcomingRows] = await Promise.all([
+        storage.getTransactions(userId),
+        storage.getWallets(userId),
+        db.select({
+          title: commitments.title,
+          dueDate: commitmentOccurrences.dueDate,
+          amount: commitmentOccurrences.amount,
+          status: commitmentOccurrences.status,
+        })
+          .from(commitmentOccurrences)
+          .innerJoin(commitments, eq(commitments.id, commitmentOccurrences.commitmentId))
+          .where(eq(commitmentOccurrences.userId, userId)),
+      ]);
+
+      // Internal transfers move money between the user's own wallets; counting
+      // them as spending would double every transfer in the totals.
+      const spendable = allTransactions.filter(
+        (transaction) => !(typeof transaction.note === "string" && transaction.note.startsWith("__transfer__:")),
+      );
+      const walletBalance = wallets.reduce((sum, wallet) => sum + wallet.balance, 0);
+
+      res.json({
+        risks: detectRisks({ transactions: spendable, walletBalance, upcoming: upcomingRows }),
+        recurring: detectRecurring(spendable),
+        weekly: buildWeeklySummary({ transactions: spendable, upcoming: upcomingRows }),
+        walletBalance: Number(walletBalance.toFixed(3)),
+      });
+    } catch (e) { next(e); }
+  });
+
+  app.post("/api/insights/simulate", requireAuth, async (req, res, next) => {
+    try {
+      const input = z.object({
+        newMonthlyCost: z.number().finite().positive(),
+        months: z.number().int().min(1).max(120),
+      }).parse(req.body);
+
+      const userId = req.user!.id;
+      const [wallets, incomes, activeCommitments] = await Promise.all([
+        storage.getWallets(userId),
+        storage.getRecurringIncomes(userId),
+        db.select().from(commitments).where(and(eq(commitments.userId, userId), eq(commitments.status, "active"))),
+      ]);
+
+      const monthlyIncome = incomes
+        .filter((income) => income.isActive)
+        .reduce((sum, income) => sum + income.amount, 0);
+
+      // Only recurring commitments represent an ongoing monthly claim on income.
+      const committedMonthly = activeCommitments
+        .filter((commitment) => commitment.frequency === "monthly" && commitment.amount)
+        .reduce((sum, commitment) => sum + (commitment.amount ?? 0), 0);
+
+      res.json(simulateDecision({
+        monthlyIncome,
+        walletBalance: wallets.reduce((sum, wallet) => sum + wallet.balance, 0),
+        committedMonthly,
+        newMonthlyCost: input.newMonthlyCost,
+        months: input.months,
+      }));
+    } catch (e) { next(e); }
+  });
+
   app.get("/api/notifications/preferences", requireAuth, async (req, res, next) => {
     try {
       const preferences = await getPreferences(req.user!.id);

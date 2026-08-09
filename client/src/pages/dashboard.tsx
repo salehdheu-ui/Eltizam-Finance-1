@@ -7,6 +7,7 @@ import { cn, formatObligationDueDate, formatRelativeArabicDate, getUpcomingOblig
 import { Link } from "wouter";
 import { useCommitments, useDashboard, useObligations, useUser } from "@/lib/hooks";
 import type { Commitment } from "@shared/schema";
+import InsightsPanel from "@/components/insights-panel";
 
 function startOfTodayTimestamp() {
   const today = new Date();
@@ -113,6 +114,8 @@ export default function Dashboard() {
           </div>
         </CardContent>
       </Card>
+
+      <InsightsPanel />
 
       <section className="xl:max-w-4xl">
         <div className="mb-3 flex items-center justify-between gap-3">
