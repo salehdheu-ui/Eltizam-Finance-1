@@ -504,11 +504,21 @@ export async function registerRoutes(
         ...req.body,
         balance: req.body.balance === undefined ? undefined : toRequiredNumber(req.body.balance),
       };
-      const data = walletUpdateSchema.parse(body);
+      const { balance, ...rest } = walletUpdateSchema.parse(body);
       const wallet = await runQueuedWrite(
         res,
         buildWriteQueueKey("user", req.user!.id, "wallet", walletId),
-        () => storage.updateWallet(walletId, req.user!.id, data),
+        async () => {
+          if (Object.keys(rest).length > 0) {
+            await storage.updateWallet(walletId, req.user!.id, rest);
+          }
+          // A balance typed by hand is a claim the transactions do not explain,
+          // so it goes through the path that books the difference as "unknown"
+          // instead of silently overwriting the number.
+          return balance === undefined
+            ? storage.updateWallet(walletId, req.user!.id, {})
+            : storage.setWalletBalance(walletId, req.user!.id, balance);
+        },
       );
       res.json(wallet);
     } catch (e) { next(e); }

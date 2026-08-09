@@ -4,7 +4,7 @@ import { and, desc, eq, gte, isNotNull, lt } from "drizzle-orm";
 import { z } from "zod";
 import { bankCategoryRules, bankEmailConnections, bankEmailEvents, categories, commitments, transactions } from "@shared/schema";
 import { db } from "./db";
-import { storage } from "./storage";
+import { storage, UNKNOWN_ADJUSTMENT_NOTE } from "./storage";
 import { buildBankAnalysis } from "./bank-analysis";
 import { BANK_PROFILES, buildBankSearchQuery, createMessageFingerprint, detectBalanceGap, extractAccountReferences, messageMatchesAccount, normalizeAccountFilter, normalizeSenderList, parseBankMessage, resolveAllowedSenders, senderMatchesBank, type BankKey } from "./bank-message-parser";
 import { getProviderConfig, isProviderConfigured, resolveRedirectUri } from "./integration-settings";
@@ -450,6 +450,22 @@ async function importParsedEvent(params: {
       note: `من البريد البنكي · ${params.parsed.merchant}`,
     }, { allowOverdraft: true, settleBalanceTo: params.parsed.balanceAfter });
     await db.update(transactions).set({ date: params.receivedAt }).where(eq(transactions.id, transaction.id));
+
+    // The bank's balance moved by more than this message explains, so messages we
+    // never received account for the rest. Booking it keeps the history equal to
+    // the balance instead of leaving a difference nothing in the ledger explains.
+    if (gap && Math.abs(gap.difference) >= 0.001) {
+      const unknown = await storage.createTransaction(params.userId, {
+        walletId: params.connection.walletId,
+        categoryId: null,
+        type: gap.direction === "credit" ? "income" : "expense",
+        amount: Math.abs(gap.difference),
+        note: UNKNOWN_ADJUSTMENT_NOTE,
+      }, { allowOverdraft: true });
+      // Dated just before the message that revealed it, since it happened earlier.
+      await db.update(transactions).set({ date: params.receivedAt - 1 }).where(eq(transactions.id, unknown.id));
+    }
+
     const [imported] = await db.update(bankEmailEvents).set({ status: "imported", transactionId: transaction.id }).where(eq(bankEmailEvents.id, event.id)).returning();
     return { state: "imported" as const, event: imported };
   } catch {
