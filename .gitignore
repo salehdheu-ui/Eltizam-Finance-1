@@ -8,3 +8,5 @@ vite.config.ts.*
 *.sqlite
 backups/
 logs/
+# Uploaded contracts and invoices
+uploads/

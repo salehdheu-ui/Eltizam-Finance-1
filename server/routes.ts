@@ -12,6 +12,9 @@ import { postponeOccurrence, runAutomationForUser, startAutomationEngine, undoAu
 import { getPreferences, getPublicVapidKey, notify, removePushSubscription, savePushSubscription } from "./notifications";
 import { canSendMail } from "./mail";
 import { buildWeeklySummary, detectRecurring, detectRisks, simulateDecision } from "./insights";
+import { buildCalendarFeed, calendarToken, deleteDocument, documentsRoot, getDocument, isAllowedDocument, listDocuments, MAX_DOCUMENT_BYTES, storeDocument } from "./documents";
+import multer from "multer";
+import path from "path";
 import { db } from "./db";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import {
@@ -84,6 +87,20 @@ function toRequiredNumber(value: unknown) {
 
   return value;
 }
+
+/** Buffered in memory: files are capped at 10MB and written once validated, so
+ *  a temp file never outlives a rejected upload. */
+const uploadDocument = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_DOCUMENT_BYTES, files: 1 },
+  fileFilter: (_req, file, callback) => {
+    if (!isAllowedDocument(file.mimetype)) {
+      callback(Object.assign(new Error("نوع الملف غير مدعوم. ارفع PDF أو صورة."), { status: 400 }));
+      return;
+    }
+    callback(null, true);
+  },
+});
 
 async function runQueuedWrite<T>(res: Response, key: string, task: () => Promise<T>) {
   const queued = await enqueueWrite(key, task);
@@ -929,6 +946,95 @@ export async function registerRoutes(
       res.json({ message: "تم حذف الهدف الادخاري بنجاح" });
     } catch (e) { next(e); }
   });
+  app.post("/api/documents", requireAuth, uploadDocument.single("file"), async (req, res, next) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "لم يُرفق ملف" });
+
+      const commitmentId = req.body.commitmentId ? parseRouteId(req.body.commitmentId) : null;
+      if (commitmentId) {
+        const [owned] = await db.select({ id: commitments.id }).from(commitments)
+          .where(and(eq(commitments.id, commitmentId), eq(commitments.userId, req.user!.id)));
+        if (!owned) return res.status(404).json({ message: "الالتزام غير موجود" });
+      }
+
+      const document = await storeDocument({
+        userId: req.user!.id,
+        commitmentId,
+        // Browsers send the filename as latin1; without this Arabic names arrive mangled.
+        fileName: Buffer.from(req.file.originalname, "latin1").toString("utf8"),
+        mimeType: req.file.mimetype,
+        buffer: req.file.buffer,
+      });
+
+      res.status(201).json(document);
+    } catch (e) { next(e); }
+  });
+
+  app.get("/api/documents", requireAuth, async (req, res, next) => {
+    try {
+      const commitmentId = req.query.commitmentId ? Number(req.query.commitmentId) : undefined;
+      res.json(await listDocuments(req.user!.id, commitmentId));
+    } catch (e) { next(e); }
+  });
+
+  app.get("/api/documents/:id/download", requireAuth, async (req, res, next) => {
+    try {
+      const document = await getDocument(req.user!.id, parseRouteId(req.params.id));
+      if (!document) return res.status(404).json({ message: "الملف غير موجود" });
+
+      res.setHeader("Content-Type", document.mimeType);
+      res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(document.fileName)}`);
+      res.sendFile(path.join(documentsRoot, document.storedName));
+    } catch (e) { next(e); }
+  });
+
+  app.delete("/api/documents/:id", requireAuth, async (req, res, next) => {
+    try {
+      const removed = await deleteDocument(req.user!.id, parseRouteId(req.params.id));
+      if (!removed) return res.status(404).json({ message: "الملف غير موجود" });
+      res.json({ message: "تم حذف الملف" });
+    } catch (e) { next(e); }
+  });
+
+  /** The subscribe URL for a calendar app, carrying the user's feed token. */
+  app.get("/api/calendar/url", requireAuth, async (req, res, next) => {
+    try {
+      const token = calendarToken(req.user!.id);
+      res.json({ url: `${resolveAppBaseUrl(req)}/api/calendar/${req.user!.id}/${token}.ics` });
+    } catch (e) { next(e); }
+  });
+
+  /**
+   * Deliberately unauthenticated: calendar apps poll this without a session.
+   * The token is the credential, and it grants nothing but this feed.
+   */
+  app.get("/api/calendar/:userId/:token.ics", async (req, res, next) => {
+    try {
+      const userId = parseRouteId(req.params.userId);
+      const token = String(req.params.token || "").replace(/\.ics$/, "");
+      if (!Number.isFinite(userId) || token !== calendarToken(userId)) {
+        return res.status(404).send("Not found");
+      }
+
+      const events = await db.select({
+        id: commitmentOccurrences.id,
+        title: commitments.title,
+        dueDate: commitmentOccurrences.dueDate,
+        amount: commitmentOccurrences.amount,
+        status: commitmentOccurrences.status,
+      })
+        .from(commitmentOccurrences)
+        .innerJoin(commitments, eq(commitments.id, commitmentOccurrences.commitmentId))
+        .where(eq(commitmentOccurrences.userId, userId))
+        .orderBy(asc(commitmentOccurrences.dueDate))
+        .limit(500);
+
+      res.setHeader("Content-Type", "text/calendar; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache");
+      res.send(buildCalendarFeed({ events }));
+    } catch (e) { next(e); }
+  });
+
   /** Risks, unnoticed subscriptions and the week in numbers — all computed from
    *  the user's own data, so this works without any AI provider configured. */
   app.get("/api/insights", requireAuth, async (req, res, next) => {
