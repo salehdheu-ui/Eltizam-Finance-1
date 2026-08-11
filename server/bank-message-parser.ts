@@ -402,11 +402,27 @@ export function resolveAllowedSenders(bankKey: BankKey, customSenders?: string |
   return Array.from(new Set([...(profile?.senders || []), ...custom]));
 }
 
-export function buildBankSearchQuery(bankKey: BankKey, customSenders?: string | string[] | null) {
+/**
+ * A first sync reaches back far enough to build a history; later ones ask only
+ * for what arrived since the last successful read, minus an overlap. The overlap
+ * covers mail that reaches the mailbox out of order, and re-reading a message we
+ * already hold costs nothing because it is recognised by its provider id.
+ */
+export const INITIAL_SYNC_DAYS = 90;
+export const SYNC_OVERLAP_SECONDS = 2 * 86400;
+
+export function resolveSyncWindowStart(lastSyncAt: number | null | undefined, now = Math.floor(Date.now() / 1000)) {
+  const initial = now - INITIAL_SYNC_DAYS * 86400;
+  if (!lastSyncAt) return initial;
+  return Math.max(initial, lastSyncAt - SYNC_OVERLAP_SECONDS);
+}
+
+export function buildBankSearchQuery(bankKey: BankKey, customSenders?: string | string[] | null, since?: number | null) {
   const senders = resolveAllowedSenders(bankKey, customSenders);
   if (senders.length === 0) return null;
   const senderQuery = senders.map((sender) => `from:(${sender})`).join(" OR ");
-  return `newer_than:30d (${senderQuery})`;
+  const window = typeof since === "number" ? `after:${Math.max(0, Math.floor(since))}` : `newer_than:${INITIAL_SYNC_DAYS}d`;
+  return `${window} (${senderQuery})`;
 }
 
 export function senderMatchesBank(bankKey: BankKey, sender: string, customSenders?: string | string[] | null) {
