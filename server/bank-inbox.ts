@@ -9,6 +9,7 @@ import { buildBankAnalysis } from "./bank-analysis";
 import { BANK_PROFILES, buildBankSearchQuery, createMessageFingerprint, detectBalanceGap, extractAccountReferences, messageMatchesAccount, normalizeAccountFilter, normalizeSenderList, parseBankMessage, resolveAllowedSenders, resolveSyncWindowStart, senderMatchesBank, type BankKey } from "./bank-message-parser";
 import { getProviderConfig, isProviderConfigured, resolveRedirectUri } from "./integration-settings";
 import { buildWriteQueueKey, enqueueWrite } from "./write-queue";
+import { sendPushToUser } from "./push";
 
 const senderEntryPattern = /^[a-z0-9](?:[a-z0-9._+@-]*[a-z0-9])?$/;
 
@@ -562,6 +563,61 @@ type MessageCandidate = {
   receivedAt: number;
 };
 
+/** What a finished sync is worth telling the user about. */
+type SyncOutcome = {
+  imported: Array<{ merchant: string; amount: number; type: "income" | "expense" }>;
+  gaps: number;
+};
+
+function formatAmount(amount: number) {
+  return `${amount.toFixed(3)} ر.ع`;
+}
+
+/**
+ * One notification per sync, not one per message. A first read covers ninety days
+ * and can import dozens of alerts at once; firing a notification for each would
+ * bury the phone and teach the user to swipe the whole category away.
+ */
+async function notifySyncOutcome(userId: number, summary: SyncSummary, outcome: SyncOutcome) {
+  if (summary.imported === 1) {
+    const [only] = outcome.imported;
+    if (only) {
+      await sendPushToUser(userId, "bankImports", {
+        title: only.type === "income" ? "إيداع جديد" : "خصم جديد",
+        body: `${formatAmount(only.amount)} · ${only.merchant}`,
+        url: "/transactions",
+        tag: "eltizam-bank-import",
+      });
+    }
+  } else if (summary.imported > 1) {
+    const total = outcome.imported.reduce((sum, item) => sum + (item.type === "income" ? item.amount : -item.amount), 0);
+    await sendPushToUser(userId, "bankImports", {
+      title: `${summary.imported} حركة جديدة من البنك`,
+      body: `الصافي ${formatAmount(Math.abs(total))} ${total >= 0 ? "إيداع" : "خصم"}`,
+      url: "/transactions",
+      tag: "eltizam-bank-import",
+    });
+  }
+
+  if (summary.review > 0) {
+    await sendPushToUser(userId, "bankReviews", {
+      title: "حركات تنتظر مراجعتك",
+      body: `${summary.review} رسالة بنكية تحتاج تأكيدك قبل إضافتها`,
+      url: "/bank-inbox",
+      tag: "eltizam-bank-review",
+    });
+  }
+
+  if (outcome.gaps > 0) {
+    await sendPushToUser(userId, "balanceGaps", {
+      title: "فجوة في الرصيد",
+      body: `${outcome.gaps} حركة ظهرت في رصيد البنك دون أن تصلك رسالة بها`,
+      url: "/bank-inbox",
+      tag: "eltizam-balance-gap",
+    });
+  }
+}
+
 // A first read covers 90 days, so the ceiling has to clear a busy mailbox in one
 // pass; later reads only ask for what arrived since, and never come near it.
 const MESSAGES_PER_PAGE = 100;
@@ -607,6 +663,7 @@ async function importCandidates(
   candidates: MessageCandidate[],
   summary: SyncSummary,
   observedAccounts: Set<string>,
+  outcome: SyncOutcome = { imported: [], gaps: 0 },
 ) {
   const ordered = [...candidates].sort((a, b) => a.receivedAt - b.receivedAt);
 
@@ -636,6 +693,17 @@ async function importCandidates(
       parsed,
     });
     summary[result.state] += 1;
+
+    if (result.state === "imported") {
+      outcome.imported.push({
+        merchant: parsed.merchant,
+        amount: parsed.amount,
+        type: parsed.transactionType,
+      });
+    }
+    if (result.state !== "duplicate" && typeof result.event?.gapAmount === "number" && Math.abs(result.event.gapAmount) >= 0.001) {
+      outcome.gaps += 1;
+    }
   }
 }
 
@@ -667,6 +735,7 @@ async function syncGoogleConnection(userId: number, connection: typeof bankEmail
   const summary = emptySummary();
   summary.checked = messageIds.length;
   const observedAccounts = new Set<string>();
+  const outcome: SyncOutcome = { imported: [], gaps: 0 };
 
   const unseen = await findUnseenMessageIds(userId, connection.id, messageIds);
   summary.duplicate += messageIds.length - unseen.length;
@@ -693,8 +762,8 @@ async function syncGoogleConnection(userId: number, connection: typeof bankEmail
     });
   }
 
-  await importCandidates(userId, connection, candidates, summary, observedAccounts);
-  return { ...summary, observedAccounts: Array.from(observedAccounts) };
+  await importCandidates(userId, connection, candidates, summary, observedAccounts, outcome);
+  return { ...summary, observedAccounts: Array.from(observedAccounts), outcome };
 }
 
 async function syncMicrosoftConnection(userId: number, connection: typeof bankEmailConnections.$inferSelect) {
@@ -711,6 +780,7 @@ async function syncMicrosoftConnection(userId: number, connection: typeof bankEm
   // of view, and the sync reported nothing to import while looking at nothing.
   const summary = emptySummary();
   const observedAccounts = new Set<string>();
+  const outcome: SyncOutcome = { imported: [], gaps: 0 };
   const messages: Array<{ id: string; subject?: string; sender: string; receivedDateTime?: string }> = [];
 
   let nextLink: string | null = (() => {
@@ -756,8 +826,8 @@ async function syncMicrosoftConnection(userId: number, connection: typeof bankEm
     });
   }
 
-  await importCandidates(userId, connection, candidates, summary, observedAccounts);
-  return { ...summary, observedAccounts: Array.from(observedAccounts) };
+  await importCandidates(userId, connection, candidates, summary, observedAccounts, outcome);
+  return { ...summary, observedAccounts: Array.from(observedAccounts), outcome };
 }
 /** The message to show the user for a failed read, without leaking internals. */
 function describeSyncError(error: unknown) {
@@ -796,6 +866,12 @@ async function syncConnection(userId: number, connection: typeof bankEmailConnec
         failureCount: 0,
         updatedAt: finishedAt,
       }).where(eq(bankEmailConnections.id, connection.id));
+
+      // Telling the user is the point of reading in the background — a sync that
+      // ran while the app was closed is otherwise invisible until they open it.
+      // sendPushToUser never throws, so this cannot turn a good sync into a bad one.
+      const { outcome, ...counts } = summary;
+      await notifySyncOutcome(userId, counts, outcome);
       return summary;
     } catch (error) {
       await db.update(bankEmailConnections).set({

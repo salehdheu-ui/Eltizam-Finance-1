@@ -113,6 +113,11 @@ const databaseMigrations: DatabaseMigration[] = [
     name: "ensure_bank_email_sync_health",
     up: async () => { await ensureBankEmailSyncHealth(); },
   },
+  {
+    version: 19,
+    name: "ensure_push_notification_tables",
+    up: async () => { await ensurePushNotificationTables(); },
+  },
 ];
 
 async function ensureSchemaMigrationsTable() {
@@ -546,6 +551,34 @@ async function ensureBankEmailSyncHealth() {
   // Reconciling an event against a transaction the user already entered by hand
   // searches their transactions by date, so give that search an index to land on.
   await pgExec("CREATE INDEX IF NOT EXISTS transactions_user_date_idx ON transactions (user_id, date DESC)");
+}
+
+async function ensurePushNotificationTables() {
+  await pgExec(`
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      endpoint TEXT NOT NULL UNIQUE,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      user_agent TEXT DEFAULT '',
+      failure_count INTEGER NOT NULL DEFAULT 0,
+      last_used_at INTEGER,
+      created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer
+    )
+  `);
+
+  await pgExec(`
+    CREATE TABLE IF NOT EXISTS notification_preferences (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      bank_imports BOOLEAN NOT NULL DEFAULT true,
+      bank_reviews BOOLEAN NOT NULL DEFAULT true,
+      balance_gaps BOOLEAN NOT NULL DEFAULT true,
+      updated_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer
+    )
+  `);
+
+  await pgExec("CREATE INDEX IF NOT EXISTS push_subscriptions_user_idx ON push_subscriptions (user_id)");
 }
 
 async function ensureBankEmailAccountScopeColumns() {

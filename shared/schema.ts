@@ -217,6 +217,40 @@ export const bankCategoryRules = pgTable("bank_category_rules", {
 
 export type BankCategoryRule = typeof bankCategoryRules.$inferSelect;
 
+/**
+ * One row per browser or installed app the user agreed to be notified on. The
+ * endpoint is the address the push service gave that install, and it is unique —
+ * re-subscribing the same device updates the row instead of adding another, so a
+ * user who re-enables notifications does not receive every alert twice.
+ */
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  userAgent: text("user_agent").default(""),
+  failureCount: integer("failure_count").notNull().default(0),
+  lastUsedAt: integer("last_used_at"),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+
+/**
+ * What the user agreed to be told about. Absent a row the defaults apply, so
+ * enabling notifications does not require answering a questionnaire first.
+ */
+export const notificationPreferences = pgTable("notification_preferences", {
+  userId: integer("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  bankImports: boolean("bank_imports").notNull().default(true),
+  bankReviews: boolean("bank_reviews").notNull().default(true),
+  balanceGaps: boolean("balance_gaps").notNull().default(true),
+  updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
+export type NotificationPreference = typeof notificationPreferences.$inferSelect;
+
 export const integrationSettings = pgTable("integration_settings", {
   id: serial("id").primaryKey(),
   provider: text("provider").notNull().unique(),

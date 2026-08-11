@@ -8,6 +8,7 @@ import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, inse
 import { buildWriteQueueKey, enqueueWrite } from "./write-queue";
 import { z } from "zod";
 import { buildRuleKey, registerBankInboxRoutes } from "./bank-inbox";
+import { registerPushRoutes } from "./push";
 import { db } from "./db";
 import { and, eq } from "drizzle-orm";
 import {
@@ -159,6 +160,7 @@ export async function registerRoutes(
 ): Promise<Server> {
   setupAuth(app);
   registerBankInboxRoutes(app);
+  registerPushRoutes(app);
 
   app.get("/api/admin/stats", requireSystemAdmin, async (_req, res, next) => {
     try {
