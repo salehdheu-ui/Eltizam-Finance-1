@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { ApiError, apiRequest } from "@/lib/queryClient";
 import { queryClient } from "@/lib/queryClient";
 import { useCategories, useWallets, useCreateTransaction, useUser, useObligation, useVariableObligationStatuses, useLogout } from "@/lib/hooks";
+import { InstallPrompt } from "@/components/install-prompt";
 
 function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
@@ -443,6 +444,8 @@ export default function Layout({ children }: LayoutProps) {
           </Button>
           </div>
         ) : null}
+
+        <InstallPrompt />
       </main>
 
       {/* Simplified Bottom Navigation */}
