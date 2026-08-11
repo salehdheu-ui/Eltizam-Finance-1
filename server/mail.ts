@@ -53,6 +53,27 @@ export function canSendMail() {
   return isMailConfigured();
 }
 
+/** A plain notification email. Kept separate from the reset flow so reminders
+ *  do not inherit that message's security wording. */
+export async function sendPlainEmail(input: { to: string; subject: string; text: string }) {
+  const transporter = await getTransporter();
+  const html = `
+    <div dir="rtl" style="font-family: Arial, sans-serif; line-height: 1.8; color: #0f172a; max-width: 640px; margin: 0 auto;">
+      <h2 style="margin-bottom: 12px;">التزام</h2>
+      <p style="white-space: pre-line;">${input.text.replace(/</g, "&lt;")}</p>
+      ${appBaseUrl ? `<p><a href="${appBaseUrl.replace(/\/$/, "")}/commitments" style="color:#2563eb;">افتح التطبيق</a></p>` : ""}
+    </div>
+  `;
+
+  await transporter.sendMail({
+    from: smtpFrom,
+    to: input.to,
+    subject: input.subject,
+    text: input.text,
+    html,
+  });
+}
+
 export async function sendPasswordResetEmail(input: PasswordResetEmailInput) {
   const transporter = await getTransporter();
   const appName = input.appName || "التزام";

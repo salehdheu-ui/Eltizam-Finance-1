@@ -1,7 +1,7 @@
 import { eq, and, asc, desc, like, inArray } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, wallets, categories, transactions, recurringIncomes, obligations, variableObligationMonthStatuses, commitments, commitmentSteps, commitmentProofs, savingsGoals, passwordResetRequests, bankEmailEvents,
+  users, wallets, categories, transactions, recurringIncomes, obligations, variableObligationMonthStatuses, commitments, commitmentSteps, commitmentProofs, savingsGoals, passwordResetRequests, bankEmailEvents, bankEmailConnections,
   type User, type InsertUser,
   type Wallet, type InsertWallet,
   type Category, type InsertCategory,
@@ -27,6 +27,10 @@ function userError(message: string) {
   error.publicMessage = message;
   return error;
 }
+
+/** The note that marks money the ledger cannot account for, so these movements
+ *  can be found, totalled and told apart from anything the user entered. */
+export const UNKNOWN_ADJUSTMENT_NOTE = "فرق غير معروف · مجهول";
 
 function isObligationEnded(obligation: Pick<Obligation, "endDate">) {
   return !!obligation.endDate && obligation.endDate <= Math.floor(Date.now() / 1000);
@@ -70,6 +74,7 @@ export interface IStorage {
   getWallet(id: number, userId: number): Promise<Wallet | undefined>;
   createWallet(userId: number, wallet: InsertWallet): Promise<Wallet>;
   updateWallet(id: number, userId: number, data: Partial<InsertWallet>): Promise<Wallet>;
+  setWalletBalance(id: number, userId: number, newBalance: number): Promise<Wallet>;
   deleteWallet(id: number, userId: number): Promise<void>;
 
 
@@ -267,9 +272,67 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  /**
+   * Five tables point at a wallet, and Postgres refuses the delete while any of
+   * them still does. Records that only make sense inside this wallet go with it;
+   * ones that must be pointed somewhere else stop the delete with a message
+   * naming them, rather than failing as an unexplained error.
+   */
   async deleteWallet(id: number, userId: number): Promise<void> {
+    const [connection] = await db.select({ id: bankEmailConnections.id, email: bankEmailConnections.email })
+      .from(bankEmailConnections)
+      .where(and(eq(bankEmailConnections.walletId, id), eq(bankEmailConnections.userId, userId)));
+    if (connection) {
+      throw userError(`هذه المحفظة مرتبطة ببريد بنكي (${connection.email}). افصل الربط أو حوّله لمحفظة أخرى أولاً.`);
+    }
+
+    const income = await db.select({ id: recurringIncomes.id, title: recurringIncomes.title })
+      .from(recurringIncomes)
+      .where(and(eq(recurringIncomes.walletId, id), eq(recurringIncomes.userId, userId)));
+    if (income.length > 0) {
+      throw userError(`هذه المحفظة مرتبطة بدخل متكرر (${income[0].title}). غيّر محفظته أو احذفه أولاً.`);
+    }
+
+    // An obligation can live without a wallet, so it is detached rather than lost.
+    await db.update(obligations).set({ walletId: null })
+      .where(and(eq(obligations.walletId, id), eq(obligations.userId, userId)));
+
+    // A bank inbox event points at a transaction we are about to remove.
+    const walletTransactions = await db.select({ id: transactions.id })
+      .from(transactions)
+      .where(and(eq(transactions.walletId, id), eq(transactions.userId, userId)));
+    await this.detachBankEmailEvents(walletTransactions.map((row) => row.id), userId);
+
+    await db.delete(transactions).where(and(eq(transactions.walletId, id), eq(transactions.userId, userId)));
     await db.delete(savingsGoals).where(and(eq(savingsGoals.walletId, id), eq(savingsGoals.userId, userId)));
     await db.delete(wallets).where(and(eq(wallets.id, id), eq(wallets.userId, userId)));
+  }
+
+  /**
+   * Editing a balance by hand states a fact the transactions do not explain, so
+   * the difference is booked as its own movement labelled "مجهول". Without it the
+   * balance and its history disagree and every later reconciliation is off by
+   * the amount that was quietly typed in.
+   */
+  async setWalletBalance(id: number, userId: number, newBalance: number): Promise<Wallet> {
+    const wallet = await this.getWallet(id, userId);
+    if (!wallet) throw userError("المحفظة غير موجودة");
+
+    const difference = Number((newBalance - wallet.balance).toFixed(3));
+    if (Math.abs(difference) >= 0.001) {
+      await db.insert(transactions).values({
+        userId,
+        walletId: id,
+        categoryId: null,
+        type: difference > 0 ? "income" : "expense",
+        amount: Math.abs(difference),
+        note: UNKNOWN_ADJUSTMENT_NOTE,
+      });
+    }
+
+    const [updated] = await db.update(wallets).set({ balance: newBalance })
+      .where(and(eq(wallets.id, id), eq(wallets.userId, userId))).returning();
+    return updated;
   }
 
 

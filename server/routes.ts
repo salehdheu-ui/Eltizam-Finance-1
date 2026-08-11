@@ -4,13 +4,20 @@ import { storage } from "./storage";
 import { hashPlainPassword, setupAuth } from "./auth";
 import { writeAuditEvent } from "./audit";
 import { createManualBackup, listAllBackups } from "./backup";
-import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, integrationSettings, upsertIntegrationSettingSchema, transactions, categories, bankEmailEvents, bankCategoryRules } from "@shared/schema";
+import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, integrationSettings, upsertIntegrationSettingSchema, transactions, categories, bankEmailEvents, bankCategoryRules, automationLog, commitmentOccurrences, commitments, notificationPreferences } from "@shared/schema";
 import { buildWriteQueueKey, enqueueWrite } from "./write-queue";
 import { z } from "zod";
 import { buildRuleKey, registerBankInboxRoutes } from "./bank-inbox";
-import { registerPushRoutes } from "./push";
+import { postponeOccurrence, runAutomationForUser, startAutomationEngine, undoAutomationEntry } from "./automation";
+import { getPreferences, getPublicVapidKey, notify, removePushSubscription, savePushSubscription } from "./notifications";
+import { canSendMail } from "./mail";
+import { buildWeeklySummary, detectRecurring, detectRisks, simulateDecision } from "./insights";
+import { buildCalendarFeed, calendarToken, deleteDocument, documentsRoot, getDocument, isAllowedDocument, listDocuments, MAX_DOCUMENT_BYTES, storeDocument } from "./documents";
+import { isClaudeConfigured, readDocument, understandCommitment } from "./understanding";
+import multer from "multer";
+import path from "path";
 import { db } from "./db";
-import { and, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import {
   INTEGRATION_PROVIDERS,
   PROVIDER_CALLBACK_PATHS,
@@ -81,6 +88,20 @@ function toRequiredNumber(value: unknown) {
 
   return value;
 }
+
+/** Buffered in memory: files are capped at 10MB and written once validated, so
+ *  a temp file never outlives a rejected upload. */
+const uploadDocument = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_DOCUMENT_BYTES, files: 1 },
+  fileFilter: (_req, file, callback) => {
+    if (!isAllowedDocument(file.mimetype)) {
+      callback(Object.assign(new Error("نوع الملف غير مدعوم. ارفع PDF أو صورة."), { status: 400 }));
+      return;
+    }
+    callback(null, true);
+  },
+});
 
 async function runQueuedWrite<T>(res: Response, key: string, task: () => Promise<T>) {
   const queued = await enqueueWrite(key, task);
@@ -160,7 +181,7 @@ export async function registerRoutes(
 ): Promise<Server> {
   setupAuth(app);
   registerBankInboxRoutes(app);
-  registerPushRoutes(app);
+  startAutomationEngine();
 
   app.get("/api/admin/stats", requireSystemAdmin, async (_req, res, next) => {
     try {
@@ -483,11 +504,21 @@ export async function registerRoutes(
         ...req.body,
         balance: req.body.balance === undefined ? undefined : toRequiredNumber(req.body.balance),
       };
-      const data = walletUpdateSchema.parse(body);
+      const { balance, ...rest } = walletUpdateSchema.parse(body);
       const wallet = await runQueuedWrite(
         res,
         buildWriteQueueKey("user", req.user!.id, "wallet", walletId),
-        () => storage.updateWallet(walletId, req.user!.id, data),
+        async () => {
+          if (Object.keys(rest).length > 0) {
+            await storage.updateWallet(walletId, req.user!.id, rest);
+          }
+          // A balance typed by hand is a claim the transactions do not explain,
+          // so it goes through the path that books the difference as "unknown"
+          // instead of silently overwriting the number.
+          return balance === undefined
+            ? storage.updateWallet(walletId, req.user!.id, {})
+            : storage.setWalletBalance(walletId, req.user!.id, balance);
+        },
       );
       res.json(wallet);
     } catch (e) { next(e); }
@@ -926,6 +957,376 @@ export async function registerRoutes(
       res.json({ message: "تم حذف الهدف الادخاري بنجاح" });
     } catch (e) { next(e); }
   });
+  /** Turns a typed or dictated sentence into a draft commitment. Works on rules
+   *  alone; Claude is consulted only when the sentence is ambiguous. */
+  app.post("/api/understand/commitment", requireAuth, async (req, res, next) => {
+    try {
+      const { text } = z.object({ text: z.string().trim().min(2).max(500) }).parse(req.body);
+      res.json(await understandCommitment(text));
+    } catch (e) { next(e); }
+  });
+
+  /** Reads an uploaded contract or invoice. Needs an AI key — there is no
+   *  offline path to understanding an arbitrary scanned document. */
+  app.post("/api/understand/document", requireAuth, uploadDocument.single("file"), async (req, res, next) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "لم يُرفق ملف" });
+      if (!isClaudeConfigured()) {
+        return res.status(503).json({ message: "قراءة المستندات تحتاج تفعيل الذكاء الاصطناعي من إدارة المنصة" });
+      }
+
+      res.json(await readDocument({
+        base64: req.file.buffer.toString("base64"),
+        mimeType: req.file.mimetype,
+      }));
+    } catch (e) { next(e); }
+  });
+
+  app.get("/api/understand/status", requireAuth, async (_req, res) => {
+    res.json({ aiConfigured: isClaudeConfigured() });
+  });
+
+  app.post("/api/documents", requireAuth, uploadDocument.single("file"), async (req, res, next) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "لم يُرفق ملف" });
+
+      const commitmentId = req.body.commitmentId ? parseRouteId(req.body.commitmentId) : null;
+      if (commitmentId) {
+        const [owned] = await db.select({ id: commitments.id }).from(commitments)
+          .where(and(eq(commitments.id, commitmentId), eq(commitments.userId, req.user!.id)));
+        if (!owned) return res.status(404).json({ message: "الالتزام غير موجود" });
+      }
+
+      const document = await storeDocument({
+        userId: req.user!.id,
+        commitmentId,
+        // Browsers send the filename as latin1; without this Arabic names arrive mangled.
+        fileName: Buffer.from(req.file.originalname, "latin1").toString("utf8"),
+        mimeType: req.file.mimetype,
+        buffer: req.file.buffer,
+      });
+
+      res.status(201).json(document);
+    } catch (e) { next(e); }
+  });
+
+  app.get("/api/documents", requireAuth, async (req, res, next) => {
+    try {
+      const commitmentId = req.query.commitmentId ? Number(req.query.commitmentId) : undefined;
+      res.json(await listDocuments(req.user!.id, commitmentId));
+    } catch (e) { next(e); }
+  });
+
+  app.get("/api/documents/:id/download", requireAuth, async (req, res, next) => {
+    try {
+      const document = await getDocument(req.user!.id, parseRouteId(req.params.id));
+      if (!document) return res.status(404).json({ message: "الملف غير موجود" });
+
+      res.setHeader("Content-Type", document.mimeType);
+      res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(document.fileName)}`);
+      res.sendFile(path.join(documentsRoot, document.storedName));
+    } catch (e) { next(e); }
+  });
+
+  app.delete("/api/documents/:id", requireAuth, async (req, res, next) => {
+    try {
+      const removed = await deleteDocument(req.user!.id, parseRouteId(req.params.id));
+      if (!removed) return res.status(404).json({ message: "الملف غير موجود" });
+      res.json({ message: "تم حذف الملف" });
+    } catch (e) { next(e); }
+  });
+
+  /** The subscribe URL for a calendar app, carrying the user's feed token. */
+  app.get("/api/calendar/url", requireAuth, async (req, res, next) => {
+    try {
+      const token = calendarToken(req.user!.id);
+      res.json({ url: `${resolveAppBaseUrl(req)}/api/calendar/${req.user!.id}/${token}.ics` });
+    } catch (e) { next(e); }
+  });
+
+  /**
+   * Deliberately unauthenticated: calendar apps poll this without a session.
+   * The token is the credential, and it grants nothing but this feed.
+   */
+  app.get("/api/calendar/:userId/:token.ics", async (req, res, next) => {
+    try {
+      const userId = parseRouteId(req.params.userId);
+      const token = String(req.params.token || "").replace(/\.ics$/, "");
+      if (!Number.isFinite(userId) || token !== calendarToken(userId)) {
+        return res.status(404).send("Not found");
+      }
+
+      const events = await db.select({
+        id: commitmentOccurrences.id,
+        title: commitments.title,
+        dueDate: commitmentOccurrences.dueDate,
+        amount: commitmentOccurrences.amount,
+        status: commitmentOccurrences.status,
+      })
+        .from(commitmentOccurrences)
+        .innerJoin(commitments, eq(commitments.id, commitmentOccurrences.commitmentId))
+        .where(eq(commitmentOccurrences.userId, userId))
+        .orderBy(asc(commitmentOccurrences.dueDate))
+        .limit(500);
+
+      res.setHeader("Content-Type", "text/calendar; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache");
+      res.send(buildCalendarFeed({ events }));
+    } catch (e) { next(e); }
+  });
+
+  /** Risks, unnoticed subscriptions and the week in numbers — all computed from
+   *  the user's own data, so this works without any AI provider configured. */
+  app.get("/api/insights", requireAuth, async (req, res, next) => {
+    try {
+      const userId = req.user!.id;
+      const [allTransactions, wallets, upcomingRows] = await Promise.all([
+        storage.getTransactions(userId),
+        storage.getWallets(userId),
+        db.select({
+          title: commitments.title,
+          dueDate: commitmentOccurrences.dueDate,
+          amount: commitmentOccurrences.amount,
+          status: commitmentOccurrences.status,
+        })
+          .from(commitmentOccurrences)
+          .innerJoin(commitments, eq(commitments.id, commitmentOccurrences.commitmentId))
+          .where(eq(commitmentOccurrences.userId, userId)),
+      ]);
+
+      // Internal transfers move money between the user's own wallets; counting
+      // them as spending would double every transfer in the totals.
+      const spendable = allTransactions.filter(
+        (transaction) => !(typeof transaction.note === "string" && transaction.note.startsWith("__transfer__:")),
+      );
+      const walletBalance = wallets.reduce((sum, wallet) => sum + wallet.balance, 0);
+
+      res.json({
+        risks: detectRisks({ transactions: spendable, walletBalance, upcoming: upcomingRows }),
+        recurring: detectRecurring(spendable),
+        weekly: buildWeeklySummary({ transactions: spendable, upcoming: upcomingRows }),
+        walletBalance: Number(walletBalance.toFixed(3)),
+      });
+    } catch (e) { next(e); }
+  });
+
+  app.post("/api/insights/simulate", requireAuth, async (req, res, next) => {
+    try {
+      const input = z.object({
+        newMonthlyCost: z.number().finite().positive(),
+        months: z.number().int().min(1).max(120),
+      }).parse(req.body);
+
+      const userId = req.user!.id;
+      const [wallets, incomes, activeCommitments] = await Promise.all([
+        storage.getWallets(userId),
+        storage.getRecurringIncomes(userId),
+        db.select().from(commitments).where(and(eq(commitments.userId, userId), eq(commitments.status, "active"))),
+      ]);
+
+      const monthlyIncome = incomes
+        .filter((income) => income.isActive)
+        .reduce((sum, income) => sum + income.amount, 0);
+
+      // Only recurring commitments represent an ongoing monthly claim on income.
+      const committedMonthly = activeCommitments
+        .filter((commitment) => commitment.frequency === "monthly" && commitment.amount)
+        .reduce((sum, commitment) => sum + (commitment.amount ?? 0), 0);
+
+      res.json(simulateDecision({
+        monthlyIncome,
+        walletBalance: wallets.reduce((sum, wallet) => sum + wallet.balance, 0),
+        committedMonthly,
+        newMonthlyCost: input.newMonthlyCost,
+        months: input.months,
+      }));
+    } catch (e) { next(e); }
+  });
+
+  app.get("/api/notifications/preferences", requireAuth, async (req, res, next) => {
+    try {
+      const preferences = await getPreferences(req.user!.id);
+      res.json({
+        ...preferences,
+        pushPublicKey: getPublicVapidKey(),
+        channels: {
+          email: canSendMail(),
+          push: Boolean(getPublicVapidKey()),
+          telegram: Boolean(process.env.TELEGRAM_BOT_TOKEN?.trim()),
+          whatsapp: Boolean(process.env.WHATSAPP_TOKEN?.trim() && process.env.WHATSAPP_PHONE_ID?.trim()),
+        },
+      });
+    } catch (e) { next(e); }
+  });
+
+  app.patch("/api/notifications/preferences", requireAuth, async (req, res, next) => {
+    try {
+      const input = z.object({
+        emailEnabled: z.boolean().optional(),
+        pushEnabled: z.boolean().optional(),
+        telegramEnabled: z.boolean().optional(),
+        telegramChatId: z.string().trim().max(64).nullable().optional(),
+        whatsappEnabled: z.boolean().optional(),
+        whatsappNumber: z.string().trim().max(32).nullable().optional(),
+        webhookUrl: z.string().trim().url().max(500).nullable().optional().or(z.literal("")),
+        weeklySummary: z.boolean().optional(),
+        quietHoursStart: z.number().int().min(0).max(23).nullable().optional(),
+        quietHoursEnd: z.number().int().min(0).max(23).nullable().optional(),
+      }).parse(req.body);
+
+      await getPreferences(req.user!.id);
+      const [updated] = await db.update(notificationPreferences)
+        .set({
+          ...input,
+          webhookUrl: input.webhookUrl === "" ? null : input.webhookUrl,
+          updatedAt: Math.floor(Date.now() / 1000),
+        })
+        .where(eq(notificationPreferences.userId, req.user!.id))
+        .returning();
+
+      res.json(updated);
+    } catch (e) { next(e); }
+  });
+
+  app.post("/api/notifications/push/subscribe", requireAuth, async (req, res, next) => {
+    try {
+      const subscription = z.object({
+        endpoint: z.string().url(),
+        keys: z.object({ p256dh: z.string().min(1), auth: z.string().min(1) }),
+      }).parse(req.body);
+
+      await savePushSubscription(req.user!.id, subscription);
+      res.json({ message: "تم تفعيل الإشعارات على هذا الجهاز" });
+    } catch (e) { next(e); }
+  });
+
+  app.post("/api/notifications/push/unsubscribe", requireAuth, async (req, res, next) => {
+    try {
+      const { endpoint } = z.object({ endpoint: z.string().url() }).parse(req.body);
+      await removePushSubscription(req.user!.id, endpoint);
+      res.json({ message: "تم إيقاف الإشعارات على هذا الجهاز" });
+    } catch (e) { next(e); }
+  });
+
+  /** Sends a real notification through every enabled channel so the user can see
+   *  which ones actually arrive rather than trusting the toggles. */
+  app.post("/api/notifications/test", requireAuth, async (req, res, next) => {
+    try {
+      const result = await notify({
+        userId: req.user!.id,
+        title: "تجربة الإشعارات",
+        body: "وصلتك هذه الرسالة، فالقناة تعمل.",
+        dedupeKey: `test:${Date.now()}`,
+        urgent: true,
+      });
+      res.json(result);
+    } catch (e) { next(e); }
+  });
+
+  /** What the engine has done lately, newest first, with what can be reversed. */
+  app.get("/api/automation/log", requireAuth, async (req, res, next) => {
+    try {
+      const entries = await db.select().from(automationLog)
+        .where(eq(automationLog.userId, req.user!.id))
+        .orderBy(desc(automationLog.createdAt))
+        .limit(50);
+
+      res.json(entries.map((entry) => ({
+        id: entry.id,
+        action: entry.action,
+        summary: entry.summary,
+        commitmentId: entry.commitmentId,
+        occurrenceId: entry.occurrenceId,
+        canUndo: Boolean(entry.undoPayload) && !entry.undoneAt,
+        undoneAt: entry.undoneAt,
+        createdAt: entry.createdAt,
+      })));
+    } catch (e) { next(e); }
+  });
+
+  app.post("/api/automation/log/:id/undo", requireAuth, async (req, res, next) => {
+    try {
+      const result = await undoAutomationEntry(req.user!.id, parseRouteId(req.params.id));
+      if (!result.ok) return res.status(400).json({ message: result.message });
+      res.json(result);
+    } catch (e) { next(e); }
+  });
+
+  /** Lets the user pull the engine forward instead of waiting for its next pass. */
+  app.post("/api/automation/run", requireAuth, async (req, res, next) => {
+    try {
+      const totals = await runAutomationForUser(req.user!.id);
+      res.json(totals);
+    } catch (e) { next(e); }
+  });
+
+  app.get("/api/commitments/:id/occurrences", requireAuth, async (req, res, next) => {
+    try {
+      const commitmentId = parseRouteId(req.params.id);
+      const rows = await db.select().from(commitmentOccurrences).where(and(
+        eq(commitmentOccurrences.commitmentId, commitmentId),
+        eq(commitmentOccurrences.userId, req.user!.id),
+      )).orderBy(asc(commitmentOccurrences.dueDate));
+      res.json(rows);
+    } catch (e) { next(e); }
+  });
+
+  /** Upcoming and overdue across every commitment — what the home screen needs. */
+  app.get("/api/occurrences", requireAuth, async (req, res, next) => {
+    try {
+      const rows = await db.select({
+        id: commitmentOccurrences.id,
+        commitmentId: commitmentOccurrences.commitmentId,
+        dueDate: commitmentOccurrences.dueDate,
+        status: commitmentOccurrences.status,
+        amount: commitmentOccurrences.amount,
+        postponedFrom: commitmentOccurrences.postponedFrom,
+        escalatedAt: commitmentOccurrences.escalatedAt,
+        title: commitments.title,
+        type: commitments.type,
+        delegatedTo: commitments.delegatedTo,
+      })
+        .from(commitmentOccurrences)
+        .innerJoin(commitments, eq(commitments.id, commitmentOccurrences.commitmentId))
+        .where(and(
+          eq(commitmentOccurrences.userId, req.user!.id),
+          sql`${commitmentOccurrences.status} in ('pending','missed')`,
+        ))
+        .orderBy(asc(commitmentOccurrences.dueDate))
+        .limit(100);
+      res.json(rows);
+    } catch (e) { next(e); }
+  });
+
+  app.post("/api/occurrences/:id/postpone", requireAuth, async (req, res, next) => {
+    try {
+      const { days } = z.object({ days: z.number().int().min(1).max(365) }).parse(req.body);
+      const result = await postponeOccurrence(req.user!.id, parseRouteId(req.params.id), days);
+      if (!result.ok) return res.status(404).json({ message: result.message });
+      res.json(result);
+    } catch (e) { next(e); }
+  });
+
+  app.patch("/api/occurrences/:id", requireAuth, async (req, res, next) => {
+    try {
+      const { status } = z.object({
+        status: z.enum(["pending", "completed", "missed", "skipped"]),
+      }).parse(req.body);
+
+      const occurrenceId = parseRouteId(req.params.id);
+      const [updated] = await db.update(commitmentOccurrences)
+        .set({ status, completedAt: status === "completed" ? Math.floor(Date.now() / 1000) : null })
+        .where(and(
+          eq(commitmentOccurrences.id, occurrenceId),
+          eq(commitmentOccurrences.userId, req.user!.id),
+        ))
+        .returning();
+
+      if (!updated) return res.status(404).json({ message: "الموعد غير موجود" });
+      res.json(updated);
+    } catch (e) { next(e); }
+  });
+
   app.get("/api/commitments/:id/steps", requireAuth, async (req, res, next) => {
     try {
       res.json(await storage.getCommitmentSteps(parseRouteId(req.params.id), req.user!.id));

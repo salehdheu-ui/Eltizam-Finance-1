@@ -4,12 +4,12 @@ import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, lte } from "drizzle
 import { z } from "zod";
 import { bankCategoryRules, bankEmailConnections, bankEmailEvents, categories, commitments, transactions } from "@shared/schema";
 import { db } from "./db";
-import { storage } from "./storage";
+import { storage, UNKNOWN_ADJUSTMENT_NOTE } from "./storage";
 import { buildBankAnalysis } from "./bank-analysis";
 import { BANK_PROFILES, buildBankSearchQuery, createMessageFingerprint, detectBalanceGap, extractAccountReferences, messageMatchesAccount, normalizeAccountFilter, normalizeSenderList, parseBankMessage, resolveAllowedSenders, resolveSyncWindowStart, senderMatchesBank, type BankKey } from "./bank-message-parser";
 import { getProviderConfig, isProviderConfigured, resolveRedirectUri } from "./integration-settings";
 import { buildWriteQueueKey, enqueueWrite } from "./write-queue";
-import { sendPushToUser } from "./push";
+import { notify } from "./notifications";
 
 const senderEntryPattern = /^[a-z0-9](?:[a-z0-9._+@-]*[a-z0-9])?$/;
 
@@ -419,6 +419,11 @@ async function findTransactionToReconcile(params: {
     // A transfer leg is bookkeeping between the user's own wallets, never the
     // payment a bank alert is reporting.
     .filter((candidate) => !(candidate.note || "").startsWith("__transfer__:"))
+    // Nor is the placeholder this importer books for an unexplained balance
+    // difference. Reconciliation exists to recognise what the *user* recorded;
+    // letting a message merge into our own placeholder would leave a real
+    // payment permanently labelled "unknown" and stop it being categorised.
+    .filter((candidate) => candidate.note !== UNKNOWN_ADJUSTMENT_NOTE)
     .filter((candidate) => Math.abs(candidate.amount - params.amount) <= tolerance)
     .sort((a, b) => Math.abs(a.date - params.receivedAt) - Math.abs(b.date - params.receivedAt));
 
@@ -535,6 +540,22 @@ async function importParsedEvent(params: {
       note: `من البريد البنكي · ${params.parsed.merchant}`,
     }, { allowOverdraft: true, settleBalanceTo: params.parsed.balanceAfter });
     await db.update(transactions).set({ date: params.receivedAt }).where(eq(transactions.id, transaction.id));
+
+    // The bank's balance moved by more than this message explains, so messages we
+    // never received account for the rest. Booking it keeps the history equal to
+    // the balance instead of leaving a difference nothing in the ledger explains.
+    if (gap && Math.abs(gap.difference) >= 0.001) {
+      const unknown = await storage.createTransaction(params.userId, {
+        walletId: params.connection.walletId,
+        categoryId: null,
+        type: gap.direction === "credit" ? "income" : "expense",
+        amount: Math.abs(gap.difference),
+        note: UNKNOWN_ADJUSTMENT_NOTE,
+      }, { allowOverdraft: true });
+      // Dated just before the message that revealed it, since it happened earlier.
+      await db.update(transactions).set({ date: params.receivedAt - 1 }).where(eq(transactions.id, unknown.id));
+    }
+
     const [imported] = await db.update(bankEmailEvents).set({ status: "imported", transactionId: transaction.id }).where(eq(bankEmailEvents.id, event.id)).returning();
     return { state: "imported" as const, event: imported };
   } catch (error) {
@@ -567,6 +588,8 @@ type MessageCandidate = {
 type SyncOutcome = {
   imported: Array<{ merchant: string; amount: number; type: "income" | "expense" }>;
   gaps: number;
+  /** Newest message in the batch, which is what makes a dedupe key stable. */
+  latestReceivedAt: number;
 };
 
 function formatAmount(amount: number) {
@@ -577,43 +600,55 @@ function formatAmount(amount: number) {
  * One notification per sync, not one per message. A first read covers ninety days
  * and can import dozens of alerts at once; firing a notification for each would
  * bury the phone and teach the user to swipe the whole category away.
+ *
+ * Delivery goes through the shared notification service, so the channels the user
+ * chose and their quiet hours apply here exactly as they do to commitment
+ * reminders. The dedupe keys are built from the newest message in the batch: a
+ * re-read of the same overlap window produces the same key and is dropped, while
+ * genuinely new mail moves the key and gets through.
  */
-async function notifySyncOutcome(userId: number, summary: SyncSummary, outcome: SyncOutcome) {
+async function notifySyncOutcome(userId: number, connectionId: number, summary: SyncSummary, outcome: SyncOutcome) {
+  const stamp = `${connectionId}:${outcome.latestReceivedAt}`;
+
   if (summary.imported === 1) {
     const [only] = outcome.imported;
     if (only) {
-      await sendPushToUser(userId, "bankImports", {
+      await notify({
+        userId,
         title: only.type === "income" ? "إيداع جديد" : "خصم جديد",
         body: `${formatAmount(only.amount)} · ${only.merchant}`,
         url: "/transactions",
-        tag: "eltizam-bank-import",
+        dedupeKey: `bank-import:${stamp}`,
       });
     }
   } else if (summary.imported > 1) {
     const total = outcome.imported.reduce((sum, item) => sum + (item.type === "income" ? item.amount : -item.amount), 0);
-    await sendPushToUser(userId, "bankImports", {
+    await notify({
+      userId,
       title: `${summary.imported} حركة جديدة من البنك`,
       body: `الصافي ${formatAmount(Math.abs(total))} ${total >= 0 ? "إيداع" : "خصم"}`,
       url: "/transactions",
-      tag: "eltizam-bank-import",
+      dedupeKey: `bank-import:${stamp}`,
     });
   }
 
   if (summary.review > 0) {
-    await sendPushToUser(userId, "bankReviews", {
+    await notify({
+      userId,
       title: "حركات تنتظر مراجعتك",
       body: `${summary.review} رسالة بنكية تحتاج تأكيدك قبل إضافتها`,
       url: "/bank-inbox",
-      tag: "eltizam-bank-review",
+      dedupeKey: `bank-review:${stamp}`,
     });
   }
 
   if (outcome.gaps > 0) {
-    await sendPushToUser(userId, "balanceGaps", {
+    await notify({
+      userId,
       title: "فجوة في الرصيد",
       body: `${outcome.gaps} حركة ظهرت في رصيد البنك دون أن تصلك رسالة بها`,
       url: "/bank-inbox",
-      tag: "eltizam-balance-gap",
+      dedupeKey: `bank-gap:${stamp}`,
     });
   }
 }
@@ -663,7 +698,7 @@ async function importCandidates(
   candidates: MessageCandidate[],
   summary: SyncSummary,
   observedAccounts: Set<string>,
-  outcome: SyncOutcome = { imported: [], gaps: 0 },
+  outcome: SyncOutcome = { imported: [], gaps: 0, latestReceivedAt: 0 },
 ) {
   const ordered = [...candidates].sort((a, b) => a.receivedAt - b.receivedAt);
 
@@ -693,6 +728,8 @@ async function importCandidates(
       parsed,
     });
     summary[result.state] += 1;
+    // Ordered oldest-first, so the last message seen is the newest one.
+    outcome.latestReceivedAt = Math.max(outcome.latestReceivedAt, candidate.receivedAt);
 
     if (result.state === "imported") {
       outcome.imported.push({
@@ -735,7 +772,7 @@ async function syncGoogleConnection(userId: number, connection: typeof bankEmail
   const summary = emptySummary();
   summary.checked = messageIds.length;
   const observedAccounts = new Set<string>();
-  const outcome: SyncOutcome = { imported: [], gaps: 0 };
+  const outcome: SyncOutcome = { imported: [], gaps: 0, latestReceivedAt: 0 };
 
   const unseen = await findUnseenMessageIds(userId, connection.id, messageIds);
   summary.duplicate += messageIds.length - unseen.length;
@@ -780,7 +817,7 @@ async function syncMicrosoftConnection(userId: number, connection: typeof bankEm
   // of view, and the sync reported nothing to import while looking at nothing.
   const summary = emptySummary();
   const observedAccounts = new Set<string>();
-  const outcome: SyncOutcome = { imported: [], gaps: 0 };
+  const outcome: SyncOutcome = { imported: [], gaps: 0, latestReceivedAt: 0 };
   const messages: Array<{ id: string; subject?: string; sender: string; receivedDateTime?: string }> = [];
 
   let nextLink: string | null = (() => {
@@ -869,9 +906,15 @@ async function syncConnection(userId: number, connection: typeof bankEmailConnec
 
       // Telling the user is the point of reading in the background — a sync that
       // ran while the app was closed is otherwise invisible until they open it.
-      // sendPushToUser never throws, so this cannot turn a good sync into a bad one.
+      // But the mail is already read and the transactions already written, so a
+      // notification that cannot be delivered must not turn a good sync into a
+      // failed one, nor roll the connection into the error backoff.
       const { outcome, ...counts } = summary;
-      await notifySyncOutcome(userId, counts, outcome);
+      try {
+        await notifySyncOutcome(userId, connection.id, counts, outcome);
+      } catch (error) {
+        console.error(`Bank inbox notification failed for connection ${connection.id}:`, error instanceof Error ? error.message : "unknown error");
+      }
       return summary;
     } catch (error) {
       await db.update(bankEmailConnections).set({

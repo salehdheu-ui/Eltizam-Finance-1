@@ -11,31 +11,20 @@ export function serveStatic(app: Express) {
   }
 
   app.use(express.static(distPath, {
+    index: false,
     setHeaders: (res, filePath) => {
-      const fileName = path.basename(filePath);
-
-      // These three decide what every future visit loads. Cached by a proxy, a
-      // superseded worker or shell keeps serving the old app and there is no way
-      // for a deploy to reach the user. index.html is included because
-      // express.static answers "/" with it before the fallback below can.
-      if (fileName === "sw.js" || fileName === "manifest.webmanifest" || fileName === "index.html") {
-        res.setHeader("Cache-Control", "no-cache, must-revalidate");
-        return;
-      }
-
-      // Vite writes a content hash into these names, so the bytes behind a given
-      // URL can never change and revalidating them is pure latency.
-      if (filePath.includes(`${path.sep}assets${path.sep}`)) {
-        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-      }
+      // Vite fingerprints everything under /assets, so those URLs can never
+      // point at different bytes and are safe to keep forever. Anything else —
+      // index.html above all — must be rechecked, or a deploy keeps serving the
+      // old page and with it the old bundle reference.
+      const isFingerprinted = filePath.includes(`${path.sep}assets${path.sep}`);
+      res.setHeader("Cache-Control", isFingerprinted ? "public, max-age=31536000, immutable" : "no-cache");
     },
   }));
 
   // fall through to index.html if the file doesn't exist
   app.use("/{*path}", (_req, res) => {
-    // The shell names the current asset bundle, so holding it even briefly serves
-    // a deploy the assets it points at no longer match.
-    res.setHeader("Cache-Control", "no-cache, must-revalidate");
+    res.setHeader("Cache-Control", "no-cache");
     res.sendFile(path.resolve(distPath, "index.html"));
   });
 }

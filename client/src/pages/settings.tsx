@@ -18,8 +18,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { OmaniCurrencySymbol } from "@/components/ui/currency-display";
 import { cn } from "@/lib/utils";
+import NotificationSettings from "@/components/notification-settings";
 import { useUser, useLogout, useUpdateUser, useChangePassword } from "@/lib/hooks";
-import { NotificationsCard } from "@/components/settings/notifications-card";
 
 const currencies = [
   { id: "OMR", name: "الريال العماني", symbol: "OMR" },
@@ -175,6 +175,8 @@ export default function Settings() {
           </div>
         </Card>
 
+        <NotificationSettings />
+
         <div className="grid gap-6 xl:grid-cols-2 xl:items-start">
         <div className="space-y-4">
           <h3 className="text-sm font-semibold text-muted-foreground px-2">عام</h3>
@@ -197,7 +199,6 @@ export default function Settings() {
               <Switch checked={darkMode} onCheckedChange={toggleDarkMode} />
             </div>
           </div>
-          <NotificationsCard />
         </div>
 
         <div className="space-y-4">

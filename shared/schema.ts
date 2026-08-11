@@ -122,9 +122,115 @@ export const commitments = pgTable("commitments", {
   personName: text("person_name"),
   assetName: text("asset_name"),
   notes: text("notes").default(""),
+  reminderDaysBefore: integer("reminder_days_before").notNull().default(3),
+  escalateAfterDays: integer("escalate_after_days"),
+  delegatedTo: text("delegated_to"),
+  autoCloseOnProof: boolean("auto_close_on_proof").notNull().default(true),
   createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
   updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
 });
+/**
+ * One dated instance of a commitment. A recurring commitment is a rule; these
+ * are the times it actually comes due, so a missed August does not disappear
+ * the moment September is generated.
+ */
+export const commitmentOccurrences = pgTable("commitment_occurrences", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  commitmentId: integer("commitment_id").notNull().references(() => commitments.id, { onDelete: "cascade" }),
+  dueDate: integer("due_date").notNull(),
+  status: text("status").notNull().default("pending"),
+  amount: doublePrecision("amount"),
+  completedAt: integer("completed_at"),
+  postponedFrom: integer("postponed_from"),
+  remindedAt: integer("reminded_at"),
+  escalatedAt: integer("escalated_at"),
+  note: text("note").default(""),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
+/**
+ * What the engine did on its own, in the user's words, with enough state to put
+ * it back. Automation the user cannot see or reverse is automation they cannot
+ * trust with anything that matters.
+ */
+export const automationLog = pgTable("automation_log", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  action: text("action").notNull(),
+  summary: text("summary").notNull(),
+  commitmentId: integer("commitment_id").references(() => commitments.id, { onDelete: "cascade" }),
+  occurrenceId: integer("occurrence_id").references(() => commitmentOccurrences.id, { onDelete: "cascade" }),
+  undoPayload: text("undo_payload"),
+  undoneAt: integer("undone_at"),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
+export type CommitmentOccurrence = typeof commitmentOccurrences.$inferSelect;
+export type AutomationLogEntry = typeof automationLog.$inferSelect;
+
+/** Where a user wants to be reached, and how quiet they want it kept. */
+export const notificationPreferences = pgTable("notification_preferences", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
+  emailEnabled: boolean("email_enabled").notNull().default(true),
+  pushEnabled: boolean("push_enabled").notNull().default(true),
+  telegramEnabled: boolean("telegram_enabled").notNull().default(false),
+  telegramChatId: text("telegram_chat_id"),
+  whatsappEnabled: boolean("whatsapp_enabled").notNull().default(false),
+  whatsappNumber: text("whatsapp_number"),
+  webhookUrl: text("webhook_url"),
+  weeklySummary: boolean("weekly_summary").notNull().default(true),
+  quietHoursStart: integer("quiet_hours_start"),
+  quietHoursEnd: integer("quiet_hours_end"),
+  updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
+/** A browser subscribed to push. Keyed by endpoint because that is what the
+ *  push service treats as the identity of a device. */
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
+/**
+ * One attempted delivery. Recorded before sending so a crash mid-send cannot
+ * silently drop a reminder, and deduplicated so a retry does not notify twice.
+ */
+export const notificationDeliveries = pgTable("notification_deliveries", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  channel: text("channel").notNull(),
+  dedupeKey: text("dedupe_key").notNull(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  status: text("status").notNull().default("pending"),
+  error: text("error"),
+  sentAt: integer("sent_at"),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
+/** Contracts, invoices and receipts attached to a commitment. */
+export const commitmentDocuments = pgTable("commitment_documents", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  commitmentId: integer("commitment_id").references(() => commitments.id, { onDelete: "cascade" }),
+  fileName: text("file_name").notNull(),
+  storedName: text("stored_name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  extractedText: text("extracted_text"),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
+export type NotificationPreference = typeof notificationPreferences.$inferSelect;
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+export type CommitmentDocument = typeof commitmentDocuments.$inferSelect;
+
 export const commitmentSteps = pgTable("commitment_steps", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id),
@@ -216,40 +322,6 @@ export const bankCategoryRules = pgTable("bank_category_rules", {
 });
 
 export type BankCategoryRule = typeof bankCategoryRules.$inferSelect;
-
-/**
- * One row per browser or installed app the user agreed to be notified on. The
- * endpoint is the address the push service gave that install, and it is unique —
- * re-subscribing the same device updates the row instead of adding another, so a
- * user who re-enables notifications does not receive every alert twice.
- */
-export const pushSubscriptions = pgTable("push_subscriptions", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  endpoint: text("endpoint").notNull().unique(),
-  p256dh: text("p256dh").notNull(),
-  auth: text("auth").notNull(),
-  userAgent: text("user_agent").default(""),
-  failureCount: integer("failure_count").notNull().default(0),
-  lastUsedAt: integer("last_used_at"),
-  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
-});
-
-export type PushSubscription = typeof pushSubscriptions.$inferSelect;
-
-/**
- * What the user agreed to be told about. Absent a row the defaults apply, so
- * enabling notifications does not require answering a questionnaire first.
- */
-export const notificationPreferences = pgTable("notification_preferences", {
-  userId: integer("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
-  bankImports: boolean("bank_imports").notNull().default(true),
-  bankReviews: boolean("bank_reviews").notNull().default(true),
-  balanceGaps: boolean("balance_gaps").notNull().default(true),
-  updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
-});
-
-export type NotificationPreference = typeof notificationPreferences.$inferSelect;
 
 export const integrationSettings = pgTable("integration_settings", {
   id: serial("id").primaryKey(),
@@ -390,6 +462,10 @@ export const insertCommitmentSchema = createInsertSchema(commitments).pick({
   personName: true,
   assetName: true,
   notes: true,
+  reminderDaysBefore: true,
+  escalateAfterDays: true,
+  delegatedTo: true,
+  autoCloseOnProof: true,
 }).extend({
   title: z.string().trim().min(1, "يجب إدخال اسم الالتزام").max(160),
   type: z.enum(["financial", "government", "home", "vehicle", "health", "family", "work", "personal"]),
@@ -400,6 +476,10 @@ export const insertCommitmentSchema = createInsertSchema(commitments).pick({
   personName: z.string().trim().max(120).nullable().optional(),
   assetName: z.string().trim().max(120).nullable().optional(),
   notes: z.string().max(1000).nullable().optional(),
+  reminderDaysBefore: z.number().int().min(0).max(60).optional(),
+  escalateAfterDays: z.number().int().min(1).max(365).nullable().optional(),
+  delegatedTo: z.string().trim().max(120).nullable().optional(),
+  autoCloseOnProof: z.boolean().optional(),
 });
 export const insertCommitmentStepSchema = createInsertSchema(commitmentSteps).pick({
   title: true,

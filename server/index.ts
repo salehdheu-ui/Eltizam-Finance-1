@@ -1,7 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { migrateDatabase } from "./db";
 import { registerRoutes } from "./routes";
-import { configurePushNotifications } from "./push";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { ZodError } from "zod";
@@ -147,7 +146,6 @@ app.use((req, res, next) => {
   } else {
     log(`database schema already up to date at v${migrationResult.targetVersion}`, "db");
   }
-  configurePushNotifications();
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

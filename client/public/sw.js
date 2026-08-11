@@ -26,7 +26,7 @@ self.addEventListener("install", (event) => {
     caches
       .open(SHELL_CACHE)
       // A single missing entry must not fail the whole install, or one renamed
-      // icon leaves the app with no service worker at all.
+      // icon leaves the app with no service worker — and with it no push.
       .then((cache) => Promise.allSettled(SHELL_URLS.map((url) => cache.add(url))))
       .then(() => self.skipWaiting()),
   );
@@ -102,49 +102,29 @@ self.addEventListener("fetch", (event) => {
   }
 });
 
-/**
- * A push payload is JSON written by the server. It is parsed defensively: a push
- * that cannot be read must still raise *something*, because a subscription that
- * silently drops messages looks identical to one that is working.
- */
-function readPushPayload(event) {
-  const fallback = {
-    title: "التزام",
-    body: "لديك تحديث جديد",
-    url: "/",
-    tag: "eltizam-generic",
-  };
-
-  if (!event.data) return fallback;
-
-  try {
-    const payload = event.data.json();
-    return {
-      title: payload.title || fallback.title,
-      body: payload.body || fallback.body,
-      url: payload.url || fallback.url,
-      tag: payload.tag || fallback.tag,
-      renotify: Boolean(payload.renotify),
-    };
-  } catch (error) {
-    return { ...fallback, body: event.data.text() || fallback.body };
-  }
-}
-
 self.addEventListener("push", (event) => {
-  const payload = readPushPayload(event);
+  if (!event.data) return;
+
+  // The server sends JSON; a payload that will not parse still has to raise
+  // something, because a subscription that silently drops messages looks
+  // identical to one that is working.
+  let payload = { title: "التزام", body: "", url: "/commitments" };
+  try {
+    payload = { ...payload, ...event.data.json() };
+  } catch {
+    payload.body = event.data.text();
+  }
 
   event.waitUntil(
     self.registration.showNotification(payload.title, {
       body: payload.body,
       icon: "/icons/icon-192.png",
       badge: "/icons/icon-192.png",
-      lang: "ar",
       dir: "rtl",
-      // Grouping by tag keeps a quiet morning of bank alerts from stacking into a
-      // wall of notifications; the newest replaces the previous one of its kind.
-      tag: payload.tag,
-      renotify: payload.renotify ?? true,
+      lang: "ar",
+      // Grouping by destination keeps a busy morning from stacking into a wall
+      // of notifications; the newest replaces the previous one of its kind.
+      tag: payload.tag || payload.url,
       data: { url: payload.url },
     }),
   );
@@ -152,14 +132,13 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const target = event.notification.data?.url || "/";
+  const target = event.notification.data?.url || "/commitments";
 
+  // Focus an already-open tab instead of stacking another copy of the app.
   event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
-      // Reuse an open window rather than piling up tabs; navigate it to the page
-      // the notification is about.
-      for (const client of clientList) {
-        if (client.url.startsWith(self.location.origin) && "focus" in client) {
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if ("focus" in client) {
           client.navigate(target);
           return client.focus();
         }
@@ -185,11 +164,11 @@ self.addEventListener("pushsubscriptionchange", (event) => {
         applicationServerKey,
       });
 
-      await fetch("/api/push/subscribe", {
+      await fetch("/api/notifications/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ subscription }),
+        body: JSON.stringify(subscription.toJSON()),
       });
     })(),
   );

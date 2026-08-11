@@ -272,6 +272,77 @@ export function useUpdateTransactionCategory() {
   });
 }
 
+export type AutomationLogEntry = {
+  id: number;
+  action: string;
+  summary: string;
+  commitmentId: number | null;
+  occurrenceId: number | null;
+  canUndo: boolean;
+  undoneAt: number | null;
+  createdAt: number;
+};
+
+export type UpcomingOccurrence = {
+  id: number;
+  commitmentId: number;
+  dueDate: number;
+  status: string;
+  amount: number | null;
+  postponedFrom: number | null;
+  escalatedAt: number | null;
+  title: string;
+  type: string;
+  delegatedTo: string | null;
+};
+
+export function useAutomationLog() {
+  return useQuery<AutomationLogEntry[]>({ queryKey: ["/api/automation/log"] });
+}
+
+export function useUpcomingOccurrences() {
+  return useQuery<UpcomingOccurrence[]>({ queryKey: ["/api/occurrences"] });
+}
+
+function invalidateAutomation() {
+  queryClient.invalidateQueries({ queryKey: ["/api/automation/log"] });
+  queryClient.invalidateQueries({ queryKey: ["/api/occurrences"] });
+  queryClient.invalidateQueries({ queryKey: ["/api/commitments"] });
+}
+
+export function useRunAutomation() {
+  return useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/automation/run");
+      return response.json() as Promise<{ occurrences: number; reminders: number; missed: number; escalated: number; closed: number }>;
+    },
+    onSuccess: invalidateAutomation,
+  });
+}
+
+export function useUndoAutomation() {
+  return useMutation({
+    mutationFn: (id: number) => apiRequest("POST", `/api/automation/log/${id}/undo`),
+    onSuccess: invalidateAutomation,
+  });
+}
+
+export function usePostponeOccurrence() {
+  return useMutation({
+    mutationFn: ({ id, days }: { id: number; days: number }) =>
+      apiRequest("POST", `/api/occurrences/${id}/postpone`, { days }),
+    onSuccess: invalidateAutomation,
+  });
+}
+
+export function useSetOccurrenceStatus() {
+  return useMutation({
+    mutationFn: ({ id, status }: { id: number; status: "pending" | "completed" | "missed" | "skipped" }) =>
+      apiRequest("PATCH", `/api/occurrences/${id}`, { status }),
+    onSuccess: invalidateAutomation,
+  });
+}
+
 export function useDashboard() {
   return useQuery<{
     totalBalance: number;
