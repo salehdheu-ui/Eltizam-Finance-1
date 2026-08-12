@@ -140,7 +140,7 @@ export default function BankInbox() {
   const { data: wallets = [] } = useWallets();
   const { data: categories = [] } = useCategories();
   const { data: commitments = [] } = useCommitments();
-  const [bankKey, setBankKey] = useState("bank_muscat");
+  const [bankKey, setBankKey] = useState("");
   const [customSenders, setCustomSenders] = useState("");
   const [accountFilter, setAccountFilter] = useState("");
   const [editingConnectionId, setEditingConnectionId] = useState<number | null>(null);
@@ -180,7 +180,10 @@ export default function BankInbox() {
   const selectedBank = useMemo(() => (data?.banks || []).find((bank) => bank.key === bankKey), [data?.banks, bankKey]);
   const needsCustomSender = Boolean(selectedBank?.requiresCustomSender);
   const hasCustomSender = customSenders.trim().length > 0;
-  const isSetupIncomplete = !walletId || (needsCustomSender && !hasCustomSender);
+  // The bank has to be chosen. Pre-picking one leaves a connection that looks
+  // configured and reads nothing, because it only ever matches that bank's
+  // senders — which is indistinguishable from an empty inbox.
+  const isSetupIncomplete = !bankKey || !walletId || (needsCustomSender && !hasCustomSender);
 
   const connectGoogle = useMutation({
     mutationFn: async () => {
@@ -207,7 +210,8 @@ export default function BankInbox() {
         otherAccount: number; observedAccounts: string[];
       }>;
     },
-    onSuccess: async (summary) => {
+    onSuccess: async (summary, syncedConnectionId) => {
+      const syncedBank = data?.connections.find((entry) => entry.id === syncedConnectionId);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox/analysis"] }),
@@ -225,6 +229,35 @@ export default function BankInbox() {
           description: summary.observedAccounts?.length
             ? `لا تطابق الحساب المحدد. الحسابات الموجودة فعلاً في رسائلك: ${summary.observedAccounts.join("، ")} — اضغط تغيير واختر منها.`
             : "لا تطابق الحساب المحدد، ولم نتعرّف على رقم حساب في أي منها. جرّب متابعة كل الحسابات.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // "تمت إضافة 0" on its own gives the user nothing to act on, and the three
+      // reasons for it need completely different responses: the wrong bank is
+      // selected, the messages were read already, or nothing new has arrived.
+      if (summary.imported === 0 && summary.review === 0 && summary.merged === 0) {
+        if (summary.checked === 0) {
+          toast({
+            title: "لم نجد أي رسالة من هذا البنك",
+            description: `لا توجد رسائل من مُرسِل ${(syncedBank && bankNames.get(syncedBank.bankKey)) || "البنك المختار"} في بريدك خلال المدة. تأكد أن البنك المختار في هذا الربط هو بنكك فعلاً، أو أضف عنوان المُرسِل الذي تصلك منه الإشعارات.`,
+            variant: "destructive",
+          });
+          return;
+        }
+
+        if (summary.duplicate > 0) {
+          toast({
+            title: "لا جديد",
+            description: `قرأنا ${summary.checked} رسالة، وكلها مسجّلة عندك مسبقاً.`,
+          });
+          return;
+        }
+
+        toast({
+          title: "لم نتعرّف على أي معاملة",
+          description: `قرأنا ${summary.checked} رسالة من البنك دون أن نستخرج منها معاملة واضحة. أرسل نص إحداها لنوسّع القراءة.`,
           variant: "destructive",
         });
         return;
@@ -343,15 +376,17 @@ export default function BankInbox() {
   });
 
   const updateConnection = useMutation({
-    mutationFn: async ({ id, accountFilter: nextFilter }: { id: number; accountFilter: string; resync?: boolean }) => {
-      const response = await apiRequest("PATCH", `/api/bank-inbox/connections/${id}`, { accountFilter: nextFilter });
+    mutationFn: async ({ id, accountFilter: nextFilter, bankKey: nextBank }: { id: number; accountFilter: string; bankKey?: string; resync?: boolean }) => {
+      const response = await apiRequest("PATCH", `/api/bank-inbox/connections/${id}`, { accountFilter: nextFilter, ...(nextBank ? { bankKey: nextBank } : {}) });
       return response.json() as Promise<{ id: number; accountFilter: string | null }>;
     },
     onSuccess: async (saved, variables) => {
       await queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox"] });
       setEditingConnectionId(null);
       toast({
-        title: saved.accountFilter ? `تم تحديد الحساب ${saved.accountFilter}` : "تمت متابعة كل الحسابات",
+        title: variables.bankKey
+          ? "تم تغيير البنك"
+          : saved.accountFilter ? `تم تحديد الحساب ${saved.accountFilter}` : "تمت متابعة كل الحسابات",
         description: variables.resync
           ? "نقرأ الرسائل الآن بهذا الحساب…"
           : "اضغط قراءة الرسائل لإعادة البناء على هذا الحساب.",
@@ -530,6 +565,7 @@ export default function BankInbox() {
               <label className="space-y-2 text-sm font-semibold">
                 <span>اسم البنك</span>
                 <select value={bankKey} onChange={(event) => setBankKey(event.target.value)} className="h-11 w-full rounded-xl border bg-background px-3 font-normal">
+                  <option value="">اختر بنكك…</option>
                   {(data?.banks || []).map((bank) => <option key={bank.key} value={bank.key}>{bank.name}</option>)}
                 </select>
               </label>
@@ -629,7 +665,21 @@ export default function BankInbox() {
                       <Mail className="h-5 w-5 shrink-0 text-primary" />
                       <div className="min-w-0">
                         <p className="truncate font-semibold" dir="ltr">{connection.email}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">{bankNames.get(connection.bankKey)} · {walletNames.get(connection.walletId)} · {formatDate(connection.lastSyncAt)}</p>
+                        <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                          {/* Editable in place: a connection pointed at the wrong bank matches
+                              none of its senders and reads nothing, and re-linking to fix that
+                              costs the user their import history. */}
+                          <select
+                            value={connection.bankKey}
+                            onChange={(event) => updateConnection.mutate({ id: connection.id, accountFilter: connection.accountFilter || "", bankKey: event.target.value, resync: true })}
+                            disabled={updateConnection.isPending}
+                            aria-label="البنك الذي تصل منه الرسائل"
+                            className="w-auto max-w-[9rem] rounded-lg border bg-background px-1.5 py-0.5 text-xs"
+                          >
+                            {(data?.banks || []).map((bank) => <option key={bank.key} value={bank.key}>{bank.name}</option>)}
+                          </select>
+                          <span>· {walletNames.get(connection.walletId)} · {formatDate(connection.lastSyncAt)}</span>
+                        </p>
                         <p className="mt-1 text-xs">
                           {connection.accountFilter ? (
                             <span className="text-emerald-700">يتابع الحساب المنتهي بـ <span dir="ltr">{connection.accountFilter}</span> فقط</span>
