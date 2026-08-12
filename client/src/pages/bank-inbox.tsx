@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useCategories, useCommitments, useWallets } from "@/lib/hooks";
 import { CurrencyDisplay } from "@/components/ui/currency-display";
+import { formatCurrency } from "@/lib/utils";
 
  type BankInboxData = {
   providers: {
@@ -18,6 +19,7 @@ import { CurrencyDisplay } from "@/components/ui/currency-display";
   banks: Array<{ key: string; name: string; requiresCustomSender: boolean }>;
   detectedAccounts: Array<{ accountRef: string; connectionId: number; count: number }>;
   orphanedImports: { events: number; transactions: number };
+  unknownAdjustments: { count: number; total: number };
   connections: Array<{
     id: number;
     provider: string;
@@ -318,6 +320,28 @@ export default function BankInbox() {
     onError: (error: Error) => toast({ title: "تعذر الحذف", description: error.message, variant: "destructive" }),
   });
 
+  const purgeAdjustments = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/bank-inbox/adjustments/purge");
+      return response.json() as Promise<{ message: string; removed: number; walletsSettled: number }>;
+    },
+    onSuccess: async (result) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/transactions"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/wallets"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] }),
+      ]);
+      toast({
+        title: "تم التنظيف",
+        description: result.walletsSettled > 0
+          ? `${result.message}، وضُبط رصيد ${result.walletsSettled} محفظة على آخر رصيد ذكره البنك.`
+          : result.message,
+      });
+    },
+    onError: (error: Error) => toast({ title: "تعذر الحذف", description: error.message, variant: "destructive" }),
+  });
+
   const updateConnection = useMutation({
     mutationFn: async ({ id, accountFilter: nextFilter }: { id: number; accountFilter: string; resync?: boolean }) => {
       const response = await apiRequest("PATCH", `/api/bank-inbox/connections/${id}`, { accountFilter: nextFilter });
@@ -455,6 +479,39 @@ export default function BankInbox() {
               >
                 {purgeOrphaned.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                 احذفها وأعد الأرصدة
+              </Button>
+            </div>
+          </div>
+        </Card>
+      ) : null}
+
+      {/* These were booked when the balance chain was being read across two
+          accounts, so most of them describe money that never moved. */}
+      {(data?.unknownAdjustments.count ?? 0) > 0 ? (
+        <Card className="border-amber-200 bg-amber-50/60 p-4 shadow-sm">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+            <div className="min-w-0 flex-1">
+              <h2 className="font-bold text-amber-900">حركات «فرق غير معروف»</h2>
+              <p className="mt-1 text-sm leading-6 text-amber-900">
+                في سجلك {data!.unknownAdjustments.count} حركة بعنوان «فرق غير معروف · مجهول» بمجموع{" "}
+                {formatCurrency(data!.unknownAdjustments.total)}. كانت تُسجَّل عندما يقرأ النظام أرصدة حسابين مختلفين
+                على أنها حساب واحد، فتظهر فروق كبيرة لا تقابل أي حركة حقيقية. حذفها يُعيد ضبط رصيد المحفظة على
+                آخر رصيد ذكره البنك نفسه.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3 border-red-200 text-red-700 hover:bg-red-50"
+                disabled={purgeAdjustments.isPending}
+                onClick={() => {
+                  if (window.confirm(`سيحذف هذا ${data!.unknownAdjustments.count} حركة «فرق غير معروف» ويضبط الرصيد على آخر رصيد ذكره البنك. لا يمكن التراجع. متابعة؟`)) {
+                    purgeAdjustments.mutate();
+                  }
+                }}
+              >
+                {purgeAdjustments.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                احذفها واضبط الرصيد
               </Button>
             </div>
           </div>
