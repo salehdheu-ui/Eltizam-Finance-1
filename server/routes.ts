@@ -17,7 +17,7 @@ import { isClaudeConfigured, readDocument, understandCommitment } from "./unders
 import multer from "multer";
 import path from "path";
 import { db } from "./db";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, sql } from "drizzle-orm";
 import {
   INTEGRATION_PROVIDERS,
   PROVIDER_CALLBACK_PATHS,
@@ -1056,6 +1056,12 @@ export async function registerRoutes(
         return res.status(404).send("Not found");
       }
 
+      // Oldest-first with a flat cap published the *earliest* 500 occurrences, so
+      // once a user accumulated more than that the feed froze in the past and
+      // upcoming dues stopped appearing — the one thing a calendar is for. The
+      // window starts a month back, which keeps recent history visible without
+      // letting years of it crowd out what has not happened yet.
+      const feedFrom = Math.floor(Date.now() / 1000) - 30 * 86400;
       const events = await db.select({
         id: commitmentOccurrences.id,
         title: commitments.title,
@@ -1065,7 +1071,10 @@ export async function registerRoutes(
       })
         .from(commitmentOccurrences)
         .innerJoin(commitments, eq(commitments.id, commitmentOccurrences.commitmentId))
-        .where(eq(commitmentOccurrences.userId, userId))
+        .where(and(
+          eq(commitmentOccurrences.userId, userId),
+          gte(commitmentOccurrences.dueDate, feedFrom),
+        ))
         .orderBy(asc(commitmentOccurrences.dueDate))
         .limit(500);
 

@@ -1,49 +1,120 @@
 # التزام (Eltizam) - Financial Management App
 
 ## Overview
-A professional, mobile-first Arabic RTL financial management application built with React + Express + PostgreSQL. Features a native app-like feel with Tajawal font and full Arabic UI.
+A professional, mobile-first Arabic RTL financial management application built with
+React + Express + PostgreSQL. Installable as a PWA, with a native app-like feel,
+Tajawal font and a full Arabic UI.
 
 ## Architecture
-- **Frontend**: React + Vite + TailwindCSS v4 + Shadcn UI + TanStack Query
+- **Frontend**: React + Vite + TailwindCSS v4 + Shadcn UI + TanStack Query + wouter
 - **Backend**: Express.js with Passport.js local strategy authentication
-- **Database**: PostgreSQL via Drizzle ORM (Neon serverless driver)
+- **Database**: PostgreSQL via Drizzle ORM (`pg` driver)
 - **Auth**: Session-based with express-session + connect-pg-simple
 
-## Data Model
-- **users**: id, username, password (hashed), name, email
-- **wallets**: id, userId, name, type, balance, color
-- **categories**: id, userId, name, type (expense/income/debt), icon, color, budget
-- **transactions**: id, userId, walletId, categoryId, type, amount, note, date
+## Running it
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Server + Vite middleware on one port (default 5000) |
+| `npm run build` | Vite client build, then esbuild bundles the server to `dist/index.cjs` |
+| `npm start` | Runs the production bundle |
+| `npm run check` | TypeScript, no emit |
+| `npm run db:migrate` | Applies pending migrations (`db:push` is deliberately disabled) |
+| `npm run backup:db` | Manual database backup |
+| `npm run icons` | Regenerates the PWA icon set from one source design |
 
-## Key Files
-- `shared/schema.ts` - Drizzle schema + Zod validators
-- `server/auth.ts` - Passport.js auth setup with register/login/logout
-- `server/storage.ts` - DatabaseStorage class with all CRUD operations
-- `server/routes.ts` - API routes (all prefixed with /api)
-- `server/db.ts` - Neon/Drizzle database connection
-- `client/src/lib/hooks.ts` - TanStack Query hooks for all API operations
-- `client/src/components/layout.tsx` - Bottom nav + FAB + Add Transaction drawer
-- `client/src/pages/` - Dashboard, Transactions, Wallets, Categories, Settings, Login
+`DATABASE_URL` and `SESSION_SECRET` are required; everything else in
+`.env.example` is optional and degrades gracefully when unset.
 
-## API Endpoints
-- `POST /api/register` - Create new user
-- `POST /api/login` - Login
-- `POST /api/logout` - Logout
-- `GET /api/user` - Get current user
-- `PATCH /api/user` - Update user profile
-- `POST /api/user/change-password` - Change password
-- `GET /api/dashboard` - Dashboard summary (balance, income, expenses, recent txs)
-- `GET/POST /api/wallets` - List/create wallets
-- `PATCH/DELETE /api/wallets/:id` - Update/delete wallet
-- `GET/POST /api/categories` - List/create categories
-- `PATCH/DELETE /api/categories/:id` - Update/delete category
-- `GET/POST /api/transactions` - List/create transactions
-- `DELETE /api/transactions/:id` - Delete transaction
+## Migrations
+Numbered steps in `server/db.ts`, applied automatically on boot and tracked in
+`schema_migrations`. **Append a new version, never renumber an existing one** — a
+deployed database records what it already ran, so reusing a number silently skips
+the new step. The schema is currently at v20.
 
-## Design Choices
-- RTL layout with `dir="rtl"` on HTML root
-- Tajawal Google Font for Arabic typography
-- TailwindCSS v4 with CSS variable design tokens (H S% L% format)
-- Bottom navigation with 5 tabs + floating action button for adding transactions
-- Drawer-based forms (Shadcn Drawer component)
-- Wallet colors stored as Tailwind gradient class strings
+## Data model
+Core: **users**, **wallets**, **categories**, **transactions**.
+
+Planning: **obligations** (recurring dues, fixed or variable, with per-month
+statuses), **commitments** (personal or financial, with steps, proofs, occurrences
+and reminders), **recurringIncomes**, **savingsGoals**.
+
+Bank inbox: **bankEmailConnections** (one mailbox + bank + wallet, with sync
+health), **bankEmailEvents** (a parsed message and what became of it),
+**bankCategoryRules** (a payee decision the user made once).
+
+Notifications: **notificationPreferences**, **pushSubscriptions**,
+**notificationDeliveries** (the dedupe ledger).
+
+Also **integrationSettings** (admin-managed OAuth credentials, encrypted) and
+**passwordResetRequests**.
+
+## Server modules
+- `routes.ts` — the bulk of the API, all under `/api`
+- `storage.ts` — `DatabaseStorage`, every CRUD path and the balance rules
+- `auth.ts` — Passport setup, register/login/logout, password reset
+- `db.ts` — connection plus the migration list
+- `bank-inbox.ts` — Gmail/Outlook OAuth, the sync scheduler, import and reconciliation
+- `bank-message-parser.ts` — turns a bank alert into a transaction; pure, no I/O
+- `bank-analysis.ts` — spending analysis over imported events
+- `notifications.ts` — `notify()`, delivering over push, email, Telegram,
+  WhatsApp and webhook, with quiet hours and per-event dedupe
+- `automation.ts` — the commitment engine: occurrences, reminders, undo
+- `insights.ts` — risks, unnoticed subscriptions, the decision simulator
+- `understanding.ts` — a commitment from a sentence, a document, or speech
+- `documents.ts` — contract storage and the calendar feed
+- `integration-settings.ts` — encrypted provider credentials
+- `write-queue.ts` — serialises writes that would otherwise race on one key
+- `mail.ts`, `backup.ts`, `audit.ts`, `static.ts`, `vite.ts`
+
+## Bank inbox
+Reads only messages from the bank's own senders — never the whole mailbox — and
+optionally only one account within that bank. A sync covers 90 days on a first
+read, then only what arrived since the last successful one plus an overlap.
+
+Two invariants worth knowing before changing anything here:
+
+1. **A batch is imported oldest-first.** The importer settles the wallet to the
+   closing balance each message reports, so the newest message must be processed
+   last; and the balance-gap check compares a message against its predecessor,
+   which therefore has to already be stored.
+2. **A payment the user already entered by hand is linked, not duplicated.**
+   Reconciliation matches on wallet, direction, amount and date, and deliberately
+   ignores transfer legs and the importer's own "unknown difference" placeholders
+   — it recognises what the *user* recorded.
+
+Connections record the outcome of every attempt (`lastStatus`, `lastError`,
+`failureCount`) and back off as failures repeat, so a revoked token says so
+instead of looking like a quiet week.
+
+## PWA
+`client/public/manifest.webmanifest`, generated icons in `client/public/icons/`,
+and `client/public/sw.js`.
+
+The service worker caches the shell and content-hashed assets so the app opens
+offline, and **never caches anything under `/api`** — a stale balance reads as
+authoritative and gets acted on, which is worse than failing to load. The worker,
+the manifest and `index.html` are served `no-cache`; hashed assets get a year and
+`immutable`.
+
+Installation is offered once, on first run, then only from a small corner button
+(`components/install-prompt.tsx`). iOS has no install API, so it gets
+instructions for Safari's share sheet instead.
+
+## Notifications
+Everything goes through `notify()` in `server/notifications.ts`, which respects
+the channels the user enabled and their quiet hours, and dedupes on a caller
+supplied key. Push needs a VAPID pair in the environment; without it the feature
+reports itself unavailable rather than half-working. **Keep the pair stable** —
+replacing it silently invalidates every subscription already handed out.
+
+On iOS, push only works after the app is installed to the home screen.
+
+## Frontend notes
+- Routes are lazily loaded in `App.tsx` behind a `Suspense` boundary, so a screen
+  is fetched when it is opened. Chunking is left to Rollup; a hand-written
+  `manualChunks` that split React out was tried and reverted — the CJS interop
+  wrappers initialised before React and every route rendered blank.
+- RTL via `dir="rtl"` on the html root, Tajawal for Arabic typography.
+- TailwindCSS v4 with CSS variable design tokens (H S% L%).
+- Bottom navigation with a floating action button; drawer-based forms.
+- Wallet colours are stored as Tailwind gradient class strings.

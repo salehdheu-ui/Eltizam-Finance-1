@@ -1,4 +1,4 @@
-import { User, Shield, Bell, Moon, LogOut, ChevronLeft, Globe, Lock, Check, Wallet, PieChart, Receipt, Landmark, Goal, Mail } from "lucide-react";
+import { User, Shield, Moon, LogOut, ChevronLeft, Globe, Lock, Check, Wallet, PieChart, Receipt, Landmark, Goal, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -31,7 +31,6 @@ const currencies = [
 
 const SETTINGS_STORAGE_KEYS = {
   darkMode: "eltizam:dark-mode",
-  notifications: "eltizam:notifications",
   biometrics: "eltizam:biometrics",
   currency: "eltizam:currency",
 } as const;
@@ -45,7 +44,6 @@ export default function Settings() {
   const changePasswordMutation = useChangePassword();
   
   const [darkMode, setDarkMode] = useState(false);
-  const [notifications, setNotifications] = useState(true);
   const [biometrics, setBiometrics] = useState(false);
   
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
@@ -62,17 +60,12 @@ export default function Settings() {
 
   useEffect(() => {
     const storedDarkMode = localStorage.getItem(SETTINGS_STORAGE_KEYS.darkMode);
-    const storedNotifications = localStorage.getItem(SETTINGS_STORAGE_KEYS.notifications);
     const storedBiometrics = localStorage.getItem(SETTINGS_STORAGE_KEYS.biometrics);
     const storedCurrencyId = localStorage.getItem(SETTINGS_STORAGE_KEYS.currency);
 
     const isDarkMode = storedDarkMode === "true";
     setDarkMode(isDarkMode);
     document.documentElement.classList.toggle("dark", isDarkMode);
-
-    if (storedNotifications !== null) {
-      setNotifications(storedNotifications === "true");
-    }
 
     if (storedBiometrics !== null) {
       setBiometrics(storedBiometrics === "true");
@@ -123,11 +116,6 @@ export default function Settings() {
     toast({ title: "تم تغيير العملة", description: `تم تعيين ${currency.name} كعملة أساسية` });
   };
 
-  const handleNotificationsChange = (checked: boolean) => {
-    setNotifications(checked);
-    localStorage.setItem(SETTINGS_STORAGE_KEYS.notifications, String(checked));
-  };
-
   const handleBiometricsChange = (checked: boolean) => {
     setBiometrics(checked);
     localStorage.setItem(SETTINGS_STORAGE_KEYS.biometrics, String(checked));
@@ -169,7 +157,7 @@ export default function Settings() {
 
       <div className="p-4 pb-24 space-y-6 sm:p-6 xl:p-8">
         <Card className="p-3 border border-primary/10 bg-primary/5 text-sm text-muted-foreground">
-          يتم حفظ تفضيلات الواجهة مثل العملة والوضع الليلي والإشعارات على هذا الجهاز لتبقى التجربة سلسة.
+          يتم حفظ تفضيلات الواجهة مثل العملة والوضع الليلي على هذا الجهاز، بينما تُحفظ الإشعارات في حسابك.
         </Card>
         
         <Card className="p-4 border-none shadow-md bg-card/50">
@@ -203,19 +191,12 @@ export default function Settings() {
                 <ChevronLeft className="h-4 w-4" />
               </div>
             </div>
-            <div className="flex items-center justify-between p-4 border-b border-border/50 hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => toggleDarkMode(!darkMode)}>
+            <div className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => toggleDarkMode(!darkMode)}>
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-lg"><Moon className="h-5 w-5" /></div>
                 <span className="font-medium">الوضع الليلي</span>
               </div>
               <Switch checked={darkMode} onCheckedChange={toggleDarkMode} />
-            </div>
-            <div className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => handleNotificationsChange(!notifications)}>
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-400 rounded-lg"><Bell className="h-5 w-5" /></div>
-                <span className="font-medium">الإشعارات</span>
-              </div>
-              <Switch checked={notifications} onCheckedChange={handleNotificationsChange} />
             </div>
           </div>
         </div>

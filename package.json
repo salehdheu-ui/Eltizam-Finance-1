@@ -11,7 +11,8 @@
     "check": "tsc",
     "backup:db": "tsx script/backup-db.ts",
     "db:migrate": "tsx script/migrate-db.ts",
-    "db:push": "node -e \"throw new Error('db:push is disabled to protect existing data. Use npm run db:migrate instead.')\""
+    "db:push": "node -e \"throw new Error('db:push is disabled to protect existing data. Use npm run db:migrate instead.')\"",
+    "icons": "tsx script/generate-icons.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -96,12 +97,14 @@
     "@types/passport-local": "^1.0.38",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "@types/web-push": "^3.6.4",
     "@types/ws": "^8.5.13",
     "@vitejs/plugin-react": "^5.0.4",
     "autoprefixer": "^10.4.21",
     "cross-env": "^7.0.3",
     "drizzle-kit": "^0.31.4",
     "esbuild": "^0.25.0",
+    "playwright-core": "^1.62.1",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.20.5",

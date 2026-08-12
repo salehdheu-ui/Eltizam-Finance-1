@@ -118,6 +118,11 @@ const databaseMigrations: DatabaseMigration[] = [
     name: "ensure_notification_tables",
     up: async () => { await ensureNotificationTables(); },
   },
+  {
+    version: 20,
+    name: "ensure_bank_email_sync_health",
+    up: async () => { await ensureBankEmailSyncHealth(); },
+  },
 ];
 
 async function ensureSchemaMigrationsTable() {
@@ -637,6 +642,30 @@ async function ensureBankCategoryRulesTable() {
   `);
 
   await pgExec("CREATE INDEX IF NOT EXISTS bank_category_rules_user_idx ON bank_category_rules (user_id, updated_at DESC)");
+}
+
+/**
+ * Lets a connection report why it stopped reading. A revoked token used to
+ * surface only as a line in the server log, so the screen went on saying "no new
+ * messages" and a broken connection looked exactly like a quiet week.
+ */
+async function ensureBankEmailSyncHealth() {
+  const columns: Array<[string, string]> = [
+    ["last_sync_attempt_at", "INTEGER"],
+    ["last_status", "TEXT NOT NULL DEFAULT 'idle'"],
+    ["last_error", "TEXT"],
+    ["failure_count", "INTEGER NOT NULL DEFAULT 0"],
+  ];
+
+  for (const [name, type] of columns) {
+    if (!(await columnExists("bank_email_connections", name))) {
+      await pgExec(`ALTER TABLE bank_email_connections ADD COLUMN ${name} ${type}`);
+    }
+  }
+
+  // Reconciling an event against a transaction the user already entered by hand
+  // searches their transactions by date, so give that search an index to land on.
+  await pgExec("CREATE INDEX IF NOT EXISTS transactions_user_date_idx ON transactions (user_id, date DESC)");
 }
 
 async function ensureBankEmailAccountScopeColumns() {

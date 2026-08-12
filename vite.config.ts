@@ -39,6 +39,11 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    // Chunking is left to Rollup, which derives it from the lazy imports in
+    // App.tsx. Splitting React into a manual chunk of its own was tried and
+    // reverted: the CJS interop wrappers around libraries that reach for
+    // `React.forwardRef` ended up in a chunk that initialised before React did,
+    // and every route rendered blank.
   },
   server: {
     host: "0.0.0.0",

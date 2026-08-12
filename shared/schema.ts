@@ -265,6 +265,12 @@ export const bankEmailConnections = pgTable("bank_email_connections", {
   refreshTokenEncrypted: text("refresh_token_encrypted"),
   tokenExpiresAt: integer("token_expires_at"),
   lastSyncAt: integer("last_sync_at"),
+  // Health of the last attempt, so a connection that stopped reading says why
+  // instead of just showing zero new messages forever.
+  lastSyncAttemptAt: integer("last_sync_attempt_at"),
+  lastStatus: text("last_status").notNull().default("idle"),
+  lastError: text("last_error"),
+  failureCount: integer("failure_count").notNull().default(0),
   createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
   updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
 });

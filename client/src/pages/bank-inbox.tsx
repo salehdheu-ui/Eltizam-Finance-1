@@ -27,6 +27,10 @@ import { CurrencyDisplay } from "@/components/ui/currency-display";
     walletId: number;
     autoImport: boolean;
     lastSyncAt: number | null;
+    lastSyncAttemptAt: number | null;
+    lastStatus: string;
+    lastError: string | null;
+    failureCount: number;
   }>;
   events: Array<{
     id: number;
@@ -195,7 +199,7 @@ export default function BankInbox() {
     mutationFn: async (id: number) => {
       const response = await apiRequest("POST", `/api/bank-inbox/connections/${id}/sync`);
       return response.json() as Promise<{
-        checked: number; imported: number; review: number; duplicate: number;
+        checked: number; imported: number; review: number; merged: number; duplicate: number;
         otherAccount: number; observedAccounts: string[];
       }>;
     },
@@ -211,7 +215,7 @@ export default function BankInbox() {
 
       // Everything filtered out is the case worth explaining — otherwise the
       // screen just says zero and gives the user nothing to act on.
-      if (summary.imported === 0 && summary.review === 0 && summary.otherAccount > 0) {
+      if (summary.imported === 0 && summary.review === 0 && summary.merged === 0 && summary.otherAccount > 0) {
         toast({
           title: `تخطّينا ${summary.otherAccount} رسالة`,
           description: summary.observedAccounts?.length
@@ -222,10 +226,14 @@ export default function BankInbox() {
         return;
       }
 
-      toast({
-        title: "اكتملت قراءة البريد",
-        description: `تمت إضافة ${summary.imported}، وتحتاج ${summary.review} للمراجعة.${summary.otherAccount > 0 ? ` وتخطّينا ${summary.otherAccount} تخص حسابات أخرى.` : ""}`,
-      });
+      // A merged message is one the user had already recorded by hand — saying so
+      // is what makes it clear we recognised their entry instead of skipping it.
+      const parts = [`تمت إضافة ${summary.imported}`];
+      if (summary.merged > 0) parts.push(`وطابقنا ${summary.merged} مع حركات سجّلتها بنفسك`);
+      if (summary.review > 0) parts.push(`وتحتاج ${summary.review} للمراجعة`);
+      if (summary.otherAccount > 0) parts.push(`وتخطّينا ${summary.otherAccount} تخص حسابات أخرى`);
+
+      toast({ title: "اكتملت قراءة البريد", description: `${parts.join("، ")}.` });
     },
     onError: (error: Error) => toast({ title: "تعذرت المزامنة", description: error.message, variant: "destructive" }),
   });
@@ -461,6 +469,15 @@ export default function BankInbox() {
                         </p>
                         {missingSender ? (
                           <p className="mt-1 text-xs text-amber-700">هذا الربط ينقصه عنوان مرسل البنك. افصله ثم أعد ربطه لتحديد العنوان.</p>
+                        ) : null}
+                        {connection.lastStatus === "error" && connection.lastError ? (
+                          <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-red-50 p-2 text-xs leading-5 text-red-800">
+                            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                            <span>
+                              توقفت القراءة التلقائية: {connection.lastError}
+                              {connection.failureCount > 1 ? ` (تكررت ${connection.failureCount} مرات)` : ""}
+                            </span>
+                          </p>
                         ) : null}
                       </div>
                     </div>

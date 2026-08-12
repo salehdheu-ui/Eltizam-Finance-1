@@ -5,27 +5,45 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Layout from "@/components/layout";
-import Dashboard from "@/pages/dashboard";
-import Transactions from "@/pages/transactions";
-import Income from "@/pages/income";
-import Wallets from "@/pages/wallets";
-import Categories from "@/pages/categories";
-import Reports from "@/pages/reports";
-import Obligations from "@/pages/obligations";
-import Commitments from "@/pages/commitments";
-import CommitmentDetails from "@/pages/commitment-details";
-import SavingsPlanDetails from "@/pages/savings-plan-details";
-import SavingsGoalsPage from "@/pages/savings-goals";
-import VariableObligationDetails from "@/pages/variable-obligation-details";
-import Login from "@/pages/login";
-import SavingsPlans from "@/pages/savings-plans";
-import Settings from "@/pages/settings";
-import BankInbox from "@/pages/bank-inbox";
-import UserGuidePage from "@/pages/user-guide";
-import AdminUsers from "@/pages/admin-users";
 import { useUser } from "@/lib/hooks";
 import { Loader2 } from "lucide-react";
-import React, { useEffect } from "react";
+import React, { lazy, Suspense, useEffect } from "react";
+
+/**
+ * Pages load on demand rather than all at once. The app is mobile-first and now
+ * installable, so the first load happens on a phone connection — and every route
+ * being in one bundle meant opening the login screen also fetched the charting
+ * library, the report builder and every settings panel. Splitting per route lets
+ * the browser fetch only the screen being opened, and lets the rest stay cached
+ * across deploys that did not touch them.
+ */
+const Dashboard = lazy(() => import("@/pages/dashboard"));
+const Transactions = lazy(() => import("@/pages/transactions"));
+const Income = lazy(() => import("@/pages/income"));
+const Wallets = lazy(() => import("@/pages/wallets"));
+const Categories = lazy(() => import("@/pages/categories"));
+const Reports = lazy(() => import("@/pages/reports"));
+const Obligations = lazy(() => import("@/pages/obligations"));
+const Commitments = lazy(() => import("@/pages/commitments"));
+const CommitmentDetails = lazy(() => import("@/pages/commitment-details"));
+const SavingsPlanDetails = lazy(() => import("@/pages/savings-plan-details"));
+const SavingsGoalsPage = lazy(() => import("@/pages/savings-goals"));
+const VariableObligationDetails = lazy(() => import("@/pages/variable-obligation-details"));
+const Login = lazy(() => import("@/pages/login"));
+const SavingsPlans = lazy(() => import("@/pages/savings-plans"));
+const Settings = lazy(() => import("@/pages/settings"));
+const BankInbox = lazy(() => import("@/pages/bank-inbox"));
+const UserGuidePage = lazy(() => import("@/pages/user-guide"));
+const AdminUsers = lazy(() => import("@/pages/admin-users"));
+
+/** The same spinner the router already shows while the session is resolving. */
+function RouteFallback() {
+  return (
+    <div className="app-min-h-screen flex items-center justify-center">
+      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+    </div>
+  );
+}
 
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -102,11 +120,13 @@ function Router() {
       return <Redirect to="/" />;
     }
     return (
-      <Switch>
-        <Route path="/login" component={Login} />
-        <Route path="/forgot-password" component={Login} />
-        <Route path="/reset-password" component={Login} />
-      </Switch>
+      <Suspense fallback={<RouteFallback />}>
+        <Switch>
+          <Route path="/login" component={Login} />
+          <Route path="/forgot-password" component={Login} />
+          <Route path="/reset-password" component={Login} />
+        </Switch>
+      </Suspense>
     );
   }
 
@@ -116,30 +136,32 @@ function Router() {
 
   return (
     <Layout>
-      <Switch>
-        <Route path="/" component={Dashboard} />
-        <Route path="/transactions" component={Transactions} />
-        <Route path="/income" component={Income} />
-        <Route path="/wallets" component={Wallets} />
-        <Route path="/categories" component={Categories} />
-        <Route path="/reports" component={Reports} />
-        <Route path="/financial-plans/:id" component={SavingsPlanDetails} />
-        <Route path="/financial-plans" component={SavingsPlans} />
-        <Route path="/savings-goals" component={SavingsGoalsPage} />
-        <Route path="/obligations/:id" component={VariableObligationDetails} />
-        <Route path="/obligations" component={Obligations} />
-        <Route path="/commitments/:id" component={CommitmentDetails} />
-        <Route path="/commitments" component={Commitments} />
-        <Route path="/settings" component={Settings} />
-        <Route path="/bank-inbox" component={BankInbox} />
-        <Route path="/user-guide" component={UserGuidePage} />
-        {isSystemAdmin ? (
-          <Route path="/admin/users" component={AdminUsers} />
-        ) : location === "/admin/users" ? (
-          <Redirect to="/" />
-        ) : null}
-        <Route component={NotFound} />
-      </Switch>
+      <Suspense fallback={<RouteFallback />}>
+        <Switch>
+          <Route path="/" component={Dashboard} />
+          <Route path="/transactions" component={Transactions} />
+          <Route path="/income" component={Income} />
+          <Route path="/wallets" component={Wallets} />
+          <Route path="/categories" component={Categories} />
+          <Route path="/reports" component={Reports} />
+          <Route path="/financial-plans/:id" component={SavingsPlanDetails} />
+          <Route path="/financial-plans" component={SavingsPlans} />
+          <Route path="/savings-goals" component={SavingsGoalsPage} />
+          <Route path="/obligations/:id" component={VariableObligationDetails} />
+          <Route path="/obligations" component={Obligations} />
+          <Route path="/commitments/:id" component={CommitmentDetails} />
+          <Route path="/commitments" component={Commitments} />
+          <Route path="/settings" component={Settings} />
+          <Route path="/bank-inbox" component={BankInbox} />
+          <Route path="/user-guide" component={UserGuidePage} />
+          {isSystemAdmin ? (
+            <Route path="/admin/users" component={AdminUsers} />
+          ) : location === "/admin/users" ? (
+            <Redirect to="/" />
+          ) : null}
+          <Route component={NotFound} />
+        </Switch>
+      </Suspense>
     </Layout>
   );
 }
