@@ -6,6 +6,7 @@ import { DatabaseBackup, Loader2, Shield, Trash2, UserCheck, UserX, Users } from
 import { useAdminApprovePasswordReset, useAdminBackups, useAdminCreateManualBackup, useAdminDeleteUser, useAdminPasswordResetRequests, useAdminRejectPasswordReset, useAdminStats, useAdminUpdateUser, useAdminUsers, useUser } from "@/lib/hooks";
 import { formatDate } from "@/lib/utils";
 import AdminIntegrationsCard from "@/components/admin/integrations-card";
+import AdminChannelsCard from "@/components/admin/channels-card";
 import { useState } from "react";
 
 export default function AdminUsers() {
@@ -175,6 +176,8 @@ export default function AdminUsers() {
       </Card>
 
       <AdminIntegrationsCard />
+
+      <AdminChannelsCard />
 
       <Card className="border-border/50 shadow-sm">
         <CardContent className="p-4 space-y-4">

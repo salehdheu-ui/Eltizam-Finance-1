@@ -76,7 +76,7 @@ export default function NotificationSettings() {
 
   const enablePush = async () => {
     if (!data?.pushPublicKey) {
-      toast({ title: "الإشعارات غير مهيّأة", description: "مفاتيح Push غير مضبوطة على الخادم.", variant: "destructive" });
+      toast({ title: "الإشعارات غير مهيّأة", description: "مفاتيح Push غير مضبوطة على الخادم. يضبطها مدير النظام من صفحة الإدارة › قنوات الإشعارات.", variant: "destructive" });
       return;
     }
 

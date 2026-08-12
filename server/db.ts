@@ -128,6 +128,11 @@ const databaseMigrations: DatabaseMigration[] = [
     name: "ensure_bank_email_events_survive_disconnect",
     up: async () => { await ensureBankEmailEventsSurviveDisconnect(); },
   },
+  {
+    version: 22,
+    name: "ensure_channel_settings_table",
+    up: async () => { await ensureChannelSettingsTable(); },
+  },
 ];
 
 async function ensureSchemaMigrationsTable() {
@@ -682,6 +687,25 @@ async function ensureBankEmailSyncHealth() {
  * erasure threw away the fingerprints, which is what allowed reconnecting the
  * same mailbox to import the whole history again.
  */
+/**
+ * Holds the SMTP and Web Push credentials so a deployment that cannot set
+ * environment variables can still configure the notification channels from the
+ * admin screen. Environment variables stay the fallback when no row exists.
+ */
+async function ensureChannelSettingsTable() {
+  await pgExec(`
+    CREATE TABLE IF NOT EXISTS channel_settings (
+      id SERIAL PRIMARY KEY,
+      channel TEXT NOT NULL UNIQUE,
+      config_encrypted TEXT NOT NULL,
+      is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      updated_by_user_id INTEGER REFERENCES users(id),
+      created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
+      updated_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer
+    )
+  `);
+}
+
 async function ensureBankEmailEventsSurviveDisconnect() {
   await pgExec("ALTER TABLE bank_email_events ALTER COLUMN connection_id DROP NOT NULL");
   await pgExec("ALTER TABLE bank_email_events DROP CONSTRAINT IF EXISTS bank_email_events_connection_id_fkey");

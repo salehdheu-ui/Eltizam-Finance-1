@@ -7,7 +7,7 @@ import {
   users,
 } from "@shared/schema";
 import { db } from "./db";
-import { getProviderConfig } from "./integration-settings";
+import { resolvePushConfig } from "./channel-settings";
 import { sendPlainEmail } from "./mail";
 
 export type NotificationChannel = "email" | "push" | "telegram" | "whatsapp" | "webhook";
@@ -52,23 +52,17 @@ export function isQuietNow(start: number | null, end: number | null, hour = new 
   return start < end ? hour >= start && hour < end : hour >= start || hour < end;
 }
 
-let vapidReady = false;
-
 /**
- * VAPID keys identify this server to the push services. Generated once and kept
- * in the integration settings so every instance signs with the same identity —
- * a new key pair would invalidate every subscription already handed out.
+ * VAPID keys identify this server to the push services. They are applied on
+ * every send rather than latched once: the keys are editable from the admin
+ * screen, and a latched pair would keep signing with credentials the operator
+ * has already replaced.
  */
 async function ensureVapid() {
-  if (vapidReady) return true;
+  const config = await resolvePushConfig();
+  if (!config) return false;
 
-  const publicKey = process.env.VAPID_PUBLIC_KEY?.trim();
-  const privateKey = process.env.VAPID_PRIVATE_KEY?.trim();
-  const subject = process.env.VAPID_SUBJECT?.trim() || "mailto:admin@eltizam.app";
-  if (!publicKey || !privateKey) return false;
-
-  webpush.setVapidDetails(subject, publicKey, privateKey);
-  vapidReady = true;
+  webpush.setVapidDetails(config.subject, config.publicKey, config.privateKey);
   return true;
 }
 
@@ -76,12 +70,15 @@ export function generateVapidKeys() {
   return webpush.generateVAPIDKeys();
 }
 
-export function getPublicVapidKey() {
-  return process.env.VAPID_PUBLIC_KEY?.trim() || null;
+export async function getPublicVapidKey() {
+  const config = await resolvePushConfig();
+  return config?.publicKey ?? null;
 }
 
 async function deliverPush(notification: Notification) {
-  if (!(await ensureVapid())) throw new Error("مفاتيح Push غير مهيّأة");
+  if (!(await ensureVapid())) {
+    throw new Error("مفاتيح Push غير مهيّأة — اضبطها من صفحة الإدارة");
+  }
 
   const subscriptions = await db.select().from(pushSubscriptions)
     .where(eq(pushSubscriptions.userId, notification.userId));

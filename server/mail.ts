@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { resolveMailConfig, type MailConfig } from "./channel-settings";
 
 type PasswordResetEmailInput = {
   to: string;
@@ -17,46 +18,58 @@ type MailTransporter = {
   }): Promise<unknown>;
 };
 
-const smtpHost = process.env.SMTP_HOST?.trim() || "";
-const smtpPort = Number(process.env.SMTP_PORT || 587);
-const smtpSecure = process.env.SMTP_SECURE === "true";
-const smtpUser = process.env.SMTP_USER?.trim() || "";
-const smtpPass = process.env.SMTP_PASS?.trim() || "";
-const smtpFrom = process.env.SMTP_FROM?.trim() || smtpUser;
-const smtpRequireAuth = process.env.SMTP_REQUIRE_AUTH !== "false";
-const appBaseUrl = process.env.APP_BASE_URL?.trim() || "";
+const appBaseUrl = process.env.APP_BASE_URL?.trim() || process.env.PUBLIC_APP_URL?.trim() || "";
 
-let transporterPromise: Promise<MailTransporter> | null = null;
+/**
+ * Cached against the exact settings it was built from. The credentials can now
+ * be edited from the admin screen, so a transporter built from the old ones has
+ * to be dropped the moment they change rather than living for the process.
+ */
+let cached: { signature: string; transporter: MailTransporter } | null = null;
 
-function isMailConfigured() {
-  return Boolean(smtpHost && smtpPort && smtpFrom && (!smtpRequireAuth || (smtpUser && smtpPass)));
+function buildTransporter(config: MailConfig): MailTransporter {
+  const signature = JSON.stringify([config.host, config.port, config.secure, config.requireAuth, config.user, config.pass, config.from]);
+  if (cached?.signature === signature) return cached.transporter;
+
+  const transporter = nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: config.requireAuth ? { user: config.user, pass: config.pass } : undefined,
+  }) as MailTransporter;
+
+  cached = { signature, transporter };
+  return transporter;
 }
 
 async function getTransporter() {
-  if (!isMailConfigured()) {
-    throw new Error("SMTP is not configured");
+  const config = await resolveMailConfig();
+  if (!config) {
+    throw new Error("لم تُضبط إعدادات البريد (SMTP) — اضبطها من صفحة الإدارة");
   }
-
-  if (!transporterPromise) {
-    transporterPromise = Promise.resolve(nodemailer.createTransport({
-      host: smtpHost,
-      port: smtpPort,
-      secure: smtpSecure,
-      auth: smtpRequireAuth ? { user: smtpUser, pass: smtpPass } : undefined,
-    }));
-  }
-
-  return transporterPromise;
+  return { transporter: buildTransporter(config), config };
 }
 
-export function canSendMail() {
-  return isMailConfigured();
+export async function canSendMail() {
+  return Boolean(await resolveMailConfig());
+}
+
+/** Delivers with whatever credentials are configured right now, so the admin
+ *  screen can prove a saved SMTP setup works before relying on it. */
+export async function sendTestEmail(to: string) {
+  const { transporter, config } = await getTransporter();
+  await transporter.sendMail({
+    from: config.from,
+    to,
+    subject: "اختبار بريد التزام",
+    text: "وصلتك هذه الرسالة، فإعدادات البريد تعمل.",
+  });
 }
 
 /** A plain notification email. Kept separate from the reset flow so reminders
  *  do not inherit that message's security wording. */
 export async function sendPlainEmail(input: { to: string; subject: string; text: string }) {
-  const transporter = await getTransporter();
+  const { transporter, config } = await getTransporter();
   const html = `
     <div dir="rtl" style="font-family: Arial, sans-serif; line-height: 1.8; color: #0f172a; max-width: 640px; margin: 0 auto;">
       <h2 style="margin-bottom: 12px;">التزام</h2>
@@ -66,7 +79,7 @@ export async function sendPlainEmail(input: { to: string; subject: string; text:
   `;
 
   await transporter.sendMail({
-    from: smtpFrom,
+    from: config.from,
     to: input.to,
     subject: input.subject,
     text: input.text,
@@ -75,7 +88,7 @@ export async function sendPlainEmail(input: { to: string; subject: string; text:
 }
 
 export async function sendPasswordResetEmail(input: PasswordResetEmailInput) {
-  const transporter = await getTransporter();
+  const { transporter, config } = await getTransporter();
   const appName = input.appName || "التزام";
   const subject = `رمز إعادة تعيين كلمة المرور - ${appName}`;
   const resetUrl = appBaseUrl ? `${appBaseUrl.replace(/\/$/, "")}/reset-password?token=${encodeURIComponent(input.code)}` : "";
@@ -104,7 +117,7 @@ export async function sendPasswordResetEmail(input: PasswordResetEmailInput) {
   `;
 
   await transporter.sendMail({
-    from: smtpFrom,
+    from: config.from,
     to: input.to,
     subject,
     text,
