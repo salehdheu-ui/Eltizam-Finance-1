@@ -91,6 +91,10 @@ Two invariants worth knowing before changing anything here:
    to come last. Booked afterwards, the correction pushed the wallet back off the
    bank's number by exactly the gap it was correcting.
 
+`gapAmount` is stored on the event, so correcting the measurement does not
+correct what was already written — migration v23 recomputes every stored gap
+with the same-account chain, which is what the "فجوة في الرصيد" panel reads.
+
 `POST /api/bank-inbox/adjustments/purge` clears the placeholders out of a ledger
 that already collected them. It deletes without reversing each delta — those
 deltas sit either side of an absolute settle, so reversing them walks the wallet
