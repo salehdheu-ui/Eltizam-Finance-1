@@ -123,6 +123,11 @@ const databaseMigrations: DatabaseMigration[] = [
     name: "ensure_bank_email_sync_health",
     up: async () => { await ensureBankEmailSyncHealth(); },
   },
+  {
+    version: 21,
+    name: "ensure_bank_email_events_survive_disconnect",
+    up: async () => { await ensureBankEmailEventsSurviveDisconnect(); },
+  },
 ];
 
 async function ensureSchemaMigrationsTable() {
@@ -666,6 +671,21 @@ async function ensureBankEmailSyncHealth() {
   // Reconciling an event against a transaction the user already entered by hand
   // searches their transactions by date, so give that search an index to land on.
   await pgExec("CREATE INDEX IF NOT EXISTS transactions_user_date_idx ON transactions (user_id, date DESC)");
+}
+
+/**
+ * Lets a message record outlive the connection that fetched it.
+ *
+ * With ON DELETE CASCADE, disconnecting a mailbox erased every event it had
+ * produced while leaving the transactions those events created sitting in the
+ * ledger — untagged, so they could not be found and removed afterwards. The same
+ * erasure threw away the fingerprints, which is what allowed reconnecting the
+ * same mailbox to import the whole history again.
+ */
+async function ensureBankEmailEventsSurviveDisconnect() {
+  await pgExec("ALTER TABLE bank_email_events ALTER COLUMN connection_id DROP NOT NULL");
+  await pgExec("ALTER TABLE bank_email_events DROP CONSTRAINT IF EXISTS bank_email_events_connection_id_fkey");
+  await pgExec("ALTER TABLE bank_email_events ADD CONSTRAINT bank_email_events_connection_id_fkey FOREIGN KEY (connection_id) REFERENCES bank_email_connections(id) ON DELETE SET NULL");
 }
 
 async function ensureBankEmailAccountScopeColumns() {

@@ -17,6 +17,7 @@ import { CurrencyDisplay } from "@/components/ui/currency-display";
   };
   banks: Array<{ key: string; name: string; requiresCustomSender: boolean }>;
   detectedAccounts: Array<{ accountRef: string; connectionId: number; count: number }>;
+  orphanedImports: { events: number; transactions: number };
   connections: Array<{
     id: number;
     provider: string;
@@ -146,6 +147,7 @@ export default function BankInbox() {
   const [walletId, setWalletId] = useState("");
   const [autoImport, setAutoImport] = useState(true);
   const [showSetup, setShowSetup] = useState(false);
+  const [pendingDisconnect, setPendingDisconnect] = useState<{ id: number; email: string } | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -273,9 +275,47 @@ export default function BankInbox() {
     onError: (error: Error) => toast({ title: "تعذرت الإضافة", description: error.message, variant: "destructive" }),
   });
 
+  // `purge` is always sent explicitly: the user is asked before either answer is
+  // acted on, because keeping a real spending record and erasing it are both
+  // reasonable and neither can be assumed.
   const disconnect = useMutation({
-    mutationFn: (id: number) => apiRequest("DELETE", `/api/bank-inbox/connections/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox"] }),
+    mutationFn: async ({ id, purge }: { id: number; purge: boolean }) => {
+      const response = await apiRequest("DELETE", `/api/bank-inbox/connections/${id}`, { purge });
+      return response.json() as Promise<{ message: string; removedTransactions: number }>;
+    },
+    onSuccess: async (result) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/transactions"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/wallets"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] }),
+      ]);
+      setPendingDisconnect(null);
+      toast({
+        title: result.message,
+        description: result.removedTransactions > 0
+          ? `حُذفت ${result.removedTransactions} حركة وأُعيدت الأرصدة كما كانت.`
+          : undefined,
+      });
+    },
+    onError: (error: Error) => toast({ title: "تعذر فصل البريد", description: error.message, variant: "destructive" }),
+  });
+
+  const purgeOrphaned = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/bank-inbox/imports/purge");
+      return response.json() as Promise<{ removedTransactions: number; removedEvents: number }>;
+    },
+    onSuccess: async (result) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/transactions"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/wallets"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] }),
+      ]);
+      toast({ title: "تم التنظيف", description: `حُذفت ${result.removedTransactions} حركة وأُعيدت الأرصدة كما كانت.` });
+    },
+    onError: (error: Error) => toast({ title: "تعذر الحذف", description: error.message, variant: "destructive" }),
   });
 
   const updateConnection = useMutation({
@@ -329,6 +369,59 @@ export default function BankInbox() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-5 p-4 pb-24 sm:p-6" dir="rtl">
+      {pendingDisconnect ? (
+        <>
+          <div className="fixed inset-0 z-50 bg-black/40" onClick={() => setPendingDisconnect(null)} aria-hidden="true" />
+          <div className="fixed inset-x-0 bottom-0 z-50 sm:inset-0 sm:flex sm:items-center sm:justify-center" role="dialog" aria-modal="true" aria-labelledby="disconnect-title">
+            <div className="mx-auto w-full max-w-md rounded-t-3xl border bg-background p-5 shadow-2xl sm:rounded-3xl">
+              <h2 id="disconnect-title" className="text-lg font-bold">فصل {pendingDisconnect.email}</h2>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                ماذا نفعل بالحركات التي أضافها هذا الربط؟ هي مصروفات حقيقية حصلت فعلاً، فاختر بوضوح.
+              </p>
+
+              <div className="mt-4 space-y-2">
+                <Button
+                  variant="outline"
+                  className="h-auto w-full justify-start whitespace-normal py-3 text-right"
+                  disabled={disconnect.isPending}
+                  onClick={() => disconnect.mutate({ id: pendingDisconnect.id, purge: false })}
+                >
+                  <div>
+                    <p className="font-semibold">احتفظ بالحركات</p>
+                    <p className="mt-1 text-xs font-normal leading-5 text-muted-foreground">
+                      تبقى في سجلك كحركات عادية. يمكنك حذفها لاحقاً، ولن تتكرر إذا أعدت الربط.
+                    </p>
+                  </div>
+                </Button>
+
+                <Button
+                  variant="outline"
+                  className="h-auto w-full justify-start whitespace-normal border-red-200 py-3 text-right hover:bg-red-50"
+                  disabled={disconnect.isPending}
+                  onClick={() => disconnect.mutate({ id: pendingDisconnect.id, purge: true })}
+                >
+                  <div>
+                    <p className="font-semibold text-red-700">احذفها وابدأ من جديد</p>
+                    <p className="mt-1 text-xs font-normal leading-5 text-muted-foreground">
+                      تُحذف كل حركة أضافها هذا الربط وتعود أرصدة المحافظ كما كانت. لا يمكن التراجع.
+                    </p>
+                  </div>
+                </Button>
+              </div>
+
+              <Button variant="ghost" className="mt-2 w-full" onClick={() => setPendingDisconnect(null)} disabled={disconnect.isPending}>
+                إلغاء
+              </Button>
+              {disconnect.isPending ? (
+                <p className="mt-2 flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> جارٍ التنفيذ…
+                </p>
+              ) : null}
+            </div>
+          </div>
+        </>
+      ) : null}
+
       <header className="flex items-center gap-3 py-2">
         <Button variant="ghost" size="icon" onClick={() => setLocation("/settings")} aria-label="العودة إلى الإعدادات"><ArrowRight className="h-5 w-5" /></Button>
         <div className="min-w-0 flex-1">
@@ -337,6 +430,36 @@ export default function BankInbox() {
         </div>
         {hasConnections ? <Button variant="outline" size="sm" onClick={() => setShowSetup((value) => !value)}>{showSetup ? "إلغاء" : "ربط بنك آخر"}</Button> : null}
       </header>
+
+      {/* Reachable even with no connections left — that is the whole point of it. */}
+      {(data?.orphanedImports.transactions ?? 0) > 0 ? (
+        <Card className="border-amber-200 bg-amber-50/60 p-4 shadow-sm">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+            <div className="min-w-0 flex-1">
+              <h2 className="font-bold text-amber-900">حركات من ربط محذوف</h2>
+              <p className="mt-1 text-sm leading-6 text-amber-900">
+                لا يزال في سجلك {data!.orphanedImports.transactions} حركة أضافها ربط بريد فصلته سابقاً واحتفظت بحركاته.
+                يمكنك حذفها الآن وستعود أرصدة المحافظ كما كانت.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3 border-red-200 text-red-700 hover:bg-red-50"
+                disabled={purgeOrphaned.isPending}
+                onClick={() => {
+                  if (window.confirm(`سيحذف هذا ${data!.orphanedImports.transactions} حركة ويعيد الأرصدة كما كانت. لا يمكن التراجع. متابعة؟`)) {
+                    purgeOrphaned.mutate();
+                  }
+                }}
+              >
+                {purgeOrphaned.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                احذفها وأعد الأرصدة
+              </Button>
+            </div>
+          </div>
+        </Card>
+      ) : null}
 
       {!hasConnections || showSetup ? (
         <Card className="overflow-hidden border-primary/15 shadow-sm">
@@ -499,7 +622,7 @@ export default function BankInbox() {
                       >
                         {resetConnection.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                       </Button>
-                      <Button variant="outline" size="icon" aria-label="فصل البريد" onClick={() => disconnect.mutate(connection.id)}><Unplug className="h-4 w-4" /></Button>
+                      <Button variant="outline" size="icon" aria-label="فصل البريد" onClick={() => setPendingDisconnect({ id: connection.id, email: connection.email })}><Unplug className="h-4 w-4" /></Button>
                     </div>
                    </div>
 
