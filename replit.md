@@ -102,6 +102,14 @@ somewhere the bank never said it was — and instead puts each affected wallet b
 on the newest balance its connection recorded. A wallet with no connection keeps
 its balance: there the placeholder was explaining a change the user made.
 
+Changing what a connection is allowed to read — its bank, its senders, or its
+account filter — clears `lastSyncAt`, so the next sync re-examines the whole
+window instead of only what has arrived since. Without that, widening a filter
+and pressing read returned nothing and looked broken. Re-saving unchanged values
+does not clear it. The bank itself is editable in place: a connection pointed at
+the wrong bank matches none of its senders and reads nothing, and re-linking to
+fix that would cost the user their import history.
+
 Connections record the outcome of every attempt (`lastStatus`, `lastError`,
 `failureCount`) and back off as failures repeat, so a revoked token says so
 instead of looking like a quiet week.

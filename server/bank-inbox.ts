@@ -1311,6 +1311,7 @@ export function registerBankInboxRoutes(app: Express) {
     try {
       const input = z.object({
         accountFilter: accountFilterSchema,
+        bankKey: z.string().max(40).optional(),
         walletId: z.coerce.number().int().positive().optional(),
         autoImport: z.boolean().optional(),
         customSenders: z.string().max(500).optional(),
@@ -1329,18 +1330,42 @@ export function registerBankInboxRoutes(app: Express) {
         if (!wallet) return res.status(404).json({ message: "المحفظة المحددة غير موجودة" });
       }
 
-      if (input.customSenders !== undefined) {
-        const entries = normalizeSenderList(input.customSenders);
-        if (resolveAllowedSenders(connection.bankKey as BankKey, entries).length === 0) {
+      // A connection pointed at the wrong bank matches none of its senders and
+      // reads nothing at all, so the bank is correctable in place rather than
+      // only by disconnecting — which would cost the user their import history.
+      const nextBankKey = input.bankKey ?? connection.bankKey;
+      if (!BANK_PROFILES.some((profile) => profile.key === nextBankKey)) {
+        return res.status(400).json({ message: "بنك غير مدعوم" });
+      }
+
+      if (input.customSenders !== undefined || input.bankKey !== undefined) {
+        const entries = normalizeSenderList(input.customSenders ?? connection.customSenders ?? "");
+        if (resolveAllowedSenders(nextBankKey as BankKey, entries).length === 0) {
           return res.status(400).json({ message: "اكتب عنوان المرسل الذي يصلك منه إشعار البنك حتى نقرأ رسائله فقط" });
         }
       }
 
+      // Changing what the connection is allowed to read changes the answer for
+      // messages it has *already* walked past, but a sync only covers what has
+      // arrived since the last one — so widening the filter and pressing read
+      // returned nothing and looked broken. Forgetting the last sync makes the
+      // next one re-examine the whole window; anything already stored is
+      // recognised by its fingerprint, so nothing is imported twice.
+      const nextFilter = normalizeAccountFilter(input.accountFilter);
+      const nextSenders = input.customSenders !== undefined
+        ? normalizeSenderList(input.customSenders).join(",") || null
+        : connection.customSenders;
+      const readingScopeChanged = nextFilter !== connection.accountFilter
+        || nextSenders !== connection.customSenders
+        || nextBankKey !== connection.bankKey;
+
       const [updated] = await db.update(bankEmailConnections).set({
-        accountFilter: normalizeAccountFilter(input.accountFilter),
+        accountFilter: nextFilter,
+        ...(input.bankKey !== undefined ? { bankKey: nextBankKey } : {}),
         ...(input.walletId ? { walletId: input.walletId } : {}),
         ...(input.autoImport !== undefined ? { autoImport: input.autoImport } : {}),
-        ...(input.customSenders !== undefined ? { customSenders: normalizeSenderList(input.customSenders).join(",") || null } : {}),
+        ...(input.customSenders !== undefined ? { customSenders: nextSenders } : {}),
+        ...(readingScopeChanged ? { lastSyncAt: null } : {}),
         updatedAt: Math.floor(Date.now() / 1000),
       }).where(eq(bankEmailConnections.id, connection.id)).returning({
         id: bankEmailConnections.id,
