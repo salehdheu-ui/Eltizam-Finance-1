@@ -133,6 +133,11 @@ const databaseMigrations: DatabaseMigration[] = [
     name: "ensure_channel_settings_table",
     up: async () => { await ensureChannelSettingsTable(); },
   },
+  {
+    version: 23,
+    name: "recompute_bank_email_gaps_per_account",
+    up: async () => { await recomputeBankEmailGapsPerAccount(); },
+  },
 ];
 
 async function ensureSchemaMigrationsTable() {
@@ -692,6 +697,86 @@ async function ensureBankEmailSyncHealth() {
  * environment variables can still configure the notification channels from the
  * admin screen. Environment variables stay the fallback when no row exists.
  */
+/**
+ * Recomputes every stored balance gap with the chain scoped to one account.
+ *
+ * The gap on each event was measured against the previous message on the
+ * connection whatever account it belonged to, so a mailbox carrying two
+ * accounts recorded a large gap on nearly every message — none of them real.
+ * Those numbers are frozen on the rows and drive the "فجوة في الرصيد" panel, so
+ * correcting the measurement is not enough on its own; what was already written
+ * has to be recomputed or the analysis stays wrong forever.
+ *
+ * It is derived data — balance, amount and direction are what the bank said —
+ * so it can be rebuilt in place. Partitioning by account_ref groups the rows
+ * whose account could not be read together, matching the importer's rule that
+ * those chain only to each other.
+ */
+async function recomputeBankEmailGapsPerAccount() {
+  await pgExec(`
+    WITH chain AS (
+      SELECT
+        id,
+        balance_after,
+        CASE
+          WHEN COALESCE(direction, CASE WHEN transaction_type = 'income' THEN 'credit' ELSE 'debit' END) = 'credit'
+          THEN COALESCE(amount, 0)
+          ELSE -COALESCE(amount, 0)
+        END AS signed_amount,
+        LAG(balance_after) OVER (
+          PARTITION BY user_id, connection_id, account_ref
+          ORDER BY received_at, id
+        ) AS previous_balance
+      FROM bank_email_events
+      WHERE balance_after IS NOT NULL
+    ),
+    measured AS (
+      SELECT
+        id,
+        ROUND((balance_after - (previous_balance + signed_amount))::numeric, 3) AS difference
+      FROM chain
+      WHERE previous_balance IS NOT NULL
+    )
+    UPDATE bank_email_events e
+    SET gap_amount = m.difference
+    FROM measured m
+    WHERE e.id = m.id AND ABS(m.difference) >= 0.001
+  `);
+
+  // Everything else has no measurable gap: the first message of an account, a
+  // message with no stated balance, or one whose chain now balances exactly.
+  await pgExec(`
+    UPDATE bank_email_events e
+    SET gap_amount = NULL
+    WHERE gap_amount IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM (
+          WITH chain AS (
+            SELECT
+              id,
+              balance_after,
+              CASE
+                WHEN COALESCE(direction, CASE WHEN transaction_type = 'income' THEN 'credit' ELSE 'debit' END) = 'credit'
+                THEN COALESCE(amount, 0)
+                ELSE -COALESCE(amount, 0)
+              END AS signed_amount,
+              LAG(balance_after) OVER (
+                PARTITION BY user_id, connection_id, account_ref
+                ORDER BY received_at, id
+              ) AS previous_balance
+            FROM bank_email_events
+            WHERE balance_after IS NOT NULL
+          )
+          SELECT id
+          FROM chain
+          WHERE previous_balance IS NOT NULL
+            AND ABS(ROUND((balance_after - (previous_balance + signed_amount))::numeric, 3)) >= 0.001
+        ) kept
+        WHERE kept.id = e.id
+      )
+  `);
+}
+
 async function ensureChannelSettingsTable() {
   await pgExec(`
     CREATE TABLE IF NOT EXISTS channel_settings (

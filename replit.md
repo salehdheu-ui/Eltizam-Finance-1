@@ -81,6 +81,26 @@ Two invariants worth knowing before changing anything here:
    Reconciliation matches on wallet, direction, amount and date, and deliberately
    ignores transfer legs and the importer's own "unknown difference" placeholders
    — it recognises what the *user* recorded.
+3. **The balance chain never crosses an account.** A closing balance is only
+   comparable to the previous one from the *same* account, so `measureBalanceGap`
+   matches on `accountRef` (and chains no-account messages only to each other).
+   Chaining two accounts made every message look like it was missing the
+   difference between them — a flood of large adjustments alternating in sign.
+4. **An "unknown difference" is booked *before* the message's own transaction.**
+   That transaction settles the wallet to the balance the bank stated, so it has
+   to come last. Booked afterwards, the correction pushed the wallet back off the
+   bank's number by exactly the gap it was correcting.
+
+`gapAmount` is stored on the event, so correcting the measurement does not
+correct what was already written — migration v23 recomputes every stored gap
+with the same-account chain, which is what the "فجوة في الرصيد" panel reads.
+
+`POST /api/bank-inbox/adjustments/purge` clears the placeholders out of a ledger
+that already collected them. It deletes without reversing each delta — those
+deltas sit either side of an absolute settle, so reversing them walks the wallet
+somewhere the bank never said it was — and instead puts each affected wallet back
+on the newest balance its connection recorded. A wallet with no connection keeps
+its balance: there the placeholder was explaining a change the user made.
 
 Connections record the outcome of every attempt (`lastStatus`, `lastError`,
 `failureCount`) and back off as failures repeat, so a revoked token says so

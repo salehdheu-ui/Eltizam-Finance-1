@@ -354,6 +354,14 @@ async function findAutomaticLinks(
  * message plus this transaction should equal the balance of this one. Any
  * leftover means movements happened that we never received an email for — which
  * is exactly the gap that used to make the running total drift silently.
+ *
+ * The chain only holds within one account. A mailbox that receives alerts for a
+ * second account was having the two balances chained together, so every message
+ * looked like it was missing the difference between the accounts — a flood of
+ * large adjustments alternating in sign, one per message, none of them real.
+ * Balances are therefore only compared against the previous message from the
+ * *same* account, and a message whose account cannot be read is only chained to
+ * other messages whose account also cannot be read.
  */
 async function measureBalanceGap(
   userId: number,
@@ -363,12 +371,17 @@ async function measureBalanceGap(
 ) {
   if (parsed.balanceAfter === null) return null;
 
+  const sameAccount = parsed.accountRef
+    ? eq(bankEmailEvents.accountRef, parsed.accountRef)
+    : isNull(bankEmailEvents.accountRef);
+
   const [previous] = await db
     .select({ balanceAfter: bankEmailEvents.balanceAfter })
     .from(bankEmailEvents)
     .where(and(
       eq(bankEmailEvents.userId, userId),
       eq(bankEmailEvents.connectionId, connectionId),
+      sameAccount,
       lt(bankEmailEvents.receivedAt, receivedAt),
       isNotNull(bankEmailEvents.balanceAfter),
     ))
@@ -532,18 +545,14 @@ async function importParsedEvent(params: {
   }
 
   try {
-    const transaction = await storage.createTransaction(params.userId, {
-      walletId: params.connection.walletId,
-      categoryId: links.categoryId,
-      type: params.parsed.transactionType,
-      amount: params.parsed.amount,
-      note: `من البريد البنكي · ${params.parsed.merchant}`,
-    }, { allowOverdraft: true, settleBalanceTo: params.parsed.balanceAfter });
-    await db.update(transactions).set({ date: params.receivedAt }).where(eq(transactions.id, transaction.id));
-
     // The bank's balance moved by more than this message explains, so messages we
     // never received account for the rest. Booking it keeps the history equal to
     // the balance instead of leaving a difference nothing in the ledger explains.
+    //
+    // It goes in first, before the message's own transaction settles the wallet
+    // to the balance the bank stated. Booked afterwards — as it was — it moved
+    // the wallet back off that balance by exactly the gap, so recording the
+    // correction was itself what left the balance wrong.
     if (gap && Math.abs(gap.difference) >= 0.001) {
       const unknown = await storage.createTransaction(params.userId, {
         walletId: params.connection.walletId,
@@ -555,6 +564,15 @@ async function importParsedEvent(params: {
       // Dated just before the message that revealed it, since it happened earlier.
       await db.update(transactions).set({ date: params.receivedAt - 1 }).where(eq(transactions.id, unknown.id));
     }
+
+    const transaction = await storage.createTransaction(params.userId, {
+      walletId: params.connection.walletId,
+      categoryId: links.categoryId,
+      type: params.parsed.transactionType,
+      amount: params.parsed.amount,
+      note: `من البريد البنكي · ${params.parsed.merchant}`,
+    }, { allowOverdraft: true, settleBalanceTo: params.parsed.balanceAfter });
+    await db.update(transactions).set({ date: params.receivedAt }).where(eq(transactions.id, transaction.id));
 
     const [imported] = await db.update(bankEmailEvents).set({ status: "imported", transactionId: transaction.id }).where(eq(bankEmailEvents.id, event.id)).returning();
     return { state: "imported" as const, event: imported };
@@ -1071,6 +1089,15 @@ export function registerBankInboxRoutes(app: Express) {
         transactions: orphaned.filter((row) => row.transactionId !== null && row.status !== "merged").length,
       };
 
+      const adjustmentRows = await db
+        .select({ amount: transactions.amount, type: transactions.type })
+        .from(transactions)
+        .where(and(eq(transactions.userId, req.user!.id), eq(transactions.note, UNKNOWN_ADJUSTMENT_NOTE)));
+      const unknownAdjustments = {
+        count: adjustmentRows.length,
+        total: Number(adjustmentRows.reduce((sum, row) => sum + Math.abs(row.amount), 0).toFixed(3)),
+      };
+
       const [googleConfigured, microsoftConfigured] = await Promise.all([
         isProviderConfigured("google"),
         isProviderConfigured("microsoft"),
@@ -1083,6 +1110,7 @@ export function registerBankInboxRoutes(app: Express) {
         banks: BANK_PROFILES.map(({ key, name, senders }) => ({ key, name, requiresCustomSender: senders.length === 0 })),
         detectedAccounts,
         orphanedImports,
+        unknownAdjustments,
         connections,
         events,
       });
@@ -1522,6 +1550,59 @@ export function registerBankInboxRoutes(app: Express) {
     try {
       const summary = await purgeConnectionImports(req.user!.id, null);
       res.json({ message: "تم حذف الحركات المستوردة من الربوط المحذوفة", ...summary });
+    } catch (error) { next(error); }
+  });
+
+  /**
+   * Clears the unexplained-difference entries out of the ledger.
+   *
+   * Balances are not reversed one by one. Each of these was booked next to a
+   * message that settled the wallet to the bank's stated balance, so undoing
+   * their deltas would walk the wallet somewhere the bank never said it was.
+   * The bank's own most recent closing balance is the authority, so an affected
+   * wallet is set back to that instead. A wallet with no connection keeps its
+   * balance untouched — there the entry was explaining a change the user made
+   * deliberately, and removing the explanation should not move the money.
+   */
+  app.post("/api/bank-inbox/adjustments/purge", requireAuth, async (req, res, next) => {
+    try {
+      const userId = req.user!.id;
+      const rows = await db.select({ id: transactions.id, walletId: transactions.walletId })
+        .from(transactions)
+        .where(and(eq(transactions.userId, userId), eq(transactions.note, UNKNOWN_ADJUSTMENT_NOTE)));
+
+      if (rows.length === 0) {
+        return res.json({ message: "لا توجد حركات فرق غير معروف", removed: 0, walletsSettled: 0 });
+      }
+
+      await db.delete(transactions).where(inArray(transactions.id, rows.map((row) => row.id)));
+
+      const affected = new Set(rows.map((row) => row.walletId).filter((id): id is number => id !== null));
+      let walletsSettled = 0;
+      for (const walletId of Array.from(affected)) {
+        const [latest] = await db
+          .select({ balanceAfter: bankEmailEvents.balanceAfter })
+          .from(bankEmailEvents)
+          .innerJoin(bankEmailConnections, eq(bankEmailEvents.connectionId, bankEmailConnections.id))
+          .where(and(
+            eq(bankEmailEvents.userId, userId),
+            eq(bankEmailConnections.walletId, walletId),
+            isNotNull(bankEmailEvents.balanceAfter),
+          ))
+          .orderBy(desc(bankEmailEvents.receivedAt))
+          .limit(1);
+
+        if (typeof latest?.balanceAfter === "number") {
+          await storage.updateWallet(walletId, userId, { balance: latest.balanceAfter });
+          walletsSettled += 1;
+        }
+      }
+
+      res.json({
+        message: `حُذفت ${rows.length} حركة فرق غير معروف`,
+        removed: rows.length,
+        walletsSettled,
+      });
     } catch (error) { next(error); }
   });
 
