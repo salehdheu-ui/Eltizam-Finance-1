@@ -278,7 +278,14 @@ export const bankEmailConnections = pgTable("bank_email_connections", {
 export const bankEmailEvents = pgTable("bank_email_events", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  connectionId: integer("connection_id").notNull().references(() => bankEmailConnections.id, { onDelete: "cascade" }),
+  /**
+   * Survives the connection being removed. Cascading these away used to strand
+   * every transaction they had created — nothing was left to identify an imported
+   * row, so it could no longer be removed in bulk — and it also discarded the
+   * fingerprints, so reconnecting the same mailbox imported all of it a second
+   * time. The row outlives the connection precisely so neither can happen.
+   */
+  connectionId: integer("connection_id").references(() => bankEmailConnections.id, { onDelete: "set null" }),
   providerMessageId: text("provider_message_id").notNull(),
   fingerprint: text("fingerprint").notNull(),
   bankKey: text("bank_key").notNull(),

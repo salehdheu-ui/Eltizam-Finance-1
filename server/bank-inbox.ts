@@ -866,6 +866,46 @@ async function syncMicrosoftConnection(userId: number, connection: typeof bankEm
   await importCandidates(userId, connection, candidates, summary, observedAccounts, outcome);
   return { ...summary, observedAccounts: Array.from(observedAccounts), outcome };
 }
+/**
+ * Removes what a connection imported and the records of the messages behind it.
+ * Pass `null` for the connection to clear imports left behind by connections that
+ * have already been removed.
+ *
+ * Transactions go through storage.deleteTransaction so each gives its amount back
+ * to the wallet rather than leaving the balance short. A merged event points at a
+ * transaction the *user* entered and the import only recognised, so that one is
+ * released rather than deleted — clearing our own imports must never take their
+ * own records with it.
+ */
+async function purgeConnectionImports(userId: number, connectionId: number | null) {
+  const events = await db.select().from(bankEmailEvents).where(and(
+    eq(bankEmailEvents.userId, userId),
+    connectionId === null
+      ? isNull(bankEmailEvents.connectionId)
+      : eq(bankEmailEvents.connectionId, connectionId),
+  ));
+
+  let removedTransactions = 0;
+  for (const event of events) {
+    if (!event.transactionId || event.status === "merged") continue;
+    try {
+      await storage.deleteTransaction(event.transactionId, userId);
+      removedTransactions += 1;
+    } catch (error) {
+      console.error(`Failed to delete transaction ${event.transactionId} while purging bank imports:`, error instanceof Error ? error.message : "unknown error");
+    }
+  }
+
+  await db.delete(bankEmailEvents).where(and(
+    eq(bankEmailEvents.userId, userId),
+    connectionId === null
+      ? isNull(bankEmailEvents.connectionId)
+      : eq(bankEmailEvents.connectionId, connectionId),
+  ));
+
+  return { removedTransactions, removedEvents: events.length };
+}
+
 /** The message to show the user for a failed read, without leaking internals. */
 function describeSyncError(error: unknown) {
   if (error && typeof error === "object" && "publicMessage" in error) {
@@ -1009,12 +1049,28 @@ export function registerBankInboxRoutes(app: Express) {
         .where(and(eq(bankEmailEvents.userId, req.user!.id), isNotNull(bankEmailEvents.accountRef)));
       const detectedAccounts = Object.values(
         accountRows.reduce<Record<string, { accountRef: string; connectionId: number; count: number }>>((acc, row) => {
+          // These are offered so a live connection can be scoped to one of them;
+          // an event whose connection is gone has nothing to contribute.
+          if (row.connectionId === null) return acc;
           const key = `${row.connectionId}:${row.accountRef}`;
           if (!acc[key]) acc[key] = { accountRef: row.accountRef!, connectionId: row.connectionId, count: 0 };
           acc[key].count += 1;
           return acc;
         }, {}),
       ).sort((a, b) => b.count - a.count);
+      // Imports left behind by a connection the user removed but chose to keep
+      // the transactions from. Surfacing the count is what makes them reachable;
+      // previously the only control that could clear them lived on a card that no
+      // longer existed.
+      const orphaned = await db
+        .select({ id: bankEmailEvents.id, transactionId: bankEmailEvents.transactionId, status: bankEmailEvents.status })
+        .from(bankEmailEvents)
+        .where(and(eq(bankEmailEvents.userId, req.user!.id), isNull(bankEmailEvents.connectionId)));
+      const orphanedImports = {
+        events: orphaned.length,
+        transactions: orphaned.filter((row) => row.transactionId !== null && row.status !== "merged").length,
+      };
+
       const [googleConfigured, microsoftConfigured] = await Promise.all([
         isProviderConfigured("google"),
         isProviderConfigured("microsoft"),
@@ -1026,6 +1082,7 @@ export function registerBankInboxRoutes(app: Express) {
         },
         banks: BANK_PROFILES.map(({ key, name, senders }) => ({ key, name, requiresCustomSender: senders.length === 0 })),
         detectedAccounts,
+        orphanedImports,
         connections,
         events,
       });
@@ -1284,29 +1341,7 @@ export function registerBankInboxRoutes(app: Express) {
       ));
       if (!connection) return res.status(404).json({ message: "ربط البريد غير موجود" });
 
-      const events = await db.select().from(bankEmailEvents).where(and(
-        eq(bankEmailEvents.userId, userId),
-        eq(bankEmailEvents.connectionId, connection.id),
-      ));
-
-      let removedTransactions = 0;
-      for (const event of events) {
-        // A merged event points at a transaction the user entered themselves; the
-        // import only recognised it. Clearing our own imports must not take their
-        // records with it.
-        if (!event.transactionId || event.status === "merged") continue;
-        try {
-          await storage.deleteTransaction(event.transactionId, userId);
-          removedTransactions += 1;
-        } catch (error) {
-          console.error(`Failed to delete transaction ${event.transactionId} during bank inbox reset:`, error instanceof Error ? error.message : "unknown error");
-        }
-      }
-
-      await db.delete(bankEmailEvents).where(and(
-        eq(bankEmailEvents.userId, userId),
-        eq(bankEmailEvents.connectionId, connection.id),
-      ));
+      const { removedTransactions, removedEvents } = await purgeConnectionImports(userId, connection.id);
       await db.update(bankEmailConnections)
         .set({
           lastSyncAt: null,
@@ -1318,7 +1353,7 @@ export function registerBankInboxRoutes(app: Express) {
         })
         .where(eq(bankEmailConnections.id, connection.id));
 
-      res.json({ removedEvents: events.length, removedTransactions });
+      res.json({ removedEvents, removedTransactions });
     } catch (error) { next(error); }
   });
 
@@ -1407,6 +1442,9 @@ export function registerBankInboxRoutes(app: Express) {
       const [event] = await db.select().from(bankEmailEvents).where(and(eq(bankEmailEvents.id, id), eq(bankEmailEvents.userId, req.user!.id)));
       if (!event) return res.status(404).json({ message: "المعاملة المقترحة غير موجودة" });
       if (event.transactionId) return res.json(event);
+      if (event.connectionId === null) {
+        return res.status(400).json({ message: "ربط البريد الذي جاءت منه هذه الرسالة محذوف. أعد الربط أولاً." });
+      }
       const [connection] = await db.select().from(bankEmailConnections).where(and(eq(bankEmailConnections.id, event.connectionId), eq(bankEmailConnections.userId, req.user!.id)));
       if (!connection || !event.amount || !event.transactionType) return res.status(400).json({ message: "بيانات المعاملة غير مكتملة" });
 
@@ -1443,10 +1481,47 @@ export function registerBankInboxRoutes(app: Express) {
     } catch (error) { next(error); }
   });
 
+  /**
+   * Disconnecting asks what should happen to what the connection imported,
+   * because the two answers are both legitimate and neither can be guessed: the
+   * transactions are a real record of money that really moved, but a user who is
+   * starting over wants them gone along with the connection.
+   *
+   * `purge` is required rather than defaulted, so a caller cannot delete or keep
+   * financial records by omission.
+   */
   app.delete("/api/bank-inbox/connections/:id", requireAuth, async (req, res, next) => {
     try {
-      await db.delete(bankEmailConnections).where(and(eq(bankEmailConnections.id, Number(req.params.id)), eq(bankEmailConnections.userId, req.user!.id)));
-      res.json({ message: "تم فصل البريد البنكي" });
+      const { purge } = z.object({ purge: z.boolean() }).parse(req.body ?? {});
+      const userId = req.user!.id;
+      const [connection] = await db.select().from(bankEmailConnections).where(and(
+        eq(bankEmailConnections.id, Number(req.params.id)),
+        eq(bankEmailConnections.userId, userId),
+      ));
+      if (!connection) return res.status(404).json({ message: "ربط البريد غير موجود" });
+
+      const summary = purge
+        ? await purgeConnectionImports(userId, connection.id)
+        : { removedTransactions: 0, removedEvents: 0 };
+
+      await db.delete(bankEmailConnections).where(eq(bankEmailConnections.id, connection.id));
+
+      res.json({
+        message: purge ? "تم فصل البريد وحذف ما استورده" : "تم فصل البريد والاحتفاظ بالحركات",
+        ...summary,
+      });
+    } catch (error) { next(error); }
+  });
+
+  /**
+   * Clears imports whose connection is already gone. Before message records
+   * survived a disconnect there was no way to reach these at all — the button
+   * that removed them lived on a card that no longer existed.
+   */
+  app.post("/api/bank-inbox/imports/purge", requireAuth, async (req, res, next) => {
+    try {
+      const summary = await purgeConnectionImports(req.user!.id, null);
+      res.json({ message: "تم حذف الحركات المستوردة من الربوط المحذوفة", ...summary });
     } catch (error) { next(error); }
   });
 
