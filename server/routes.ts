@@ -4,13 +4,21 @@ import { storage } from "./storage";
 import { hashPlainPassword, setupAuth } from "./auth";
 import { writeAuditEvent } from "./audit";
 import { createManualBackup, listAllBackups } from "./backup";
-import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, integrationSettings, upsertIntegrationSettingSchema, transactions, categories, bankEmailEvents, bankCategoryRules, automationLog, commitmentOccurrences, commitments, notificationPreferences } from "@shared/schema";
+import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, integrationSettings, upsertIntegrationSettingSchema, upsertEmailChannelSchema, upsertPushChannelSchema, transactions, categories, bankEmailEvents, bankCategoryRules, automationLog, commitmentOccurrences, commitments, notificationPreferences } from "@shared/schema";
 import { buildWriteQueueKey, enqueueWrite } from "./write-queue";
 import { z } from "zod";
 import { buildRuleKey, registerBankInboxRoutes } from "./bank-inbox";
 import { postponeOccurrence, runAutomationForUser, startAutomationEngine, undoAutomationEntry } from "./automation";
-import { getPreferences, getPublicVapidKey, notify, removePushSubscription, savePushSubscription } from "./notifications";
-import { canSendMail } from "./mail";
+import { generateVapidKeys, getPreferences, getPublicVapidKey, notify, removePushSubscription, savePushSubscription } from "./notifications";
+import { canSendMail, sendTestEmail } from "./mail";
+import {
+  deleteChannelConfig,
+  getChannelRecord,
+  readStoredConfig,
+  resolveMailConfig,
+  resolvePushConfig,
+  saveChannelConfig,
+} from "./channel-settings";
 import { buildWeeklySummary, detectRecurring, detectRisks, simulateDecision } from "./insights";
 import { buildCalendarFeed, calendarToken, deleteDocument, documentsRoot, getDocument, isAllowedDocument, listDocuments, MAX_DOCUMENT_BYTES, storeDocument } from "./documents";
 import { isClaudeConfigured, readDocument, understandCommitment } from "./understanding";
@@ -476,6 +484,160 @@ export async function registerRoutes(
       });
       res.json(result);
     } catch (e) { next(e); }
+  });
+
+  /**
+   * Delivery credentials for the notification channels. Secrets are write-only:
+   * the view returns whether one is stored and a masked hint, never the value,
+   * and an empty field on save keeps whatever is already there.
+   */
+  async function buildChannelsView() {
+    const [emailRecord, pushRecord, emailStored, pushStored, mailConfig, pushConfig] = await Promise.all([
+      getChannelRecord("email"),
+      getChannelRecord("push"),
+      readStoredConfig<Record<string, unknown>>("email"),
+      readStoredConfig<Record<string, unknown>>("push"),
+      resolveMailConfig(),
+      resolvePushConfig(),
+    ]);
+
+    return {
+      email: {
+        channel: "email" as const,
+        label: "البريد الإلكتروني (SMTP)",
+        configured: Boolean(mailConfig),
+        source: mailConfig?.source ?? null,
+        hasDatabaseRecord: Boolean(emailRecord),
+        isEnabled: emailRecord?.isEnabled ?? true,
+        updatedAt: emailRecord?.updatedAt ?? null,
+        host: String(emailStored?.host ?? "") || (emailRecord ? "" : mailConfig?.host ?? ""),
+        port: Number(emailStored?.port ?? 0) || (emailRecord ? 587 : mailConfig?.port ?? 587),
+        secure: Boolean(emailStored?.secure ?? (emailRecord ? false : mailConfig?.secure ?? false)),
+        requireAuth: emailStored ? emailStored.requireAuth !== false : mailConfig?.requireAuth ?? true,
+        user: String(emailStored?.user ?? "") || (emailRecord ? "" : mailConfig?.user ?? ""),
+        from: String(emailStored?.from ?? "") || (emailRecord ? "" : mailConfig?.from ?? ""),
+        passMasked: maskSecret(emailStored?.pass ? String(emailStored.pass) : null),
+      },
+      push: {
+        channel: "push" as const,
+        label: "إشعارات المتصفح (Web Push)",
+        configured: Boolean(pushConfig),
+        source: pushConfig?.source ?? null,
+        hasDatabaseRecord: Boolean(pushRecord),
+        isEnabled: pushRecord?.isEnabled ?? true,
+        updatedAt: pushRecord?.updatedAt ?? null,
+        publicKey: String(pushStored?.publicKey ?? "") || (pushRecord ? "" : pushConfig?.publicKey ?? ""),
+        subject: String(pushStored?.subject ?? "") || (pushRecord ? "" : pushConfig?.subject ?? ""),
+        privateKeyMasked: maskSecret(pushStored?.privateKey ? String(pushStored.privateKey) : null),
+      },
+    };
+  }
+
+  app.get("/api/admin/channels", requireSystemAdmin, async (_req, res, next) => {
+    try {
+      res.json(await buildChannelsView());
+    } catch (e) { next(e); }
+  });
+
+  app.put("/api/admin/channels/email", requireSystemAdmin, async (req, res, next) => {
+    try {
+      const input = upsertEmailChannelSchema.parse(req.body);
+      const stored = await readStoredConfig<Record<string, unknown>>("email");
+      const pass = input.pass?.trim() || String(stored?.pass ?? "");
+
+      if (input.requireAuth && (!input.user || !pass)) {
+        return res.status(400).json({ message: "المصادقة مفعّلة، فيجب إدخال اسم المستخدم وكلمة المرور" });
+      }
+
+      await runQueuedWrite(res, buildWriteQueueKey("admin-channel", "email"), () => saveChannelConfig("email", {
+        host: input.host,
+        port: input.port,
+        secure: input.secure,
+        requireAuth: input.requireAuth,
+        user: input.user ?? "",
+        pass,
+        from: input.from?.trim() || input.user || "",
+      }, { isEnabled: input.isEnabled ?? true, updatedByUserId: req.user!.id }));
+
+      await writeAuditEvent({
+        action: "admin.channel.updated",
+        actorUserId: req.user?.id,
+        actorRole: req.user?.role,
+        targetUserId: null,
+        ipAddress: req.ip,
+        metadata: { channel: "email", secretRotated: Boolean(input.pass?.trim()), isEnabled: input.isEnabled ?? true },
+      });
+      res.json(await buildChannelsView());
+    } catch (e) { next(e); }
+  });
+
+  app.put("/api/admin/channels/push", requireSystemAdmin, async (req, res, next) => {
+    try {
+      const input = upsertPushChannelSchema.parse(req.body);
+      const stored = await readStoredConfig<Record<string, unknown>>("push");
+      const privateKey = input.privateKey?.trim() || String(stored?.privateKey ?? "");
+
+      if (!privateKey) {
+        return res.status(400).json({ message: "يجب إدخال المفتاح الخاص (Private Key) أو توليد زوج مفاتيح جديد" });
+      }
+
+      await runQueuedWrite(res, buildWriteQueueKey("admin-channel", "push"), () => saveChannelConfig("push", {
+        publicKey: input.publicKey,
+        privateKey,
+        subject: input.subject?.trim() || "mailto:admin@eltizam.app",
+      }, { isEnabled: input.isEnabled ?? true, updatedByUserId: req.user!.id }));
+
+      await writeAuditEvent({
+        action: "admin.channel.updated",
+        actorUserId: req.user?.id,
+        actorRole: req.user?.role,
+        targetUserId: null,
+        ipAddress: req.ip,
+        metadata: { channel: "push", secretRotated: Boolean(input.privateKey?.trim()), isEnabled: input.isEnabled ?? true },
+      });
+      res.json(await buildChannelsView());
+    } catch (e) { next(e); }
+  });
+
+  /** Hands back a fresh pair for the admin to save. Replacing a live pair
+   *  invalidates every subscription already handed out, so the UI warns first. */
+  app.post("/api/admin/channels/push/generate", requireSystemAdmin, async (_req, res, next) => {
+    try {
+      res.json(generateVapidKeys());
+    } catch (e) { next(e); }
+  });
+
+  app.delete("/api/admin/channels/:channel", requireSystemAdmin, async (req, res, next) => {
+    try {
+      const channel = req.params.channel === "email" || req.params.channel === "push" ? req.params.channel : null;
+      if (!channel) return res.status(404).json({ message: "قناة غير مدعومة" });
+
+      const existing = await getChannelRecord(channel);
+      if (!existing) return res.status(404).json({ message: "لا توجد إعدادات محفوظة لهذه القناة" });
+
+      await runQueuedWrite(res, buildWriteQueueKey("admin-channel", channel), () => deleteChannelConfig(channel));
+      await writeAuditEvent({
+        action: "admin.channel.deleted",
+        actorUserId: req.user?.id,
+        actorRole: req.user?.role,
+        targetUserId: null,
+        ipAddress: req.ip,
+        metadata: { channel },
+      });
+      res.json(await buildChannelsView());
+    } catch (e) { next(e); }
+  });
+
+  /** Proves the saved SMTP settings actually deliver, rather than only parsing. */
+  app.post("/api/admin/channels/email/test", requireSystemAdmin, async (req, res, next) => {
+    try {
+      const { to } = z.object({ to: z.string().trim().email("بريد غير صالح") }).parse(req.body);
+      await sendTestEmail(to);
+      res.json({ ok: true, message: `أُرسلت رسالة تجريبية إلى ${to}` });
+    } catch (error) {
+      if (error instanceof z.ZodError) return next(error);
+      res.json({ ok: false, message: error instanceof Error ? error.message : "تعذر الإرسال" });
+    }
   });
 
   app.get("/api/wallets", requireAuth, async (req, res, next) => {
@@ -1155,12 +1317,13 @@ export async function registerRoutes(
   app.get("/api/notifications/preferences", requireAuth, async (req, res, next) => {
     try {
       const preferences = await getPreferences(req.user!.id);
+      const [pushPublicKey, emailReady] = await Promise.all([getPublicVapidKey(), canSendMail()]);
       res.json({
         ...preferences,
-        pushPublicKey: getPublicVapidKey(),
+        pushPublicKey,
         channels: {
-          email: canSendMail(),
-          push: Boolean(getPublicVapidKey()),
+          email: emailReady,
+          push: Boolean(pushPublicKey),
           telegram: Boolean(process.env.TELEGRAM_BOT_TOKEN?.trim()),
           whatsapp: Boolean(process.env.WHATSAPP_TOKEN?.trim() && process.env.WHATSAPP_PHONE_ID?.trim()),
         },

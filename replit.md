@@ -103,9 +103,18 @@ instructions for Safari's share sheet instead.
 ## Notifications
 Everything goes through `notify()` in `server/notifications.ts`, which respects
 the channels the user enabled and their quiet hours, and dedupes on a caller
-supplied key. Push needs a VAPID pair in the environment; without it the feature
-reports itself unavailable rather than half-working. **Keep the pair stable** —
-replacing it silently invalidates every subscription already handed out.
+supplied key. Without credentials a channel reports itself unavailable rather
+than half-working.
+
+SMTP and the Web Push VAPID pair are resolved by `server/channel-settings.ts`:
+an admin-saved row in `channel_settings` wins, and the environment variables are
+the fallback when no row exists — so a deployment that cannot set environment
+variables configures both from Admin › قنوات الإشعارات. Secrets are stored
+encrypted with the same key as the OAuth settings, are never returned to the
+client, and an empty field on save keeps the stored value. Resolution is cached
+for 30s, so an edit takes effect without a restart. **Keep the VAPID pair
+stable** — replacing it silently invalidates every subscription already handed
+out, which is why the generate button warns first.
 
 On iOS, push only works after the app is installed to the home screen.
 

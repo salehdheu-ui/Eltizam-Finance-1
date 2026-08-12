@@ -343,6 +343,22 @@ export const integrationSettings = pgTable("integration_settings", {
   updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
 });
 
+/**
+ * Server-wide delivery credentials for a notification channel, one row per
+ * channel. The whole config travels as one encrypted JSON blob because the
+ * channels do not share a shape — SMTP needs host/port/user, push needs a VAPID
+ * key pair — and there is nothing to query them by other than the channel name.
+ */
+export const channelSettings = pgTable("channel_settings", {
+  id: serial("id").primaryKey(),
+  channel: text("channel").notNull().unique(),
+  configEncrypted: text("config_encrypted").notNull(),
+  isEnabled: boolean("is_enabled").notNull().default(true),
+  updatedByUserId: integer("updated_by_user_id").references(() => users.id),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+  updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
 export const savingsGoals = pgTable("savings_goals", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id),
@@ -530,6 +546,25 @@ export const upsertIntegrationSettingSchema = z.object({
   isEnabled: z.boolean().optional(),
 });
 
+export const upsertEmailChannelSchema = z.object({
+  host: z.string().trim().min(1, "يجب إدخال خادم SMTP").max(200),
+  port: z.number().int().min(1).max(65535),
+  secure: z.boolean(),
+  requireAuth: z.boolean(),
+  user: z.string().trim().max(200).optional().default(""),
+  /** Left out on a re-save to keep the stored password. */
+  pass: z.string().max(500).optional(),
+  from: z.string().trim().max(200).optional().default(""),
+  isEnabled: z.boolean().optional(),
+});
+
+export const upsertPushChannelSchema = z.object({
+  publicKey: z.string().trim().min(1, "يجب إدخال مفتاح Push العام").max(300),
+  privateKey: z.string().trim().max(300).optional(),
+  subject: z.string().trim().max(200).optional().default(""),
+  isEnabled: z.boolean().optional(),
+});
+
 export const insertPasswordResetRequestSchema = createInsertSchema(passwordResetRequests).pick({
   userId: true,
   status: true,
@@ -569,5 +604,8 @@ export type InsertSavingsGoal = z.infer<typeof insertSavingsGoalSchema>;
 export type SavingsGoal = typeof savingsGoals.$inferSelect;
 export type IntegrationSetting = typeof integrationSettings.$inferSelect;
 export type UpsertIntegrationSetting = z.infer<typeof upsertIntegrationSettingSchema>;
+export type ChannelSetting = typeof channelSettings.$inferSelect;
+export type UpsertEmailChannel = z.infer<typeof upsertEmailChannelSchema>;
+export type UpsertPushChannel = z.infer<typeof upsertPushChannelSchema>;
 export type InsertPasswordResetRequest = z.infer<typeof insertPasswordResetRequestSchema>;
 export type PasswordResetRequest = typeof passwordResetRequests.$inferSelect;

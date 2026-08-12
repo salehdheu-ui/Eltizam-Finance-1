@@ -113,6 +113,90 @@ export type AdminIntegrationPayload = {
   isEnabled?: boolean;
 };
 
+export type AdminEmailChannel = {
+  channel: "email";
+  label: string;
+  configured: boolean;
+  source: "database" | "environment" | null;
+  hasDatabaseRecord: boolean;
+  isEnabled: boolean;
+  updatedAt: number | null;
+  host: string;
+  port: number;
+  secure: boolean;
+  requireAuth: boolean;
+  user: string;
+  from: string;
+  passMasked: string | null;
+};
+
+export type AdminPushChannel = {
+  channel: "push";
+  label: string;
+  configured: boolean;
+  source: "database" | "environment" | null;
+  hasDatabaseRecord: boolean;
+  isEnabled: boolean;
+  updatedAt: number | null;
+  publicKey: string;
+  subject: string;
+  privateKeyMasked: string | null;
+};
+
+export type AdminChannels = { email: AdminEmailChannel; push: AdminPushChannel };
+
+export function useAdminChannels() {
+  return useQuery<AdminChannels>({ queryKey: ["/api/admin/channels"] });
+}
+
+function invalidateChannelQueries() {
+  queryClient.invalidateQueries({ queryKey: ["/api/admin/channels"] });
+  queryClient.invalidateQueries({ queryKey: ["/api/notifications/preferences"] });
+}
+
+export function useAdminSaveEmailChannel() {
+  return useMutation({
+    mutationFn: (data: {
+      host: string; port: number; secure: boolean; requireAuth: boolean;
+      user?: string; pass?: string; from?: string; isEnabled?: boolean;
+    }) => apiRequest("PUT", "/api/admin/channels/email", data),
+    onSuccess: invalidateChannelQueries,
+  });
+}
+
+export function useAdminSavePushChannel() {
+  return useMutation({
+    mutationFn: (data: { publicKey: string; privateKey?: string; subject?: string; isEnabled?: boolean }) =>
+      apiRequest("PUT", "/api/admin/channels/push", data),
+    onSuccess: invalidateChannelQueries,
+  });
+}
+
+export function useAdminGenerateVapidKeys() {
+  return useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/admin/channels/push/generate");
+      return response.json() as Promise<{ publicKey: string; privateKey: string }>;
+    },
+  });
+}
+
+export function useAdminDeleteChannel() {
+  return useMutation({
+    mutationFn: (channel: "email" | "push") => apiRequest("DELETE", `/api/admin/channels/${channel}`),
+    onSuccess: invalidateChannelQueries,
+  });
+}
+
+export function useAdminTestEmailChannel() {
+  return useMutation({
+    mutationFn: async (to: string) => {
+      const response = await apiRequest("POST", "/api/admin/channels/email/test", { to });
+      return response.json() as Promise<{ ok: boolean; message: string }>;
+    },
+  });
+}
+
 export function useUser() {
   return useQuery<User | null>({
     queryKey: ["/api/user"],

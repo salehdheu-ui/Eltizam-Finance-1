@@ -533,7 +533,7 @@ export function setupAuth(app: Express) {
         });
       }
 
-      if (!canSendMail()) {
+      if (!(await canSendMail())) {
         return res.status(503).json({ message: "خدمة البريد غير مهيأة حالياً. يرجى ضبط إعدادات SMTP ثم إعادة المحاولة" });
       }
 
