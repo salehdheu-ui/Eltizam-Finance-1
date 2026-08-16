@@ -8,6 +8,7 @@ import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, inse
 import { buildWriteQueueKey, enqueueWrite } from "./write-queue";
 import { z } from "zod";
 import { buildRuleKey, registerBankInboxRoutes } from "./bank-inbox";
+import { commitImport, createImportPreview } from "./data-portability";
 import { postponeOccurrence, runAutomationForUser, startAutomationEngine, undoAutomationEntry } from "./automation";
 import { generateVapidKeys, getPreferences, getPublicVapidKey, notify, removePushSubscription, savePushSubscription } from "./notifications";
 import { canSendMail, sendTestEmail } from "./mail";
@@ -25,7 +26,7 @@ import { isClaudeConfigured, readDocument, understandCommitment } from "./unders
 import multer from "multer";
 import path from "path";
 import { db } from "./db";
-import { and, asc, desc, eq, gte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNotNull, isNull, sql } from "drizzle-orm";
 import {
   INTEGRATION_PROVIDERS,
   PROVIDER_CALLBACK_PATHS,
@@ -99,6 +100,18 @@ function toRequiredNumber(value: unknown) {
 
 /** Buffered in memory: files are capped at 10MB and written once validated, so
  *  a temp file never outlives a rejected upload. */
+const uploadImport = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, callback) => {
+    if (!["application/json", "text/json", "application/octet-stream"].includes(file.mimetype)) {
+      callback(Object.assign(new Error("ارفع ملف JSON صالحاً فقط"), { status: 400 }));
+      return;
+    }
+    callback(null, true);
+  },
+});
+
 const uploadDocument = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_DOCUMENT_BYTES, files: 1 },
@@ -755,6 +768,53 @@ export async function registerRoutes(
     } catch (e) { next(e); }
   });
 
+  app.get("/api/ledger/reconciliation", requireAuth, async (req, res, next) => {
+    try {
+      const wallets = await storage.getLedgerReconciliation(req.user!.id);
+      res.json({
+        wallets,
+        mismatchedWallets: wallets.filter((wallet) => Math.abs(wallet.difference) >= 0.001),
+        matched: wallets.every((wallet) => Math.abs(wallet.difference) < 0.001),
+      });
+    } catch (e) { next(e); }
+  });
+
+  app.get("/api/review/summary", requireAuth, async (req, res, next) => {
+    try {
+      const userId = req.user!.id;
+      const [pendingEvents, gapEvents, orphanedEvents, reversalRows] = await Promise.all([
+        db.select({ id: bankEmailEvents.id, merchant: bankEmailEvents.merchant, amount: bankEmailEvents.amount, receivedAt: bankEmailEvents.receivedAt, accountRef: bankEmailEvents.accountRef, gapAmount: bankEmailEvents.gapAmount, status: bankEmailEvents.status })
+          .from(bankEmailEvents)
+          .where(and(eq(bankEmailEvents.userId, userId), eq(bankEmailEvents.status, "review")))
+          .orderBy(desc(bankEmailEvents.receivedAt)).limit(50),
+        db.select({ id: bankEmailEvents.id, merchant: bankEmailEvents.merchant, amount: bankEmailEvents.amount, receivedAt: bankEmailEvents.receivedAt, gapAmount: bankEmailEvents.gapAmount, direction: bankEmailEvents.direction })
+          .from(bankEmailEvents)
+          .where(and(eq(bankEmailEvents.userId, userId), isNotNull(bankEmailEvents.gapAmount)))
+          .orderBy(desc(bankEmailEvents.receivedAt)).limit(50),
+        db.select({ id: bankEmailEvents.id, merchant: bankEmailEvents.merchant, status: bankEmailEvents.status, transactionId: bankEmailEvents.transactionId, receivedAt: bankEmailEvents.receivedAt })
+          .from(bankEmailEvents)
+          .where(and(eq(bankEmailEvents.userId, userId), isNull(bankEmailEvents.connectionId)))
+          .orderBy(desc(bankEmailEvents.receivedAt)).limit(50),
+        db.select({ id: transactions.id, type: transactions.type, amount: transactions.amount, note: transactions.note, date: transactions.date, voidedAt: transactions.voidedAt, reversalOfId: transactions.reversalOfId })
+          .from(transactions)
+          .where(and(eq(transactions.userId, userId), isNotNull(transactions.reversalOfId)))
+          .orderBy(desc(transactions.date)).limit(50),
+      ]);
+      res.json({
+        counts: {
+          pendingEvents: pendingEvents.length,
+          balanceGaps: gapEvents.filter((event) => Math.abs(event.gapAmount ?? 0) >= 0.001).length,
+          orphanedEvents: orphanedEvents.length,
+          reversals: reversalRows.length,
+        },
+        pendingEvents,
+        balanceGaps: gapEvents.filter((event) => Math.abs(event.gapAmount ?? 0) >= 0.001),
+        orphanedEvents,
+        reversals: reversalRows,
+      });
+    } catch (e) { next(e); }
+  });
+
   app.get("/api/budgets", requireAuth, async (req, res, next) => {
     try {
       const now = new Date();
@@ -1072,6 +1132,43 @@ export async function registerRoutes(
       res.setHeader("Content-Type", "application/json; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="eltizam-export-${stamp}.json"`);
       res.json(exportPayload);
+    } catch (e) { next(e); }
+  });
+
+  app.post("/api/data/import/preview", requireAuth, uploadImport.single("file"), async (req, res, next) => {
+    try {
+      if (!req.file) throw Object.assign(new Error("اختر ملف JSON أولاً"), { status: 400 });
+      let payload: unknown;
+      try {
+        payload = JSON.parse(req.file.buffer.toString("utf8"));
+      } catch {
+        throw Object.assign(new Error("ملف JSON غير صالح"), { status: 400 });
+      }
+      const preview = await createImportPreview(req.user!.id, payload);
+      res.status(201).json(preview);
+    } catch (e) { next(e); }
+  });
+
+  app.post("/api/data/import/commit", requireAuth, async (req, res, next) => {
+    try {
+      const input = z.object({
+        importKey: z.string().uuid(),
+        allowPartial: z.coerce.boolean().default(false),
+      }).parse(req.body);
+      const result = await runQueuedWrite(
+        res,
+        buildWriteQueueKey("user", req.user!.id, "data-import", input.importKey),
+        () => commitImport(req.user!.id, input.importKey, input.allowPartial),
+      );
+      await writeAuditEvent({
+        action: "user.data_imported",
+        actorUserId: req.user!.id,
+        actorRole: req.user!.role,
+        targetUserId: req.user!.id,
+        ipAddress: req.ip,
+        metadata: { importKey: input.importKey, summary: result.summary },
+      });
+      res.status(201).json(result);
     } catch (e) { next(e); }
   });
 

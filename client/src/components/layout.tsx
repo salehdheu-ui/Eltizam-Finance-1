@@ -1,5 +1,5 @@
 import { useLocation } from "wouter";
-import { Home, ListFilter, Plus, Settings, Loader2, BarChart3, Menu, X, ChevronLeft, Receipt, Landmark, LogOut, Sparkles, Goal, BookOpen, ListChecks, PiggyBank } from "lucide-react";
+import { Home, ListFilter, Plus, Settings, Loader2, BarChart3, Menu, X, ChevronLeft, Receipt, Landmark, LogOut, Sparkles, Goal, BookOpen, ListChecks, PiggyBank, ClipboardCheck } from "lucide-react";
 import { CurrencyDisplay } from "@/components/ui/currency-display";
 import { cn, formatCurrency } from "@/lib/utils";
 import { Button } from "./ui/button";
@@ -209,6 +209,7 @@ export default function Layout({ children }: LayoutProps) {
 
   // Sidebar navigation (less frequently used)
   const sidebarItems = [
+    { href: "/review", icon: ClipboardCheck, label: "مركز المراجعة" },
     { href: "/settings", icon: Settings, label: "الإعدادات" },
     { href: "/user-guide", icon: BookOpen, label: "دليل الاستخدام" },
     ...(isSystemAdmin ? [{ href: "/admin/users", icon: Settings, label: "إدارة المستخدمين" }] : []),

@@ -19,6 +19,16 @@ import {
 
 type LedgerSource = "manual" | "bank" | "recurring" | "adjustment" | "transfer";
 
+export type LedgerReconciliation = {
+  walletId: number;
+  walletName: string;
+  displayedBalance: number;
+  ledgerBalance: number;
+  difference: number;
+  entryCount: number;
+  latestOccurredAt: number | null;
+};
+
 export type MonthlyBudgetSummary = MonthlyBudget & {
   categoryName: string;
   spent: number;
@@ -107,6 +117,7 @@ export interface IStorage {
   updateCategory(id: number, userId: number, data: Partial<InsertCategory>): Promise<Category>;
   deleteCategory(id: number, userId: number): Promise<void>;
   getMonthlyBudgets(userId: number, monthKey: string): Promise<MonthlyBudgetSummary[]>;
+  getLedgerReconciliation(userId: number): Promise<LedgerReconciliation[]>;
   upsertMonthlyBudget(userId: number, input: { categoryId: number; monthKey: string; amount: number }): Promise<MonthlyBudget>;
 
   getTransactions(userId: number): Promise<(Transaction & { categoryName?: string | null; categoryIcon?: string | null; walletName?: string | null })[]>;
@@ -427,6 +438,40 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCategory(id: number, userId: number): Promise<void> {
     await db.delete(categories).where(and(eq(categories.id, id), eq(categories.userId, userId)));
+  }
+
+  async getLedgerReconciliation(userId: number): Promise<LedgerReconciliation[]> {
+    const [walletRows, entryRows] = await Promise.all([
+      db.select({ id: wallets.id, name: wallets.name, balance: wallets.balance })
+        .from(wallets)
+        .where(eq(wallets.userId, userId)),
+      db.select({ walletId: ledgerEntries.walletId, amount: ledgerEntries.amount, direction: ledgerEntries.direction, occurredAt: ledgerEntries.occurredAt })
+        .from(ledgerEntries)
+        .where(eq(ledgerEntries.userId, userId)),
+    ]);
+
+    const byWallet = new Map<number, { balance: number; entryCount: number; latestOccurredAt: number | null }>();
+    for (const entry of entryRows) {
+      const current = byWallet.get(entry.walletId) ?? { balance: 0, entryCount: 0, latestOccurredAt: null };
+      const signedAmount = Number(entry.amount) * (entry.direction === "credit" ? 1 : -1);
+      current.balance += signedAmount;
+      current.entryCount += 1;
+      current.latestOccurredAt = Math.max(current.latestOccurredAt ?? 0, entry.occurredAt);
+      byWallet.set(entry.walletId, current);
+    }
+
+    return walletRows.map((wallet) => {
+      const ledger = byWallet.get(wallet.id) ?? { balance: 0, entryCount: 0, latestOccurredAt: null };
+      return {
+        walletId: wallet.id,
+        walletName: wallet.name,
+        displayedBalance: Number(wallet.balance.toFixed(3)),
+        ledgerBalance: Number(ledger.balance.toFixed(3)),
+        difference: Number((wallet.balance - ledger.balance).toFixed(3)),
+        entryCount: ledger.entryCount,
+        latestOccurredAt: ledger.latestOccurredAt,
+      };
+    });
   }
 
   async getMonthlyBudgets(userId: number, monthKey: string): Promise<MonthlyBudgetSummary[]> {

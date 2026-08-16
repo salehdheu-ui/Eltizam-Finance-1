@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, integer, serial, doublePrecision, boolean, numeric, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, serial, doublePrecision, boolean, numeric, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -62,6 +62,22 @@ export const transactions = pgTable("transactions", {
   reversalReason: text("reversal_reason"),
   voidedAt: integer("voided_at"),
 });
+
+export const dataImportBatches = pgTable("data_import_batches", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  importKey: text("import_key").notNull().unique(),
+  status: text("status").notNull().default("preview"),
+  payload: jsonb("payload").notNull(),
+  summary: jsonb("summary").notNull(),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+  expiresAt: integer("expires_at").notNull(),
+  committedAt: integer("committed_at"),
+  error: text("error"),
+}, (table) => ({
+  userStatusIdx: index("data_import_batches_user_status_idx").on(table.userId, table.status),
+  expiresAtIdx: index("data_import_batches_expires_at_idx").on(table.expiresAt),
+}));
 
 export const monthlyBudgets = pgTable("monthly_budgets", {
   id: serial("id").primaryKey(),
@@ -367,6 +383,7 @@ export const bankCategoryRules = pgTable("bank_category_rules", {
 export type BankCategoryRule = typeof bankCategoryRules.$inferSelect;
 export type LedgerEntry = typeof ledgerEntries.$inferSelect;
 export type MonthlyBudget = typeof monthlyBudgets.$inferSelect;
+export type DataImportBatch = typeof dataImportBatches.$inferSelect;
 
 export const integrationSettings = pgTable("integration_settings", {
   id: serial("id").primaryKey(),

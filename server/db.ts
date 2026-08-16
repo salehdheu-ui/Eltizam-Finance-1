@@ -153,6 +153,11 @@ const databaseMigrations: DatabaseMigration[] = [
     name: "ensure_monthly_budgets_table",
     up: async () => { await ensureMonthlyBudgetsTable(); },
   },
+  {
+    version: 27,
+    name: "ensure_data_import_batches_table",
+    up: async () => { await ensureDataImportBatchesTable(); },
+  },
 ];
 
 async function ensureSchemaMigrationsTable() {
@@ -790,6 +795,25 @@ async function recomputeBankEmailGapsPerAccount() {
         WHERE kept.id = e.id
       )
   `);
+}
+
+async function ensureDataImportBatchesTable() {
+  await pgExec(`
+    CREATE TABLE IF NOT EXISTS data_import_batches (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      import_key TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL DEFAULT 'preview',
+      payload JSONB NOT NULL,
+      summary JSONB NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
+      expires_at INTEGER NOT NULL,
+      committed_at INTEGER,
+      error TEXT
+    )
+  `);
+  await pgExec("CREATE INDEX IF NOT EXISTS data_import_batches_user_status_idx ON data_import_batches (user_id, status)");
+  await pgExec("CREATE INDEX IF NOT EXISTS data_import_batches_expires_at_idx ON data_import_batches (expires_at)");
 }
 
 async function ensureMonthlyBudgetsTable() {

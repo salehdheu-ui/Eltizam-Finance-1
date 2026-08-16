@@ -22,6 +22,14 @@ type CommitmentPayload = Pick<Commitment, "title" | "type" | "frequency" | "dueD
 type CommitmentUpdatePayload = Partial<CommitmentPayload> & { id: number };
 type SavingsGoalPayload = Pick<SavingsGoal, "planId" | "planTitle" | "title" | "walletId" | "targetAmount" | "monthlyAmount" | "years">;
 
+export type ReviewSummary = {
+  counts: { pendingEvents: number; balanceGaps: number; orphanedEvents: number; reversals: number };
+  pendingEvents: Array<{ id: number; merchant: string | null; amount: number | null; receivedAt: number; accountRef: string | null; gapAmount: number | null; status: string }>;
+  balanceGaps: Array<{ id: number; merchant: string | null; amount: number | null; receivedAt: number; gapAmount: number | null; direction: string | null }>;
+  orphanedEvents: Array<{ id: number; merchant: string | null; status: string; transactionId: number | null; receivedAt: number }>;
+  reversals: Array<{ id: number; type: string; amount: number; note: string | null; date: number; voidedAt: number | null; reversalOfId: number | null }>;
+};
+
 export type MonthlyBudgetSummary = {
   id: number;
   userId: number;
@@ -491,6 +499,24 @@ export function useDeleteWallet() {
 export function useCategories() {
   return useQuery<Category[]>({
     queryKey: ["/api/categories"],
+  });
+}
+
+export type LedgerReconciliationResponse = {
+  matched: boolean;
+  wallets: Array<{ walletId: number; walletName: string; displayedBalance: number; ledgerBalance: number; difference: number; entryCount: number; latestOccurredAt: number | null }>;
+  mismatchedWallets: Array<{ walletId: number; walletName: string; displayedBalance: number; ledgerBalance: number; difference: number; entryCount: number; latestOccurredAt: number | null }>;
+};
+
+export function useLedgerReconciliation() {
+  return useQuery<LedgerReconciliationResponse>({
+    queryKey: ["/api/ledger/reconciliation"],
+  });
+}
+
+export function useReviewSummary() {
+  return useQuery<ReviewSummary>({
+    queryKey: ["/api/review/summary"],
   });
 }
 

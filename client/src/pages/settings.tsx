@@ -1,4 +1,4 @@
-import { User, Shield, Moon, LogOut, ChevronLeft, Globe, Lock, Check, Wallet, PieChart, Receipt, Landmark, Goal, Mail, Download } from "lucide-react";
+import { User, Shield, Moon, LogOut, ChevronLeft, Globe, Lock, Check, Wallet, PieChart, Receipt, Landmark, Goal, Mail, Download, Upload, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -20,7 +20,7 @@ import { OmaniCurrencySymbol } from "@/components/ui/currency-display";
 import { cn } from "@/lib/utils";
 import NotificationSettings from "@/components/notification-settings";
 import { useUser, useLogout, useUpdateUser, useChangePassword } from "@/lib/hooks";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 const currencies = [
   { id: "OMR", name: "الريال العماني", symbol: "OMR" },
@@ -29,6 +29,20 @@ const currencies = [
   { id: "USD", name: "الدولار الأمريكي", symbol: "$" },
   { id: "EUR", name: "اليورو", symbol: "€" },
 ];
+
+type ImportPreview = {
+  importKey: string;
+  expiresAt: number;
+  summary: {
+    newRecords: number;
+    duplicateRecords: number;
+    conflicts: number;
+    errors: string[];
+    warnings: string[];
+    supported: Record<string, number>;
+    unsupported: Record<string, number>;
+  };
+};
 
 const SETTINGS_STORAGE_KEYS = {
   darkMode: "eltizam:dark-mode",
@@ -46,6 +60,11 @@ export default function Settings() {
   
   const [darkMode, setDarkMode] = useState(false);
   const [biometrics, setBiometrics] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
+  const [allowPartialImport, setAllowPartialImport] = useState(false);
+  const [isPreviewingImport, setIsPreviewingImport] = useState(false);
+  const [isCommittingImport, setIsCommittingImport] = useState(false);
   
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [profileName, setProfileName] = useState(user?.name || "");
@@ -107,6 +126,52 @@ export default function Settings() {
       toast({ title: "تم الحفظ بنجاح", description: "تم تحديث بيانات الملف الشخصي" });
     } catch {
       toast({ title: "خطأ", description: "فشل تحديث البيانات", variant: "destructive" });
+    }
+  };
+
+  const handlePreviewImport = async () => {
+    if (!importFile) {
+      toast({ title: "اختر ملفاً", description: "اختر نسخة JSON من جهازك أولاً", variant: "destructive" });
+      return;
+    }
+    setIsPreviewingImport(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", importFile);
+      const response = await fetch("/api/data/import/preview", { method: "POST", body: formData, credentials: "include" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.message || "تعذر تحليل الملف");
+      setImportPreview(body as ImportPreview);
+      toast({ title: "اكتملت المعاينة", description: "لم تُكتب أي بيانات. راجع الأرقام قبل التأكيد." });
+    } catch (error) {
+      setImportPreview(null);
+      toast({ title: "فشلت المعاينة", description: error instanceof Error ? error.message : "ملف غير صالح", variant: "destructive" });
+    } finally {
+      setIsPreviewingImport(false);
+    }
+  };
+
+  const handleCommitImport = async () => {
+    if (!importPreview || !window.confirm("سيتم إضافة السجلات الجديدة داخل عملية واحدة. هل تريد التأكيد؟")) return;
+    setIsCommittingImport(true);
+    try {
+      const response = await apiRequest("POST", "/api/data/import/commit", { importKey: importPreview.importKey, allowPartial: allowPartialImport });
+      const result = await response.json() as { summary: { importedTransactions?: number; importedBudgets?: number } };
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/wallets"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/categories"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/transactions"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/budgets"] }),
+      ]);
+      setImportPreview(null);
+      setImportFile(null);
+      setAllowPartialImport(false);
+      toast({ title: "تم الاستيراد", description: `تمت إضافة ${result.summary.importedTransactions ?? 0} حركة و${result.summary.importedBudgets ?? 0} ميزانية.` });
+    } catch (error) {
+      toast({ title: "تعذر التأكيد", description: error instanceof Error ? error.message : "حدث خطأ أثناء الاستيراد", variant: "destructive" });
+    } finally {
+      setIsCommittingImport(false);
     }
   };
 
@@ -252,6 +317,51 @@ export default function Settings() {
               <Button variant="outline" className="mt-3" onClick={handleExportData}>
                 <Download className="ml-2 h-4 w-4" /> تنزيل البيانات
               </Button>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="border-dashed border-amber-500/30 p-4 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-700">
+              <Upload className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1 space-y-3">
+              <div>
+                <h3 className="font-bold">استعادة نسخة بيانات</h3>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">ارفع ملف JSON من نسخة التصدير. تبدأ العملية بمعاينة فقط، ولن تُكتب البيانات قبل تأكيدك.</p>
+              </div>
+              <input
+                type="file"
+                accept="application/json,.json"
+                onChange={(event) => { setImportFile(event.target.files?.[0] ?? null); setImportPreview(null); }}
+                className="block w-full rounded-xl border border-border bg-background p-2 text-sm"
+                aria-label="اختر ملف JSON للاستيراد"
+              />
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={handlePreviewImport} disabled={!importFile || isPreviewingImport}>
+                  {isPreviewingImport ? <Loader2 className="ml-2 h-4 w-4 animate-spin" /> : <Upload className="ml-2 h-4 w-4" />}
+                  معاينة الملف
+                </Button>
+                {importPreview ? (
+                  <Button onClick={handleCommitImport} disabled={isCommittingImport || importPreview.summary.errors.length > 0}>
+                    {isCommittingImport ? <Loader2 className="ml-2 h-4 w-4 animate-spin" /> : <Check className="ml-2 h-4 w-4" />}
+                    تأكيد الاستيراد
+                  </Button>
+                ) : null}
+              </div>
+              {importPreview ? (
+                <div className="space-y-2 rounded-xl bg-muted/50 p-3 text-xs leading-5">
+                  <p className="font-bold">المعاينة: {importPreview.summary.newRecords} جديد، {importPreview.summary.duplicateRecords} مكرر، {importPreview.summary.conflicts} تعارض.</p>
+                  {importPreview.summary.errors.length > 0 ? <p className="text-destructive">{importPreview.summary.errors.slice(0, 2).join("، ")}</p> : null}
+                  {Object.keys(importPreview.summary.unsupported).length > 0 ? (
+                    <label className="flex items-start gap-2 text-amber-700 dark:text-amber-300">
+                      <input type="checkbox" checked={allowPartialImport} onChange={(event) => setAllowPartialImport(event.target.checked)} className="mt-1" />
+                      <span>أوافق على استيراد المحافظ والفئات والمعاملات والميزانيات فقط، مع تجاهل الكيانات المتقدمة غير المدعومة حالياً.</span>
+                    </label>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </div>
         </Card>

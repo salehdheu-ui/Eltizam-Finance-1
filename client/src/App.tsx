@@ -23,6 +23,7 @@ const Income = lazy(() => import("@/pages/income"));
 const Wallets = lazy(() => import("@/pages/wallets"));
 const Categories = lazy(() => import("@/pages/categories"));
 const Budgets = lazy(() => import("@/pages/budgets"));
+const Review = lazy(() => import("@/pages/review"));
 const Reports = lazy(() => import("@/pages/reports"));
 const Obligations = lazy(() => import("@/pages/obligations"));
 const Commitments = lazy(() => import("@/pages/commitments"));
@@ -145,6 +146,7 @@ function Router() {
           <Route path="/wallets" component={Wallets} />
           <Route path="/categories" component={Categories} />
           <Route path="/budgets" component={Budgets} />
+          <Route path="/review" component={Review} />
           <Route path="/reports" component={Reports} />
           <Route path="/financial-plans/:id" component={SavingsPlanDetails} />
           <Route path="/financial-plans" component={SavingsPlans} />
