@@ -1,8 +1,8 @@
-import { eq, and, asc, desc, like, inArray } from "drizzle-orm";
+import { eq, and, asc, desc, like, inArray, gte, lt } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { db } from "./db";
 import {
-  users, wallets, categories, transactions, recurringIncomes, obligations, variableObligationMonthStatuses, commitments, commitmentSteps, commitmentProofs, savingsGoals, passwordResetRequests, bankEmailEvents, bankEmailConnections,
+  users, wallets, categories, transactions, ledgerEntries, monthlyBudgets, recurringIncomes, obligations, variableObligationMonthStatuses, commitments, commitmentSteps, commitmentProofs, savingsGoals, passwordResetRequests, bankEmailEvents, bankEmailConnections,
   type User, type InsertUser,
   type Wallet, type InsertWallet,
   type Category, type InsertCategory,
@@ -14,8 +14,27 @@ import {
   type CommitmentStep, type InsertCommitmentStep,
   type CommitmentProof, type InsertCommitmentProof,
   type SavingsGoal, type InsertSavingsGoal,
-  type PasswordResetRequest, type InsertPasswordResetRequest,
+  type PasswordResetRequest, type InsertPasswordResetRequest, type MonthlyBudget,
 } from "@shared/schema";
+
+type LedgerSource = "manual" | "bank" | "recurring" | "adjustment" | "transfer";
+
+export type MonthlyBudgetSummary = MonthlyBudget & {
+  categoryName: string;
+  spent: number;
+  remaining: number;
+  percentage: number;
+};
+
+type TransactionWriteOptions = {
+  allowOverdraft?: boolean;
+  settleBalanceTo?: number | null;
+  source?: LedgerSource;
+  externalId?: string | null;
+  idempotencyKey?: string | null;
+  currency?: string;
+  occurredAt?: number;
+};
 
 /**
  * A failure the user can act on. Thrown as a bare Error these reach the handler
@@ -87,12 +106,15 @@ export interface IStorage {
   createCategory(userId: number, category: InsertCategory): Promise<Category>;
   updateCategory(id: number, userId: number, data: Partial<InsertCategory>): Promise<Category>;
   deleteCategory(id: number, userId: number): Promise<void>;
+  getMonthlyBudgets(userId: number, monthKey: string): Promise<MonthlyBudgetSummary[]>;
+  upsertMonthlyBudget(userId: number, input: { categoryId: number; monthKey: string; amount: number }): Promise<MonthlyBudget>;
 
   getTransactions(userId: number): Promise<(Transaction & { categoryName?: string | null; categoryIcon?: string | null; walletName?: string | null })[]>;
   getTransactionsByType(userId: number, type: string): Promise<Transaction[]>;
-  createTransaction(userId: number, transaction: InsertTransaction, options?: { allowOverdraft?: boolean; settleBalanceTo?: number | null }): Promise<Transaction>;
+  createTransaction(userId: number, transaction: InsertTransaction, options?: TransactionWriteOptions): Promise<Transaction>;
   createTransfer(userId: number, transfer: { sourceWalletId: number; targetWalletId: number; amount: number; note?: string | null }): Promise<Transaction>;
   deleteTransaction(id: number, userId: number): Promise<void>;
+  reverseTransaction(id: number, userId: number, reason?: string | null): Promise<Transaction>;
 
   getRecurringIncomes(userId: number): Promise<RecurringIncome[]>;
   createRecurringIncome(userId: number, income: InsertRecurringIncome): Promise<RecurringIncome>;
@@ -331,13 +353,23 @@ export class DatabaseStorage implements IStorage {
 
       const difference = Number((newBalance - wallet.balance).toFixed(3));
       if (Math.abs(difference) >= 0.001) {
-        await tx.insert(transactions).values({
+        const [created] = await tx.insert(transactions).values({
           userId,
           walletId: id,
           categoryId: null,
           type: difference > 0 ? "income" : "expense",
           amount: Math.abs(difference),
           note: UNKNOWN_ADJUSTMENT_NOTE,
+        }).returning();
+        await tx.insert(ledgerEntries).values({
+          userId,
+          walletId: id,
+          transactionId: created.id,
+          amount: Math.abs(difference).toFixed(3),
+          direction: difference > 0 ? "credit" : "debit",
+          source: "adjustment",
+          currency: "OMR",
+          occurredAt: Math.floor(Date.now() / 1000),
         });
       }
 
@@ -397,6 +429,90 @@ export class DatabaseStorage implements IStorage {
     await db.delete(categories).where(and(eq(categories.id, id), eq(categories.userId, userId)));
   }
 
+  async getMonthlyBudgets(userId: number, monthKey: string): Promise<MonthlyBudgetSummary[]> {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(monthKey)) {
+      throw userError("صيغة الشهر غير صالحة");
+    }
+
+    const [year, month] = monthKey.split("-").map(Number);
+    const monthStart = Math.floor(Date.UTC(year, month - 1, 1) / 1000);
+    const monthEnd = Math.floor(Date.UTC(year, month, 1) / 1000);
+    const [budgetRows, expenseRows] = await Promise.all([
+      db.select({ budget: monthlyBudgets, categoryName: categories.name })
+        .from(monthlyBudgets)
+        .innerJoin(categories, eq(monthlyBudgets.categoryId, categories.id))
+        .where(and(eq(monthlyBudgets.userId, userId), eq(monthlyBudgets.monthKey, monthKey))),
+      db.select({ categoryId: transactions.categoryId, amount: transactions.amount })
+        .from(transactions)
+        .where(and(
+          eq(transactions.userId, userId),
+          gte(transactions.date, monthStart),
+          lt(transactions.date, monthEnd),
+          inArray(transactions.type, ["expense", "debt"]),
+        )),
+    ]);
+
+    const spentByCategory = new Map<number, number>();
+    for (const row of expenseRows) {
+      if (row.categoryId === null) continue;
+      spentByCategory.set(row.categoryId, (spentByCategory.get(row.categoryId) ?? 0) + row.amount);
+    }
+
+    return budgetRows.map(({ budget, categoryName }) => {
+      const spent = Number((spentByCategory.get(budget.categoryId) ?? 0).toFixed(3));
+      const percentage = budget.amount > 0 ? Number(((spent / budget.amount) * 100).toFixed(1)) : 0;
+      return {
+        ...budget,
+        categoryName,
+        spent,
+        remaining: Number((budget.amount - spent).toFixed(3)),
+        percentage,
+      };
+    });
+  }
+
+  async upsertMonthlyBudget(userId: number, input: { categoryId: number; monthKey: string; amount: number }): Promise<MonthlyBudget> {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(input.monthKey)) {
+      throw userError("صيغة الشهر غير صالحة");
+    }
+    if (!Number.isFinite(input.amount) || input.amount < 0) {
+      throw userError("قيمة الميزانية غير صالحة");
+    }
+
+    return db.transaction(async (tx) => {
+      const [ownedCategory] = await tx.select({ id: categories.id }).from(categories)
+        .where(and(eq(categories.id, input.categoryId), eq(categories.userId, userId)));
+      if (!ownedCategory) throw userError("التصنيف المحدد غير موجود");
+
+      const [existing] = await tx.select().from(monthlyBudgets)
+        .where(and(
+          eq(monthlyBudgets.userId, userId),
+          eq(monthlyBudgets.categoryId, input.categoryId),
+          eq(monthlyBudgets.monthKey, input.monthKey),
+        ))
+        .for("update");
+
+      const now = Math.floor(Date.now() / 1000);
+      if (existing) {
+        const [updated] = await tx.update(monthlyBudgets)
+          .set({ amount: Number(input.amount.toFixed(3)), updatedAt: now })
+          .where(eq(monthlyBudgets.id, existing.id))
+          .returning();
+        return updated;
+      }
+
+      const [created] = await tx.insert(monthlyBudgets).values({
+        userId,
+        categoryId: input.categoryId,
+        monthKey: input.monthKey,
+        amount: Number(input.amount.toFixed(3)),
+        createdAt: now,
+        updatedAt: now,
+      }).returning();
+      return created;
+    });
+  }
+
   async getTransactions(userId: number): Promise<(Transaction & { categoryName?: string | null; categoryIcon?: string | null; walletName?: string | null })[]> {
     const result = await db
       .select({
@@ -408,6 +524,9 @@ export class DatabaseStorage implements IStorage {
         amount: transactions.amount,
         note: transactions.note,
         date: transactions.date,
+        reversalOfId: transactions.reversalOfId,
+        reversalReason: transactions.reversalReason,
+        voidedAt: transactions.voidedAt,
         categoryName: categories.name,
         categoryIcon: categories.icon,
         walletName: wallets.name,
@@ -440,7 +559,7 @@ export class DatabaseStorage implements IStorage {
   async createTransaction(
     userId: number,
     transaction: InsertTransaction,
-    options: { allowOverdraft?: boolean; settleBalanceTo?: number | null } = {},
+    options: TransactionWriteOptions = {},
   ): Promise<Transaction> {
     if (!Number.isFinite(transaction.amount) || transaction.amount <= 0) {
       throw userError("مبلغ المعاملة غير صالح");
@@ -450,6 +569,22 @@ export class DatabaseStorage implements IStorage {
     }
 
     return db.transaction(async (tx) => {
+      if (options.idempotencyKey) {
+        const [existingLedger] = await tx
+          .select()
+          .from(ledgerEntries)
+          .where(and(eq(ledgerEntries.userId, userId), eq(ledgerEntries.idempotencyKey, options.idempotencyKey)))
+          .limit(1);
+        if (existingLedger) {
+          const [existingTransaction] = await tx
+            .select()
+            .from(transactions)
+            .where(and(eq(transactions.id, existingLedger.transactionId), eq(transactions.userId, userId)))
+            .limit(1);
+          if (existingTransaction) return existingTransaction;
+        }
+      }
+
       if (!transaction.walletId) {
         const [created] = await tx.insert(transactions).values({ ...transaction, userId }).returning();
         return created;
@@ -469,6 +604,18 @@ export class DatabaseStorage implements IStorage {
       }
 
       const [created] = await tx.insert(transactions).values({ ...transaction, userId }).returning();
+      await tx.insert(ledgerEntries).values({
+        userId,
+        walletId: wallet.id,
+        transactionId: created.id,
+        amount: transaction.amount.toFixed(3),
+        direction: transaction.type === "income" ? "credit" : "debit",
+        source: options.source ?? "manual",
+        currency: options.currency ?? "OMR",
+        externalId: options.externalId ?? null,
+        idempotencyKey: options.idempotencyKey ?? null,
+        occurredAt: options.occurredAt ?? Math.floor(Date.now() / 1000),
+      });
       const delta = transaction.type === "income" ? transaction.amount : -transaction.amount;
       const nextBalance = typeof options.settleBalanceTo === "number"
         ? options.settleBalanceTo
@@ -524,14 +671,40 @@ export class DatabaseStorage implements IStorage {
         note: outNote,
       }).returning();
 
-      await tx.insert(transactions).values({
+      const [incoming] = await tx.insert(transactions).values({
         userId,
         walletId: transfer.targetWalletId,
         categoryId: null,
         type: "income",
         amount: transfer.amount,
         note: inNote,
-      });
+      }).returning();
+
+      const occurredAt = Math.floor(Date.now() / 1000);
+      await tx.insert(ledgerEntries).values([
+        {
+          userId,
+          walletId: transfer.sourceWalletId,
+          transactionId: outgoing.id,
+          amount: transfer.amount.toFixed(3),
+          direction: "debit",
+          source: "transfer",
+          currency: "OMR",
+          externalId: pairId,
+          occurredAt,
+        },
+        {
+          userId,
+          walletId: transfer.targetWalletId,
+          transactionId: incoming.id,
+          amount: transfer.amount.toFixed(3),
+          direction: "credit",
+          source: "transfer",
+          currency: "OMR",
+          externalId: pairId,
+          occurredAt,
+        },
+      ]);
 
       await tx.update(wallets).set({ balance: Number((sourceWallet.balance - transfer.amount).toFixed(3)) })
         .where(and(eq(wallets.id, sourceWallet.id), eq(wallets.userId, userId)));
@@ -563,6 +736,9 @@ export class DatabaseStorage implements IStorage {
         .where(and(eq(transactions.id, id), eq(transactions.userId, userId)))
         .for("update");
       if (!transaction) return;
+      if (transaction.voidedAt || transaction.reversalOfId) {
+        throw userError("لا يمكن حذف حركة مرتبطة بتصحيح مالي؛ احتفظ بسجلها");
+      }
 
       const transferMeta = this.parseTransferNote(transaction.note);
       if (transferMeta) {
@@ -624,6 +800,111 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
+  async reverseTransaction(id: number, userId: number, reason?: string | null): Promise<Transaction> {
+    return db.transaction(async (tx) => {
+      const [requested] = await tx
+        .select()
+        .from(transactions)
+        .where(and(eq(transactions.id, id), eq(transactions.userId, userId)))
+        .for("update");
+      if (!requested) throw userError("الحركة غير موجودة");
+
+      const [existingReversal] = await tx
+        .select()
+        .from(transactions)
+        .where(and(eq(transactions.userId, userId), eq(transactions.reversalOfId, id)))
+        .limit(1);
+      if (existingReversal) return existingReversal;
+      if (requested.voidedAt) throw userError("تم عكس هذه الحركة مسبقاً");
+      if (!requested.walletId) throw userError("لا يمكن عكس حركة غير مرتبطة بمحفظة");
+
+      const transferMeta = this.parseTransferNote(requested.note);
+      const originals = transferMeta
+        ? await tx.select().from(transactions)
+          .where(and(eq(transactions.userId, userId), like(transactions.note, `__transfer__:${transferMeta.pairId}:%`)))
+          .for("update")
+        : [requested];
+
+      if (originals.some((original) => original.voidedAt)) {
+        throw userError("لا يمكن عكس تحويل تم عكس أحد طرفيه مسبقاً");
+      }
+
+      const originalIds = originals.map((original) => original.id);
+      const originalLedger = await tx
+        .select()
+        .from(ledgerEntries)
+        .where(and(eq(ledgerEntries.userId, userId), inArray(ledgerEntries.transactionId, originalIds)))
+        .for("update");
+      if (originalLedger.length !== originals.length) {
+        throw userError("السجل المالي لهذه الحركة غير مكتمل؛ أعد تشغيل الترحيل قبل التصحيح");
+      }
+
+      const walletIds = Array.from(new Set(originals.map((original) => original.walletId).filter((walletId): walletId is number => walletId !== null)))
+        .sort((a, b) => a - b);
+      const lockedWallets = new Map<number, Wallet>();
+      for (const walletId of walletIds) {
+        const [wallet] = await tx
+          .select()
+          .from(wallets)
+          .where(and(eq(wallets.id, walletId), eq(wallets.userId, userId)))
+          .for("update");
+        if (wallet) lockedWallets.set(walletId, wallet);
+      }
+
+      const now = Math.floor(Date.now() / 1000);
+      const reversalReason = reason?.trim() || "تصحيح مالي";
+      let requestedReversal: Transaction | undefined;
+
+      for (const original of originals) {
+        if (!original.walletId) continue;
+        const wallet = lockedWallets.get(original.walletId);
+        const ledger = originalLedger.find((entry) => entry.transactionId === original.id);
+        if (!wallet || !ledger) throw userError("تعذر قفل المحفظة أو العثور على الحركة المالية");
+
+        const [reversal] = await tx.insert(transactions).values({
+          userId,
+          walletId: original.walletId,
+          categoryId: original.categoryId,
+          type: original.type === "income" ? "expense" : "income",
+          amount: original.amount,
+          note: `عكس الحركة #${original.id} · ${reversalReason}`,
+          date: now,
+          reversalOfId: original.id,
+          reversalReason,
+        }).returning();
+
+        const [reversalLedger] = await tx.insert(ledgerEntries).values({
+          userId,
+          walletId: original.walletId,
+          transactionId: reversal.id,
+          amount: ledger.amount,
+          direction: ledger.direction === "credit" ? "debit" : "credit",
+          source: "adjustment",
+          currency: ledger.currency,
+          externalId: `reversal:${original.id}`,
+          idempotencyKey: `reversal:${original.id}`,
+          occurredAt: now,
+        }).returning();
+
+        await tx.update(transactions).set({ voidedAt: now })
+          .where(and(eq(transactions.id, original.id), eq(transactions.userId, userId)));
+        await tx.update(ledgerEntries).set({ reversedById: reversalLedger.id })
+          .where(eq(ledgerEntries.id, ledger.id));
+
+        const delta = original.type === "income" ? -original.amount : original.amount;
+        const nextBalance = Number((wallet.balance + delta).toFixed(3));
+        lockedWallets.set(wallet.id, { ...wallet, balance: nextBalance });
+        await tx.update(wallets).set({ balance: nextBalance })
+          .where(and(eq(wallets.id, wallet.id), eq(wallets.userId, userId)));
+
+        if (original.id === requested.id) requestedReversal = reversal;
+      }
+
+      if (!requestedReversal) throw userError("تعذر إنشاء الحركة العكسية");
+      return requestedReversal;
+    });
+  }
+
   async getRecurringIncomes(userId: number): Promise<RecurringIncome[]> {
     return db.select().from(recurringIncomes).where(eq(recurringIncomes.userId, userId)).orderBy(desc(recurringIncomes.createdAt));
   }
@@ -677,6 +958,11 @@ export class DatabaseStorage implements IStorage {
         note: income.note?.trim() ? income.note : `${income.incomeType === "salary" ? "راتب شهري" : "دخل متكرر"} - ${income.title}`,
         categoryId: income.categoryId ?? null,
         walletId: income.walletId,
+      }, {
+        source: "recurring",
+        externalId: `recurring-income:${income.id}:${currentMonthKey}`,
+        idempotencyKey: `recurring-income:${income.id}:${currentMonthKey}`,
+        occurredAt: Math.floor(now.getTime() / 1000),
       });
 
       const [updated] = await db.update(recurringIncomes).set({

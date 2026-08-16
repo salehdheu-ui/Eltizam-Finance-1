@@ -1,5 +1,5 @@
 import { useLocation } from "wouter";
-import { Home, ListFilter, Plus, Settings, Loader2, BarChart3, Menu, X, ChevronLeft, Receipt, Landmark, LogOut, Sparkles, Goal, BookOpen, ListChecks } from "lucide-react";
+import { Home, ListFilter, Plus, Settings, Loader2, BarChart3, Menu, X, ChevronLeft, Receipt, Landmark, LogOut, Sparkles, Goal, BookOpen, ListChecks, PiggyBank } from "lucide-react";
 import { CurrencyDisplay } from "@/components/ui/currency-display";
 import { cn, formatCurrency } from "@/lib/utils";
 import { Button } from "./ui/button";
@@ -204,6 +204,7 @@ export default function Layout({ children }: LayoutProps) {
     { href: "/commitments", icon: ListChecks, label: "التزاماتي" },
     { href: "/transactions", icon: ListFilter, label: "المعاملات" },
     { href: "/reports", icon: BarChart3, label: "التقارير" },
+    { href: "/budgets", icon: PiggyBank, label: "الميزانيات" },
   ];
 
   // Sidebar navigation (less frequently used)

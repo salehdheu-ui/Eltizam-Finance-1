@@ -4,6 +4,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { ZodError } from "zod";
+import { randomUUID } from "crypto";
 import helmet from "helmet";
 
 const app = express();
@@ -99,6 +100,12 @@ function isTrustedRequestSource(req: Request) {
 }
 
 app.use((req, res, next) => {
+  const incomingRequestId = req.get("x-request-id")?.trim();
+  const requestId = incomingRequestId && /^[A-Za-z0-9._-]{1,80}$/.test(incomingRequestId)
+    ? incomingRequestId
+    : randomUUID();
+  res.locals.requestId = requestId;
+  res.setHeader("X-Request-Id", requestId);
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
@@ -139,7 +146,7 @@ app.use((req, res, next) => {
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
+      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms requestId=${res.locals.requestId}`;
       const payload = buildApiLogPayload(capturedJsonResponse, res.statusCode);
       if (payload) {
         logLine += ` :: ${payload}`;
@@ -179,7 +186,7 @@ app.use((req, res, next) => {
       return next(err);
     }
 
-    return res.status(status).json({ message });
+    return res.status(status).json({ message, requestId: res.locals.requestId });
   });
 
   // importantly only setup vite in development and after

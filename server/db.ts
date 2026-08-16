@@ -138,6 +138,21 @@ const databaseMigrations: DatabaseMigration[] = [
     name: "recompute_bank_email_gaps_per_account",
     up: async () => { await recomputeBankEmailGapsPerAccount(); },
   },
+  {
+    version: 24,
+    name: "ensure_ledger_entries_table",
+    up: async () => { await ensureLedgerEntriesTable(); },
+  },
+  {
+    version: 25,
+    name: "ensure_transaction_reversal_columns",
+    up: async () => { await ensureTransactionReversalColumns(); },
+  },
+  {
+    version: 26,
+    name: "ensure_monthly_budgets_table",
+    up: async () => { await ensureMonthlyBudgetsTable(); },
+  },
 ];
 
 async function ensureSchemaMigrationsTable() {
@@ -773,6 +788,73 @@ async function recomputeBankEmailGapsPerAccount() {
             AND ABS(ROUND((balance_after - (previous_balance + signed_amount))::numeric, 3)) >= 0.001
         ) kept
         WHERE kept.id = e.id
+      )
+  `);
+}
+
+async function ensureMonthlyBudgetsTable() {
+  await pgExec(`
+    CREATE TABLE IF NOT EXISTS monthly_budgets (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+      month_key TEXT NOT NULL,
+      amount DOUBLE PRECISION NOT NULL DEFAULT 0 CHECK (amount >= 0),
+      created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
+      updated_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
+      CONSTRAINT monthly_budgets_user_category_month_unique UNIQUE (user_id, category_id, month_key)
+    )
+  `);
+  await pgExec("CREATE INDEX IF NOT EXISTS monthly_budgets_user_month_idx ON monthly_budgets (user_id, month_key)");
+}
+
+async function ensureTransactionReversalColumns() {
+  const columns: Array<[string, string]> = [
+    ["reversal_of_id", "INTEGER"],
+    ["reversal_reason", "TEXT"],
+    ["voided_at", "INTEGER"],
+  ];
+  for (const [name, type] of columns) {
+    if (!(await columnExists("transactions", name))) {
+      await pgExec(`ALTER TABLE transactions ADD COLUMN ${name} ${type}`);
+    }
+  }
+  await pgExec("CREATE INDEX IF NOT EXISTS transactions_reversal_of_idx ON transactions (reversal_of_id)");
+}
+
+async function ensureLedgerEntriesTable() {
+  await pgExec(`
+    CREATE TABLE IF NOT EXISTS ledger_entries (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      wallet_id INTEGER NOT NULL REFERENCES wallets(id) ON DELETE CASCADE,
+      transaction_id INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+      amount NUMERIC(20, 3) NOT NULL CHECK (amount > 0),
+      direction TEXT NOT NULL CHECK (direction IN ('credit', 'debit')),
+      source TEXT NOT NULL DEFAULT 'manual',
+      currency TEXT NOT NULL DEFAULT 'OMR',
+      external_id TEXT,
+      idempotency_key TEXT,
+      occurred_at INTEGER NOT NULL,
+      reversed_by_id INTEGER,
+      created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer
+    )
+  `);
+
+  await pgExec("CREATE INDEX IF NOT EXISTS ledger_entries_user_wallet_occurred_at_idx ON ledger_entries (user_id, wallet_id, occurred_at)");
+  await pgExec("CREATE INDEX IF NOT EXISTS ledger_entries_transaction_idx ON ledger_entries (transaction_id)");
+  await pgExec("CREATE UNIQUE INDEX IF NOT EXISTS ledger_entries_user_idempotency_unique ON ledger_entries (user_id, idempotency_key)");
+
+  await pgExec(`
+    INSERT INTO ledger_entries (user_id, wallet_id, transaction_id, amount, direction, source, currency, occurred_at)
+    SELECT t.user_id, t.wallet_id, t.id, ABS(t.amount)::numeric(20, 3),
+           CASE WHEN t.type = 'income' THEN 'credit' ELSE 'debit' END,
+           'manual', 'OMR', t.date
+    FROM transactions t
+    WHERE t.wallet_id IS NOT NULL
+      AND t.amount > 0
+      AND NOT EXISTS (
+        SELECT 1 FROM ledger_entries existing WHERE existing.transaction_id = t.id
       )
   `);
 }

@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { hashPlainPassword, setupAuth } from "./auth";
 import { writeAuditEvent } from "./audit";
 import { createManualBackup, listAllBackups } from "./backup";
-import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, integrationSettings, upsertIntegrationSettingSchema, upsertEmailChannelSchema, upsertPushChannelSchema, transactions, categories, bankEmailEvents, bankCategoryRules, automationLog, commitmentOccurrences, commitments, notificationPreferences } from "@shared/schema";
+import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, integrationSettings, upsertIntegrationSettingSchema, upsertEmailChannelSchema, upsertPushChannelSchema, transactions, wallets, categories, recurringIncomes, obligations, variableObligationMonthStatuses, commitments, commitmentSteps, commitmentProofs, savingsGoals, monthlyBudgets, bankEmailEvents, bankCategoryRules, automationLog, commitmentOccurrences, notificationPreferences } from "@shared/schema";
 import { buildWriteQueueKey, enqueueWrite } from "./write-queue";
 import { z } from "zod";
 import { buildRuleKey, registerBankInboxRoutes } from "./bank-inbox";
@@ -755,6 +755,33 @@ export async function registerRoutes(
     } catch (e) { next(e); }
   });
 
+  app.get("/api/budgets", requireAuth, async (req, res, next) => {
+    try {
+      const now = new Date();
+      const defaultMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+      const monthKey = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).parse(
+        typeof req.query.month === "string" ? req.query.month : defaultMonth,
+      );
+      res.json(await storage.getMonthlyBudgets(req.user!.id, monthKey));
+    } catch (e) { next(e); }
+  });
+
+  app.put("/api/budgets", requireAuth, async (req, res, next) => {
+    try {
+      const input = z.object({
+        categoryId: z.coerce.number().int().positive(),
+        monthKey: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+        amount: z.coerce.number().finite().nonnegative(),
+      }).parse(req.body);
+      const budget = await runQueuedWrite(
+        res,
+        buildWriteQueueKey("user", req.user!.id, "budget", input.categoryId, input.monthKey),
+        () => storage.upsertMonthlyBudget(req.user!.id, input),
+      );
+      res.json(budget);
+    } catch (e) { next(e); }
+  });
+
   app.get("/api/transactions", requireAuth, async (req, res, next) => {
     try {
       await storage.applyDueRecurringIncomes(req.user!.id);
@@ -949,6 +976,29 @@ export async function registerRoutes(
     } catch (e) { next(e); }
   });
 
+  app.post("/api/transactions/:id/reverse", requireAuth, async (req, res, next) => {
+    try {
+      const transactionId = parseRouteId(req.params.id);
+      const input = z.object({
+        reason: z.string().trim().max(300).optional().nullable(),
+      }).parse(req.body ?? {});
+      const reversal = await runQueuedWrite(
+        res,
+        buildWriteQueueKey("user", req.user!.id, "transaction", transactionId, "reverse"),
+        () => storage.reverseTransaction(transactionId, req.user!.id, input.reason),
+      );
+      await writeAuditEvent({
+        action: "transaction.reversed",
+        actorUserId: req.user!.id,
+        actorRole: req.user!.role,
+        targetUserId: req.user!.id,
+        ipAddress: req.ip,
+        metadata: { originalTransactionId: transactionId, reversalTransactionId: reversal.id, reason: input.reason ?? null },
+      });
+      res.status(201).json(reversal);
+    } catch (e) { next(e); }
+  });
+
   app.delete("/api/transactions/:id", requireAuth, async (req, res, next) => {
     try {
       const transactionId = parseRouteId(req.params.id);
@@ -958,6 +1008,70 @@ export async function registerRoutes(
         () => storage.deleteTransaction(transactionId, req.user!.id),
       );
       res.json({ message: "تم حذف الحركة بنجاح" });
+    } catch (e) { next(e); }
+  });
+
+  app.get("/api/data/export", requireAuth, async (req, res, next) => {
+    try {
+      const userId = req.user!.id;
+      const [walletRows, categoryRows, transactionRows, recurringRows, obligationRows, obligationStatusRows, commitmentRows, commitmentStepRows, commitmentProofRows, goalRows, budgetRows, bankEventRows, bankRuleRows, automationRows, occurrenceRows] = await Promise.all([
+        db.select().from(wallets).where(eq(wallets.userId, userId)),
+        db.select().from(categories).where(eq(categories.userId, userId)),
+        db.select().from(transactions).where(eq(transactions.userId, userId)),
+        db.select().from(recurringIncomes).where(eq(recurringIncomes.userId, userId)),
+        db.select().from(obligations).where(eq(obligations.userId, userId)),
+        db.select().from(variableObligationMonthStatuses).where(eq(variableObligationMonthStatuses.userId, userId)),
+        db.select().from(commitments).where(eq(commitments.userId, userId)),
+        db.select().from(commitmentSteps).where(eq(commitmentSteps.userId, userId)),
+        db.select().from(commitmentProofs).where(eq(commitmentProofs.userId, userId)),
+        db.select().from(savingsGoals).where(eq(savingsGoals.userId, userId)),
+        db.select().from(monthlyBudgets).where(eq(monthlyBudgets.userId, userId)),
+        db.select({ id: bankEmailEvents.id, bankKey: bankEmailEvents.bankKey, sender: bankEmailEvents.sender, subject: bankEmailEvents.subject, snippet: bankEmailEvents.snippet, receivedAt: bankEmailEvents.receivedAt, status: bankEmailEvents.status, transactionType: bankEmailEvents.transactionType, direction: bankEmailEvents.direction, channel: bankEmailEvents.channel, amount: bankEmailEvents.amount, balanceAfter: bankEmailEvents.balanceAfter, gapAmount: bankEmailEvents.gapAmount, merchant: bankEmailEvents.merchant, counterparty: bankEmailEvents.counterparty, accountRef: bankEmailEvents.accountRef, categoryId: bankEmailEvents.categoryId, commitmentId: bankEmailEvents.commitmentId, transactionId: bankEmailEvents.transactionId, createdAt: bankEmailEvents.createdAt }).from(bankEmailEvents).where(eq(bankEmailEvents.userId, userId)),
+        db.select().from(bankCategoryRules).where(eq(bankCategoryRules.userId, userId)),
+        db.select().from(automationLog).where(eq(automationLog.userId, userId)),
+        db.select().from(commitmentOccurrences).where(eq(commitmentOccurrences.userId, userId)),
+      ]);
+
+      const exportPayload = {
+        exportVersion: 1,
+        exportedAt: new Date().toISOString(),
+        user: {
+          id: req.user!.id,
+          username: req.user!.username,
+          name: req.user!.name,
+          email: req.user!.email,
+          phone: req.user!.phone,
+        },
+        wallets: walletRows,
+        categories: categoryRows,
+        transactions: transactionRows,
+        recurringIncomes: recurringRows,
+        obligations: obligationRows,
+        variableObligationMonthStatuses: obligationStatusRows,
+        commitments: commitmentRows,
+        commitmentSteps: commitmentStepRows,
+        commitmentProofs: commitmentProofRows,
+        savingsGoals: goalRows,
+        monthlyBudgets: budgetRows,
+        bankEmailEvents: bankEventRows,
+        bankCategoryRules: bankRuleRows,
+        automationLog: automationRows,
+        commitmentOccurrences: occurrenceRows,
+      };
+
+      await writeAuditEvent({
+        action: "user.data_exported",
+        actorUserId: userId,
+        actorRole: req.user!.role,
+        targetUserId: userId,
+        ipAddress: req.ip,
+        metadata: { exportVersion: 1, transactionCount: transactionRows.length, walletCount: walletRows.length },
+      });
+
+      const stamp = new Date().toISOString().slice(0, 10);
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="eltizam-export-${stamp}.json"`);
+      res.json(exportPayload);
     } catch (e) { next(e); }
   });
 

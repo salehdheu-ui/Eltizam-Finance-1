@@ -1,4 +1,4 @@
-import { Filter, Search, Calendar, Loader2, Trash2, Wallet, PieChart, ArrowLeftRight, Pencil } from "lucide-react";
+import { Filter, Search, Calendar, Loader2, Trash2, Wallet, PieChart, ArrowLeftRight, Pencil, RotateCcw } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { CurrencyDisplay } from "@/components/ui/currency-display";
@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { cn, formatCurrency, formatRelativeArabicDate, formatTime, normalizeArabicText, toDate } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useMemo, useState } from "react";
-import { useTransactions, useDeleteTransaction, useWallets, useCategories, useUpdateTransactionCategory, useCreateCategory } from "@/lib/hooks";
+import { useTransactions, useDeleteTransaction, useReverseTransaction, useWallets, useCategories, useUpdateTransactionCategory, useCreateCategory } from "@/lib/hooks";
 import { useToast } from "@/hooks/use-toast";
 import type { Transaction } from "@shared/schema";
 
@@ -83,6 +83,7 @@ export default function Transactions() {
   const { data: wallets = [] } = useWallets();
   const { data: categories = [] } = useCategories();
   const deleteTransaction = useDeleteTransaction();
+  const reverseTransaction = useReverseTransaction();
   const updateCategory = useUpdateTransactionCategory();
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [newCategoryName, setNewCategoryName] = useState("");
@@ -179,6 +180,19 @@ export default function Transactions() {
   const totalOutflow = filteredTransactions
     .filter((tx) => (tx.type === "expense" || tx.type === "debt") && !isTransferTransaction(tx.note))
     .reduce((sum, tx) => sum + tx.amount, 0);
+
+  const handleReverse = async (id: number) => {
+    if (reverseTransaction.isPending) return;
+    const reason = window.prompt("سبب عكس هذه الحركة (اختياري):", "تصحيح مالي");
+    if (reason === null) return;
+    try {
+      await reverseTransaction.mutateAsync({ id, reason: reason.trim() || undefined });
+      toast({ title: "تم عكس الحركة", description: "تم إنشاء حركة عكسية وتحديث الرصيد مع الاحتفاظ بالسجل الأصلي" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "فشل عكس المعاملة";
+      toast({ title: "خطأ", description: message, variant: "destructive" });
+    }
+  };
 
   const handleDelete = async (id: number) => {
     if (deleteTransaction.isPending) {
@@ -339,7 +353,25 @@ export default function Transactions() {
                           </span>
                         </div>
                         <div className="flex shrink-0 items-center">
-                          {!isTransferTransaction(tx.note) ? (
+                          {tx.voidedAt ? (
+                            <span className="mr-1 rounded-full bg-amber-500/10 px-2 py-1 text-[10px] font-bold text-amber-700 dark:text-amber-300" title="تم عكس هذه الحركة">
+                              معكوسة
+                            </span>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground/50 hover:text-amber-600"
+                              onClick={() => handleReverse(tx.id)}
+                              disabled={reverseTransaction.isPending}
+                              aria-label="عكس الحركة"
+                              title="عكس الحركة مع الاحتفاظ بالسجل"
+                              data-testid={`button-reverse-${tx.id}`}
+                            >
+                              <RotateCcw className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {!isTransferTransaction(tx.note) && !tx.voidedAt ? (
                             <Button
                               variant="ghost"
                               size="icon"
@@ -357,7 +389,7 @@ export default function Transactions() {
                             size="icon"
                             className="h-8 w-8 text-muted-foreground/50 hover:text-destructive"
                             onClick={() => handleDelete(tx.id)}
-                            disabled={deleteTransaction.isPending}
+                            disabled={deleteTransaction.isPending || Boolean(tx.voidedAt)}
                             data-testid={`button-delete-${tx.id}`}
                           >
                             <Trash2 className="h-4 w-4" />

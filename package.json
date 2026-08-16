@@ -10,6 +10,7 @@
     "start": "cross-env NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "test": "vitest run --root .",
+    "test:integration": "vitest run --root . server/finance.integration.test.ts",
     "backup:db": "tsx script/backup-db.ts",
     "db:migrate": "tsx script/migrate-db.ts",
     "db:push": "node -e \"throw new Error('db:push is disabled to protect existing data. Use npm run db:migrate instead.')\"",

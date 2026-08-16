@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, integer, serial, doublePrecision, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, serial, doublePrecision, boolean, numeric, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -58,7 +58,43 @@ export const transactions = pgTable("transactions", {
   amount: doublePrecision("amount").notNull(),
   note: text("note").default(""),
   date: integer("date").notNull().default(sql`extract(epoch from now())::integer`),
+  reversalOfId: integer("reversal_of_id"),
+  reversalReason: text("reversal_reason"),
+  voidedAt: integer("voided_at"),
 });
+
+export const monthlyBudgets = pgTable("monthly_budgets", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  categoryId: integer("category_id").notNull().references(() => categories.id, { onDelete: "cascade" }),
+  monthKey: text("month_key").notNull(),
+  amount: doublePrecision("amount").notNull().default(0),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+  updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
+}, (table) => ({
+  userCategoryMonthUnique: uniqueIndex("monthly_budgets_user_category_month_unique").on(table.userId, table.categoryId, table.monthKey),
+  userMonthIdx: index("monthly_budgets_user_month_idx").on(table.userId, table.monthKey),
+}));
+
+export const ledgerEntries = pgTable("ledger_entries", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  walletId: integer("wallet_id").notNull().references(() => wallets.id, { onDelete: "cascade" }),
+  transactionId: integer("transaction_id").notNull().references(() => transactions.id, { onDelete: "cascade" }),
+  amount: numeric("amount", { precision: 20, scale: 3 }).notNull(),
+  direction: text("direction").notNull(),
+  source: text("source").notNull().default("manual"),
+  currency: text("currency").notNull().default("OMR"),
+  externalId: text("external_id"),
+  idempotencyKey: text("idempotency_key"),
+  occurredAt: integer("occurred_at").notNull(),
+  reversedById: integer("reversed_by_id"),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+}, (table) => ({
+  userWalletOccurredAtIdx: index("ledger_entries_user_wallet_occurred_at_idx").on(table.userId, table.walletId, table.occurredAt),
+  transactionIdx: index("ledger_entries_transaction_idx").on(table.transactionId),
+  idempotencyUnique: uniqueIndex("ledger_entries_user_idempotency_unique").on(table.userId, table.idempotencyKey),
+}));
 
 export const recurringIncomes = pgTable("recurring_incomes", {
   id: serial("id").primaryKey(),
@@ -329,6 +365,8 @@ export const bankCategoryRules = pgTable("bank_category_rules", {
 });
 
 export type BankCategoryRule = typeof bankCategoryRules.$inferSelect;
+export type LedgerEntry = typeof ledgerEntries.$inferSelect;
+export type MonthlyBudget = typeof monthlyBudgets.$inferSelect;
 
 export const integrationSettings = pgTable("integration_settings", {
   id: serial("id").primaryKey(),

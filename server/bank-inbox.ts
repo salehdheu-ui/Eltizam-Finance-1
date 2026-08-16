@@ -560,9 +560,13 @@ async function importParsedEvent(params: {
         type: gap.direction === "credit" ? "income" : "expense",
         amount: Math.abs(gap.difference),
         note: UNKNOWN_ADJUSTMENT_NOTE,
-      }, { allowOverdraft: true });
-      // Dated just before the message that revealed it, since it happened earlier.
-      await db.update(transactions).set({ date: params.receivedAt - 1 }).where(eq(transactions.id, unknown.id));
+      }, {
+        allowOverdraft: true,
+        source: "adjustment",
+        externalId: `bank-gap:${event.id}`,
+        idempotencyKey: `bank-gap:${event.id}`,
+        occurredAt: params.receivedAt - 1,
+      });
     }
 
     const transaction = await storage.createTransaction(params.userId, {
@@ -571,7 +575,14 @@ async function importParsedEvent(params: {
       type: params.parsed.transactionType,
       amount: params.parsed.amount,
       note: `من البريد البنكي · ${params.parsed.merchant}`,
-    }, { allowOverdraft: true, settleBalanceTo: params.parsed.balanceAfter });
+    }, {
+      allowOverdraft: true,
+      settleBalanceTo: params.parsed.balanceAfter,
+      source: "bank",
+      externalId: event.providerMessageId,
+      idempotencyKey: `bank-event:${event.id}`,
+      occurredAt: params.receivedAt,
+    });
     await db.update(transactions).set({ date: params.receivedAt }).where(eq(transactions.id, transaction.id));
 
     const [imported] = await db.update(bankEmailEvents).set({ status: "imported", transactionId: transaction.id }).where(eq(bankEmailEvents.id, event.id)).returning();
@@ -1527,7 +1538,14 @@ export function registerBankInboxRoutes(app: Express) {
         type: event.transactionType,
         amount: event.amount,
         note: `من البريد البنكي · ${event.merchant || "معاملة بنكية"}`,
-      }, { allowOverdraft: true, settleBalanceTo: event.balanceAfter });
+      }, {
+        allowOverdraft: true,
+        settleBalanceTo: event.balanceAfter,
+        source: "bank",
+        externalId: event.providerMessageId,
+        idempotencyKey: `bank-event:${event.id}`,
+        occurredAt: event.receivedAt,
+      });
       await db.update(transactions).set({ date: event.receivedAt }).where(eq(transactions.id, transaction.id));
       const [updated] = await db.update(bankEmailEvents).set({ status: "imported", transactionId: transaction.id }).where(eq(bankEmailEvents.id, id)).returning();
       res.json(updated);

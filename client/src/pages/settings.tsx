@@ -1,4 +1,4 @@
-import { User, Shield, Moon, LogOut, ChevronLeft, Globe, Lock, Check, Wallet, PieChart, Receipt, Landmark, Goal, Mail } from "lucide-react";
+import { User, Shield, Moon, LogOut, ChevronLeft, Globe, Lock, Check, Wallet, PieChart, Receipt, Landmark, Goal, Mail, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -20,6 +20,7 @@ import { OmaniCurrencySymbol } from "@/components/ui/currency-display";
 import { cn } from "@/lib/utils";
 import NotificationSettings from "@/components/notification-settings";
 import { useUser, useLogout, useUpdateUser, useChangePassword } from "@/lib/hooks";
+import { apiRequest } from "@/lib/queryClient";
 
 const currencies = [
   { id: "OMR", name: "الريال العماني", symbol: "OMR" },
@@ -106,6 +107,24 @@ export default function Settings() {
       toast({ title: "تم الحفظ بنجاح", description: "تم تحديث بيانات الملف الشخصي" });
     } catch {
       toast({ title: "خطأ", description: "فشل تحديث البيانات", variant: "destructive" });
+    }
+  };
+
+  const handleExportData = async () => {
+    try {
+      const response = await apiRequest("GET", "/api/data/export");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `eltizam-export-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      toast({ title: "تم تجهيز النسخة", description: "تم تنزيل بياناتك بصيغة JSON دون كلمات المرور أو الأسرار" });
+    } catch (error) {
+      toast({ title: "تعذر التصدير", description: error instanceof Error ? error.message : "حدث خطأ غير متوقع", variant: "destructive" });
     }
   };
 
@@ -221,6 +240,21 @@ export default function Settings() {
           </div>
         </div>
         </div>
+
+        <Card className="border-primary/15 p-4 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600">
+              <Download className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="font-bold">نسخة من بياناتك</h3>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">نزّل المحافظ والمعاملات والالتزامات والميزانيات بصيغة JSON. لا يتضمن الملف كلمات المرور أو مفاتيح التكامل.</p>
+              <Button variant="outline" className="mt-3" onClick={handleExportData}>
+                <Download className="ml-2 h-4 w-4" /> تنزيل البيانات
+              </Button>
+            </div>
+          </div>
+        </Card>
 
         <Card className="border-primary/15 p-4 shadow-sm">
           <div className="flex items-start gap-3">

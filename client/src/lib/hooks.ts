@@ -22,6 +22,20 @@ type CommitmentPayload = Pick<Commitment, "title" | "type" | "frequency" | "dueD
 type CommitmentUpdatePayload = Partial<CommitmentPayload> & { id: number };
 type SavingsGoalPayload = Pick<SavingsGoal, "planId" | "planTitle" | "title" | "walletId" | "targetAmount" | "monthlyAmount" | "years">;
 
+export type MonthlyBudgetSummary = {
+  id: number;
+  userId: number;
+  categoryId: number;
+  monthKey: string;
+  amount: number;
+  createdAt: number;
+  updatedAt: number;
+  categoryName: string;
+  spent: number;
+  remaining: number;
+  percentage: number;
+};
+
 export type ReportsSummary = {
   period: string;
   summary: {
@@ -480,6 +494,29 @@ export function useCategories() {
   });
 }
 
+export function useBudgets(monthKey: string) {
+  return useQuery<MonthlyBudgetSummary[]>({
+    queryKey: ["/api/budgets", monthKey],
+    queryFn: async () => {
+      const response = await apiRequest("GET", `/api/budgets?month=${encodeURIComponent(monthKey)}`);
+      return response.json() as Promise<MonthlyBudgetSummary[]>;
+    },
+  });
+}
+
+export function useUpsertBudget() {
+  return useMutation({
+    mutationFn: async (data: { categoryId: number; monthKey: string; amount: number }) => {
+      const response = await apiRequest("PUT", "/api/budgets", data);
+      return response.json() as Promise<MonthlyBudgetSummary>;
+    },
+    onSuccess: (_budget, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/budgets", variables.monthKey] });
+      queryClient.invalidateQueries({ queryKey: ["/api/reports/summary"] });
+    },
+  });
+}
+
 export function useCreateCategory() {
   return useMutation({
     mutationFn: async (data: CategoryPayload) => {
@@ -525,6 +562,24 @@ export function useCreateTransaction() {
 export function useDeleteTransaction() {
   return useMutation({
     mutationFn: (id: number) => apiRequest("DELETE", `/api/transactions/${id}`),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/wallets"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/reports/summary"] });
+      await queryClient.refetchQueries({ queryKey: ["/api/dashboard"], type: "active" });
+      await queryClient.refetchQueries({ queryKey: ["/api/transactions"], type: "active" });
+      await queryClient.refetchQueries({ queryKey: ["/api/reports/summary"], type: "active" });
+    },
+  });
+}
+
+export function useReverseTransaction() {
+  return useMutation({
+    mutationFn: async ({ id, reason }: { id: number; reason?: string }) => {
+      const response = await apiRequest("POST", `/api/transactions/${id}/reverse`, { reason });
+      return response.json() as Promise<Transaction>;
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
       await queryClient.invalidateQueries({ queryKey: ["/api/wallets"] });
