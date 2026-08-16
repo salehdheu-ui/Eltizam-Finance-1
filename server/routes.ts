@@ -135,13 +135,22 @@ const walletUpdateSchema = insertWalletSchema.partial().extend({
 
 const categoryUpdateSchema = insertCategorySchema.partial();
 
+const positiveIdInput = z.preprocess(
+  (value) => typeof value === "string" && value.trim() !== "" ? Number(value) : value,
+  z.number().int().positive(),
+);
+const positiveAmountInput = z.preprocess(
+  (value) => typeof value === "string" && value.trim() !== "" ? Number(value) : value,
+  z.number().finite().positive(),
+);
+
 const transactionCreateRequestSchema = z.object({
-  walletId: z.union([z.number(), z.string()]),
-  targetWalletId: z.union([z.number(), z.string()]).nullable().optional(),
-  categoryId: z.union([z.number(), z.string()]).nullable().optional(),
+  walletId: positiveIdInput,
+  targetWalletId: positiveIdInput.nullable().optional(),
+  categoryId: positiveIdInput.nullable().optional(),
   type: z.enum(["income", "expense", "debt", "transfer"]),
-  amount: z.union([z.number(), z.string()]),
-  note: z.string().optional(),
+  amount: positiveAmountInput,
+  note: z.string().max(1000).optional(),
 });
 
 const recurringIncomePatchSchema = insertRecurringIncomeSchema.partial();

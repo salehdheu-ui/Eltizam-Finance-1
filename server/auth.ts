@@ -2,10 +2,11 @@
 import { Strategy as LocalStrategy } from "passport-local";
 import { Express } from "express";
 import session from "express-session";
-import createMemoryStore from "memorystore";
-import { scrypt, randomBytes, timingSafeEqual } from "crypto";
+import connectPgSimple from "connect-pg-simple";
+import { randomInt, randomBytes, scrypt, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
+import { pool } from "./db";
 import { writeAuditEvent } from "./audit";
 import { canSendMail, sendPasswordResetEmail } from "./mail";
 import { User as SelectUser } from "@shared/schema";
@@ -318,7 +319,7 @@ function maskContactValue(value: string) {
 }
 
 function buildPasswordResetToken() {
-  return (Math.floor(100000 + Math.random() * 900000)).toString();
+  return randomInt(100000, 1000000).toString();
 }
 
 export async function hashPlainPassword(password: string) {
@@ -330,7 +331,7 @@ export function setupAuth(app: Express) {
     throw new Error("SESSION_SECRET must be set in production");
   }
 
-  const MemoryStore = createMemoryStore(session);
+  const PgStore = connectPgSimple(session);
 
   const sessionSettings: session.SessionOptions = {
     name: sessionCookieName,
@@ -340,9 +341,12 @@ export function setupAuth(app: Express) {
     rolling: true,
     proxy: isProduction,
     unset: "destroy",
-    store: new MemoryStore({
-      checkPeriod: 86400000,
-      ttl: 30 * 24 * 60 * 60 * 1000,
+    store: new PgStore({
+      pool,
+      tableName: "user_sessions",
+      createTableIfMissing: true,
+      ttl: 30 * 24 * 60 * 60,
+      pruneSessionInterval: 15 * 60,
     }),
     cookie: {
       maxAge: 30 * 24 * 60 * 60 * 1000,

@@ -1,4 +1,5 @@
 import { eq, and, asc, desc, like, inArray } from "drizzle-orm";
+import { randomUUID } from "crypto";
 import { db } from "./db";
 import {
   users, wallets, categories, transactions, recurringIncomes, obligations, variableObligationMonthStatuses, commitments, commitmentSteps, commitmentProofs, savingsGoals, passwordResetRequests, bankEmailEvents, bankEmailConnections,
@@ -315,24 +316,35 @@ export class DatabaseStorage implements IStorage {
    * the amount that was quietly typed in.
    */
   async setWalletBalance(id: number, userId: number, newBalance: number): Promise<Wallet> {
-    const wallet = await this.getWallet(id, userId);
-    if (!wallet) throw userError("المحفظة غير موجودة");
-
-    const difference = Number((newBalance - wallet.balance).toFixed(3));
-    if (Math.abs(difference) >= 0.001) {
-      await db.insert(transactions).values({
-        userId,
-        walletId: id,
-        categoryId: null,
-        type: difference > 0 ? "income" : "expense",
-        amount: Math.abs(difference),
-        note: UNKNOWN_ADJUSTMENT_NOTE,
-      });
+    if (!Number.isFinite(newBalance) || newBalance < 0) {
+      throw userError("الرصيد الجديد غير صالح");
     }
 
-    const [updated] = await db.update(wallets).set({ balance: newBalance })
-      .where(and(eq(wallets.id, id), eq(wallets.userId, userId))).returning();
-    return updated;
+    return db.transaction(async (tx) => {
+      const [wallet] = await tx
+        .select()
+        .from(wallets)
+        .where(and(eq(wallets.id, id), eq(wallets.userId, userId)))
+        .for("update");
+
+      if (!wallet) throw userError("المحفظة غير موجودة");
+
+      const difference = Number((newBalance - wallet.balance).toFixed(3));
+      if (Math.abs(difference) >= 0.001) {
+        await tx.insert(transactions).values({
+          userId,
+          walletId: id,
+          categoryId: null,
+          type: difference > 0 ? "income" : "expense",
+          amount: Math.abs(difference),
+          note: UNKNOWN_ADJUSTMENT_NOTE,
+        });
+      }
+
+      const [updated] = await tx.update(wallets).set({ balance: newBalance })
+        .where(and(eq(wallets.id, id), eq(wallets.userId, userId))).returning();
+      return updated;
+    });
   }
 
 
@@ -430,70 +442,104 @@ export class DatabaseStorage implements IStorage {
     transaction: InsertTransaction,
     options: { allowOverdraft?: boolean; settleBalanceTo?: number | null } = {},
   ): Promise<Transaction> {
-    if (transaction.walletId) {
-      const wallet = await this.getWallet(transaction.walletId, userId);
-      if (wallet) {
-        if (!options.allowOverdraft && (transaction.type === "expense" || transaction.type === "debt") && transaction.amount > wallet.balance) {
-          throw userError("المبلغ أكبر من الرصيد المتاح في المحفظة");
-        }
-
-        const [created] = await db.insert(transactions).values({ ...transaction, userId }).returning();
-        const delta = transaction.type === "income" ? transaction.amount : -transaction.amount;
-        const nextBalance = typeof options.settleBalanceTo === "number"
-          ? options.settleBalanceTo
-          : wallet.balance + delta;
-        await this.updateWallet(wallet.id, userId, { balance: nextBalance });
-        return created;
-      }
+    if (!Number.isFinite(transaction.amount) || transaction.amount <= 0) {
+      throw userError("مبلغ المعاملة غير صالح");
+    }
+    if (typeof options.settleBalanceTo === "number" && (!Number.isFinite(options.settleBalanceTo) || options.settleBalanceTo < 0)) {
+      throw userError("الرصيد الناتج غير صالح");
     }
 
-    const [created] = await db.insert(transactions).values({ ...transaction, userId }).returning();
-    return created;
+    return db.transaction(async (tx) => {
+      if (!transaction.walletId) {
+        const [created] = await tx.insert(transactions).values({ ...transaction, userId }).returning();
+        return created;
+      }
+
+      const [wallet] = await tx
+        .select()
+        .from(wallets)
+        .where(and(eq(wallets.id, transaction.walletId), eq(wallets.userId, userId)))
+        .for("update");
+      if (!wallet) {
+        throw userError("المحفظة غير موجودة");
+      }
+
+      if (!options.allowOverdraft && (transaction.type === "expense" || transaction.type === "debt") && transaction.amount > wallet.balance) {
+        throw userError("المبلغ أكبر من الرصيد المتاح في المحفظة");
+      }
+
+      const [created] = await tx.insert(transactions).values({ ...transaction, userId }).returning();
+      const delta = transaction.type === "income" ? transaction.amount : -transaction.amount;
+      const nextBalance = typeof options.settleBalanceTo === "number"
+        ? options.settleBalanceTo
+        : Number((wallet.balance + delta).toFixed(3));
+
+      await tx.update(wallets).set({ balance: nextBalance })
+        .where(and(eq(wallets.id, wallet.id), eq(wallets.userId, userId)));
+      return created;
+    });
   }
 
   async createTransfer(userId: number, transfer: { sourceWalletId: number; targetWalletId: number; amount: number; note?: string | null }): Promise<Transaction> {
     if (transfer.sourceWalletId === transfer.targetWalletId) {
       throw userError("يجب اختيار محفظتين مختلفتين للتحويل");
     }
-
-    const sourceWallet = await this.getWallet(transfer.sourceWalletId, userId);
-    const targetWallet = await this.getWallet(transfer.targetWalletId, userId);
-
-    if (!sourceWallet || !targetWallet) {
-      throw userError("تعذر العثور على إحدى المحافظ المحددة");
+    if (!Number.isFinite(transfer.amount) || transfer.amount <= 0) {
+      throw userError("مبلغ التحويل غير صالح");
     }
 
-    if (transfer.amount > sourceWallet.balance) {
-      throw userError("المبلغ أكبر من الرصيد المتاح في المحفظة");
-    }
+    return db.transaction(async (tx) => {
+      const lockedWallets = new Map<number, Wallet>();
+      const walletIds = [transfer.sourceWalletId, transfer.targetWalletId].sort((a, b) => a - b);
 
-    const pairId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const label = (transfer.note?.trim() || "تحويل بين المحافظ").replace(/:/g, " - ");
-    const outNote = `__transfer__:${pairId}:out:${transfer.targetWalletId}:${label}`;
-    const inNote = `__transfer__:${pairId}:in:${transfer.sourceWalletId}:${label}`;
+      for (const walletId of walletIds) {
+        const [wallet] = await tx
+          .select()
+          .from(wallets)
+          .where(and(eq(wallets.id, walletId), eq(wallets.userId, userId)))
+          .for("update");
+        if (!wallet) {
+          throw userError("تعذر العثور على إحدى المحافظ المحددة");
+        }
+        lockedWallets.set(walletId, wallet);
+      }
 
-    const [outgoing] = await db.insert(transactions).values({
-      userId,
-      walletId: transfer.sourceWalletId,
-      categoryId: null,
-      type: "expense",
-      amount: transfer.amount,
-      note: outNote,
-    }).returning();
+      const sourceWallet = lockedWallets.get(transfer.sourceWalletId)!;
+      const targetWallet = lockedWallets.get(transfer.targetWalletId)!;
+      if (transfer.amount > sourceWallet.balance) {
+        throw userError("المبلغ أكبر من الرصيد المتاح في المحفظة");
+      }
 
-    await db.insert(transactions).values({
-      userId,
-      walletId: transfer.targetWalletId,
-      categoryId: null,
-      type: "income",
-      amount: transfer.amount,
-      note: inNote,
+      const pairId = randomUUID();
+      const label = (transfer.note?.trim() || "تحويل بين المحافظ").replace(/:/g, " - ");
+      const outNote = `__transfer__:${pairId}:out:${transfer.targetWalletId}:${label}`;
+      const inNote = `__transfer__:${pairId}:in:${transfer.sourceWalletId}:${label}`;
+
+      const [outgoing] = await tx.insert(transactions).values({
+        userId,
+        walletId: transfer.sourceWalletId,
+        categoryId: null,
+        type: "expense",
+        amount: transfer.amount,
+        note: outNote,
+      }).returning();
+
+      await tx.insert(transactions).values({
+        userId,
+        walletId: transfer.targetWalletId,
+        categoryId: null,
+        type: "income",
+        amount: transfer.amount,
+        note: inNote,
+      });
+
+      await tx.update(wallets).set({ balance: Number((sourceWallet.balance - transfer.amount).toFixed(3)) })
+        .where(and(eq(wallets.id, sourceWallet.id), eq(wallets.userId, userId)));
+      await tx.update(wallets).set({ balance: Number((targetWallet.balance + transfer.amount).toFixed(3)) })
+        .where(and(eq(wallets.id, targetWallet.id), eq(wallets.userId, userId)));
+
+      return outgoing;
     });
-
-    await this.updateWallet(sourceWallet.id, userId, { balance: sourceWallet.balance - transfer.amount });
-    await this.updateWallet(targetWallet.id, userId, { balance: targetWallet.balance + transfer.amount });
-
-    return outgoing;
   }
 
   /**
@@ -510,39 +556,72 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteTransaction(id: number, userId: number): Promise<void> {
-    const [tx] = await db.select().from(transactions).where(and(eq(transactions.id, id), eq(transactions.userId, userId)));
-    const transferMeta = this.parseTransferNote(tx?.note);
-    if (tx && transferMeta) {
-      const pairTransactions = await db
+    await db.transaction(async (tx) => {
+      const [transaction] = await tx
         .select()
         .from(transactions)
-        .where(and(eq(transactions.userId, userId), like(transactions.note, `__transfer__:${transferMeta.pairId}:%`)));
+        .where(and(eq(transactions.id, id), eq(transactions.userId, userId)))
+        .for("update");
+      if (!transaction) return;
 
-      for (const pairTx of pairTransactions) {
-        if (pairTx.walletId) {
-          const wallet = await this.getWallet(pairTx.walletId, userId);
-          if (wallet) {
-            const delta = pairTx.type === "income" ? -pairTx.amount : pairTx.amount;
-            await this.updateWallet(wallet.id, userId, { balance: wallet.balance + delta });
-          }
+      const transferMeta = this.parseTransferNote(transaction.note);
+      if (transferMeta) {
+        const pairTransactions = await tx
+          .select()
+          .from(transactions)
+          .where(and(eq(transactions.userId, userId), like(transactions.note, `__transfer__:${transferMeta.pairId}:%`)))
+          .for("update");
+
+        const walletIds = Array.from(new Set(pairTransactions.map((pairTx) => pairTx.walletId).filter((walletId): walletId is number => walletId !== null)))
+          .sort((a, b) => a - b);
+        const lockedWallets = new Map<number, Wallet>();
+        for (const walletId of walletIds) {
+          const [wallet] = await tx
+            .select()
+            .from(wallets)
+            .where(and(eq(wallets.id, walletId), eq(wallets.userId, userId)))
+            .for("update");
+          if (wallet) lockedWallets.set(walletId, wallet);
+        }
+
+        for (const pairTx of pairTransactions) {
+          if (!pairTx.walletId) continue;
+          const wallet = lockedWallets.get(pairTx.walletId);
+          if (!wallet) continue;
+          const delta = pairTx.type === "income" ? -pairTx.amount : pairTx.amount;
+          const nextBalance = Number((wallet.balance + delta).toFixed(3));
+          lockedWallets.set(wallet.id, { ...wallet, balance: nextBalance });
+          await tx.update(wallets).set({ balance: nextBalance })
+            .where(and(eq(wallets.id, wallet.id), eq(wallets.userId, userId)));
+        }
+
+        const pairIds = pairTransactions.map((pairTx) => pairTx.id);
+        if (pairIds.length > 0) {
+          await tx.update(bankEmailEvents).set({ transactionId: null })
+            .where(and(eq(bankEmailEvents.userId, userId), inArray(bankEmailEvents.transactionId, pairIds)));
+          await tx.delete(transactions)
+            .where(and(eq(transactions.userId, userId), like(transactions.note, `__transfer__:${transferMeta.pairId}:%`)));
+        }
+        return;
+      }
+
+      if (transaction.walletId) {
+        const [wallet] = await tx
+          .select()
+          .from(wallets)
+          .where(and(eq(wallets.id, transaction.walletId), eq(wallets.userId, userId)))
+          .for("update");
+        if (wallet) {
+          const delta = transaction.type === "income" ? -transaction.amount : transaction.amount;
+          await tx.update(wallets).set({ balance: Number((wallet.balance + delta).toFixed(3)) })
+            .where(and(eq(wallets.id, wallet.id), eq(wallets.userId, userId)));
         }
       }
 
-      await this.detachBankEmailEvents(pairTransactions.map((pairTx) => pairTx.id), userId);
-      await db.delete(transactions).where(and(eq(transactions.userId, userId), like(transactions.note, `__transfer__:${transferMeta.pairId}:%`)));
-      return;
-    }
-
-    if (tx && tx.walletId) {
-      const wallet = await this.getWallet(tx.walletId, userId);
-      if (wallet) {
-        const delta = tx.type === "income" ? -tx.amount : tx.amount;
-        await this.updateWallet(wallet.id, userId, { balance: wallet.balance + delta });
-      }
-    }
-
-    await this.detachBankEmailEvents([id], userId);
-    await db.delete(transactions).where(and(eq(transactions.id, id), eq(transactions.userId, userId)));
+      await tx.update(bankEmailEvents).set({ transactionId: null })
+        .where(and(eq(bankEmailEvents.userId, userId), eq(bankEmailEvents.transactionId, id)));
+      await tx.delete(transactions).where(and(eq(transactions.id, id), eq(transactions.userId, userId)));
+    });
   }
 
   async getRecurringIncomes(userId: number): Promise<RecurringIncome[]> {

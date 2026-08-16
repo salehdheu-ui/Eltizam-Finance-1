@@ -8,6 +8,7 @@ import { Link } from "wouter";
 import { useCommitments, useDashboard, useObligations, useUser } from "@/lib/hooks";
 import type { Commitment } from "@shared/schema";
 import InsightsPanel from "@/components/insights-panel";
+import OnboardingChecklist from "@/components/onboarding-checklist";
 
 function startOfTodayTimestamp() {
   const today = new Date();
@@ -114,6 +115,8 @@ export default function Dashboard() {
           </div>
         </CardContent>
       </Card>
+
+      <OnboardingChecklist />
 
       <InsightsPanel />
 
