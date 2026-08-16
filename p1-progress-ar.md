@@ -4,8 +4,10 @@
 
 تم تطبيق دفعة P1 على فرع مستقل:
 
-- **الفرع المحلي:** `manus/p1-ledger`
-- **الفرع المنشور بعد الاعتماد:** سيتم رفعه إلى GitHub دون تعديل `main`
+- **الفرع المنشور:** `manus/p1-ledger`
+- **Commit:** `ae11265 feat: add ledger reversals budgets and data export`
+- **الرابط:** https://github.com/salehdheu-ui/Eltizam-Finance-1/tree/manus/p1-ledger
+- **Pull Request:** https://github.com/salehdheu-ui/Eltizam-Finance-1/pull/new/manus/p1-ledger
 - **نطاق الدفعة:** ledger انتقالي، idempotency، تصحيح مالي، ميزانيات شهرية، تصدير بيانات، ومراقبة تشغيلية أساسية.
 
 ## ما تم تطبيقه
