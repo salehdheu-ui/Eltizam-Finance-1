@@ -19,7 +19,7 @@ type RecurringIncomeUpdatePayload = Partial<RecurringIncomePayload> & { id: numb
 type ObligationPayload = Omit<Obligation, "id" | "userId" | "createdAt" | "updatedAt">;
 type ObligationUpdatePayload = Partial<ObligationPayload> & { id: number };
 type CommitmentPayload = Pick<Commitment, "title" | "type" | "frequency" | "dueDate" | "amount" | "personName" | "assetName" | "notes">;
-type CommitmentUpdatePayload = Partial<CommitmentPayload & Pick<Commitment, "reminderDaysBefore" | "escalateAfterDays" | "autoCloseOnProof">> & { id: number };
+type CommitmentUpdatePayload = Partial<CommitmentPayload & Pick<Commitment, "progress" | "reminderDaysBefore" | "escalateAfterDays" | "autoCloseOnProof">> & { id: number };
 type SavingsGoalPayload = Pick<SavingsGoal, "planId" | "planTitle" | "title" | "walletId" | "targetAmount" | "monthlyAmount" | "years">;
 
 export type OwnedCommitmentShare = {
@@ -693,6 +693,8 @@ export function useCreateCommitmentStep(id: number | undefined) {
       apiRequest("POST", "/api/commitments/" + id + "/steps", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/commitments", id, "steps"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/commitments", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/commitments"] });
     },
   });
 }
@@ -702,6 +704,8 @@ export function useToggleCommitmentStep(id: number | undefined) {
     mutationFn: (stepId: number) => apiRequest("PATCH", "/api/commitments/" + id + "/steps/" + stepId + "/toggle"),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/commitments", id, "steps"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/commitments", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/commitments"] });
     },
   });
 }
@@ -711,6 +715,8 @@ export function useDeleteCommitmentStep(id: number | undefined) {
     mutationFn: (stepId: number) => apiRequest("DELETE", "/api/commitments/" + id + "/steps/" + stepId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/commitments", id, "steps"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/commitments", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/commitments"] });
     },
   });
 }
@@ -748,9 +754,17 @@ export function useCommitments() {
 
 export function useCreateCommitment() {
   return useMutation({
-    mutationFn: (data: CommitmentPayload) => apiRequest("POST", "/api/commitments", data),
-    onSuccess: () => {
+    mutationFn: async (data: CommitmentPayload) => {
+      const response = await apiRequest("POST", "/api/commitments", data);
+      return response.json() as Promise<Commitment>;
+    },
+    onSuccess: (created) => {
+      queryClient.setQueryData<Commitment[]>(["/api/commitments"], (current = []) => [
+        created,
+        ...current.filter((commitment) => commitment.id !== created.id),
+      ]);
       queryClient.invalidateQueries({ queryKey: ["/api/commitments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/occurrences"] });
     },
   });
 }
@@ -770,8 +784,9 @@ export function useUpdateCommitmentStatus() {
   return useMutation({
     mutationFn: ({ id, status }: { id: number; status: Commitment["status"] }) =>
       apiRequest("PATCH", `/api/commitments/${id}/status`, { status }),
-    onSuccess: () => {
+    onSuccess: (_response, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/commitments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/commitments", variables.id] });
     },
   });
 }

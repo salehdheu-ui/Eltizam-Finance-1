@@ -148,6 +148,11 @@ const databaseMigrations: DatabaseMigration[] = [
     name: "ensure_commitment_share_workflow_columns",
     up: async () => { await ensureCommitmentShareWorkflowColumns(); },
   },
+  {
+    version: 26,
+    name: "ensure_commitment_progress_column",
+    up: async () => { await ensureCommitmentProgressColumn(); },
+  },
 ];
 
 async function ensureSchemaMigrationsTable() {
@@ -406,6 +411,7 @@ async function ensureCommitmentsTable() {
       person_name TEXT,
       asset_name TEXT,
       notes TEXT DEFAULT '',
+      progress INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
       updated_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer
     )
@@ -413,6 +419,11 @@ async function ensureCommitmentsTable() {
 
   await pgExec("CREATE INDEX IF NOT EXISTS commitments_user_status_idx ON commitments (user_id, status, due_date)");
   await pgExec("CREATE INDEX IF NOT EXISTS commitments_user_due_idx ON commitments (user_id, due_date)");
+}
+
+async function ensureCommitmentProgressColumn() {
+  await pgExec("ALTER TABLE commitments ADD COLUMN IF NOT EXISTS progress INTEGER NOT NULL DEFAULT 0");
+  await pgExec("UPDATE commitments SET progress = 0 WHERE progress IS NULL OR progress < 0 OR progress > 100");
 }
 async function ensureCommitmentStepsAndProofs() {
   await pgExec(`

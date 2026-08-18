@@ -635,6 +635,7 @@ export class DatabaseStorage implements IStorage {
         position: step.position ?? existingSteps.length,
       })
       .returning();
+    await this.syncCommitmentProgressFromSteps(commitmentId, userId);
     return created;
   }
 
@@ -659,6 +660,7 @@ export class DatabaseStorage implements IStorage {
       })
       .where(eq(commitmentSteps.id, step.id))
       .returning();
+    await this.syncCommitmentProgressFromSteps(commitmentId, userId);
     return updated;
   }
 
@@ -670,6 +672,14 @@ export class DatabaseStorage implements IStorage {
         eq(commitmentSteps.commitmentId, commitmentId),
         eq(commitmentSteps.userId, userId),
       ));
+    await this.syncCommitmentProgressFromSteps(commitmentId, userId);
+  }
+
+  private async syncCommitmentProgressFromSteps(commitmentId: number, userId: number): Promise<void> {
+    const steps = await this.getCommitmentSteps(commitmentId, userId);
+    const completed = steps.filter((step) => step.isCompleted).length;
+    const progress = steps.length > 0 ? Math.round((completed / steps.length) * 100) : 0;
+    await this.updateCommitment(commitmentId, userId, { progress });
   }
 
   async getCommitmentProofs(commitmentId: number, userId: number): Promise<CommitmentProof[]> {
@@ -729,6 +739,7 @@ export class DatabaseStorage implements IStorage {
         personName: commitment.personName ?? null,
         assetName: commitment.assetName ?? null,
         notes: commitment.notes ?? "",
+        progress: commitment.progress ?? 0,
         createdAt: now,
         updatedAt: now,
       })
@@ -757,6 +768,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateCommitmentStatus(id: number, userId: number, status: NonNullable<InsertCommitment["status"]>): Promise<Commitment> {
+    if (status === "completed") return this.updateCommitment(id, userId, { status, progress: 100 });
+    if (status === "active") return this.updateCommitment(id, userId, { status, progress: 0 });
     return this.updateCommitment(id, userId, { status });
   }
   async getObligations(userId: number): Promise<Obligation[]> {

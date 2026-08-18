@@ -230,6 +230,12 @@ export default function Commitments() {
                       {commitment.amount ? <span className="inline-flex items-center gap-1"><Receipt className="h-3.5 w-3.5" />{commitment.amount.toFixed(3)} ر.ع</span> : null}
                     </div>
                     {commitment.assetName || commitment.personName ? <p className="mt-2 text-xs text-muted-foreground">{[commitment.assetName, commitment.personName].filter(Boolean).join(" · ")}</p> : null}
+                    <div className="mt-3 flex items-center gap-2" aria-label={`نسبة الإنجاز ${commitment.progress}%`}>
+                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                        <div className="h-full rounded-full bg-emerald-600" style={{ width: `${commitment.progress}%` }} />
+                      </div>
+                      <span className="w-9 text-left text-xs font-semibold text-emerald-700">{commitment.progress}%</span>
+                    </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
                     <Button type="button" size="icon" variant="ghost" aria-label="فتح التفاصيل" onClick={() => setLocation("/commitments/" + commitment.id)}><ChevronLeft className="h-4 w-4" /></Button>
