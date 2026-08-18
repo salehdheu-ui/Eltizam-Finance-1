@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { CurrencyDisplay } from "@/components/ui/currency-display";
 import { Check, Loader2, Sparkles, X } from "lucide-react";
+import type { Commitment } from "@shared/schema";
 
 type Draft = {
   title: string;
@@ -43,8 +44,8 @@ export default function QuickCommitment() {
   });
 
   const create = useMutation({
-    mutationFn: (value: Draft) =>
-      apiRequest("POST", "/api/commitments", {
+    mutationFn: async (value: Draft) => {
+      const response = await apiRequest("POST", "/api/commitments", {
         title: value.title,
         type: value.type,
         frequency: value.frequency,
@@ -52,8 +53,14 @@ export default function QuickCommitment() {
         amount: value.amount,
         personName: value.personName,
         notes: "",
-      }),
-    onSuccess: async () => {
+      });
+      return response.json() as Promise<Commitment>;
+    },
+    onSuccess: async (created) => {
+      queryClient.setQueryData<Commitment[]>(["/api/commitments"], (current = []) => [
+        created,
+        ...current.filter((commitment) => commitment.id !== created.id),
+      ]);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["/api/commitments"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/occurrences"] }),

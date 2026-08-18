@@ -96,16 +96,17 @@ export default function CommitmentDetails() {
   const [reminderDaysBefore, setReminderDaysBefore] = useState(3);
   const [escalateAfterDays, setEscalateAfterDays] = useState<number | null>(null);
   const [autoCloseOnProof, setAutoCloseOnProof] = useState(true);
+  const [progress, setProgress] = useState(0);
 
   useEffect(() => {
     if (!commitment) return;
     setReminderDaysBefore(commitment.reminderDaysBefore);
     setEscalateAfterDays(commitment.escalateAfterDays);
     setAutoCloseOnProof(commitment.autoCloseOnProof);
+    setProgress(commitment.progress);
   }, [commitment]);
 
   const completedSteps = useMemo(() => steps.filter((step) => step.isCompleted).length, [steps]);
-  const progress = steps.length > 0 ? Math.round((completedSteps / steps.length) * 100) : 0;
   const availablePeople = useMemo(() => {
     const assignedEmails = new Set(shares.map((share) => share.assigneeEmail.toLowerCase()));
     return sharedPeople.filter((person) => !assignedEmails.has(person.email.toLowerCase())).slice(0, 6);
@@ -143,6 +144,15 @@ export default function CommitmentDetails() {
       toast({ title: "تم حفظ الأتمتة", description: "سيطبق النظام هذه القواعد تلقائيًا على الالتزام." });
     } catch (error) {
       toast({ title: "تعذر حفظ الأتمتة", description: error instanceof Error ? error.message : "حاول مرة أخرى", variant: "destructive" });
+    }
+  };
+
+  const handleSaveProgress = async () => {
+    try {
+      await updateCommitment.mutateAsync({ id: commitmentId, progress });
+      toast({ title: "تم تحديث نسبة الإنجاز", description: `نسبة إنجاز الالتزام الآن ${progress}%.` });
+    } catch (error) {
+      toast({ title: "تعذر تحديث النسبة", description: error instanceof Error ? error.message : "حاول مرة أخرى", variant: "destructive" });
     }
   };
 
@@ -200,6 +210,42 @@ export default function CommitmentDetails() {
               {commitment.notes ? <p className="sm:col-span-2"><span className="text-muted-foreground">ملاحظة:</span> {commitment.notes}</p> : null}
             </div>
           ) : null}
+        </CardContent>
+      </Card>
+
+      <Card className="border-emerald-200 bg-gradient-to-br from-emerald-50/70 to-background">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center justify-between gap-3 text-lg">
+            <span>نسبة الإنجاز</span>
+            <span className="text-2xl font-bold text-emerald-700">{progress}%</span>
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">حرّك النسبة أو اختر قيمة سريعة. وعند استخدام خطوات التنفيذ تُحدّث النسبة تلقائيًا.</p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="h-3 overflow-hidden rounded-full bg-emerald-100" aria-hidden="true">
+            <div className="h-full rounded-full bg-emerald-600 transition-all" style={{ width: `${progress}%` }} />
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="5"
+            value={progress}
+            onChange={(event) => setProgress(Number(event.target.value))}
+            className="w-full accent-emerald-600"
+            aria-label="نسبة إنجاز الالتزام"
+            disabled={isCompleted}
+          />
+          <div className="flex flex-wrap gap-2">
+            {[0, 25, 50, 75, 100].map((value) => (
+              <Button key={value} type="button" size="sm" variant={progress === value ? "default" : "outline"} onClick={() => setProgress(value)} disabled={isCompleted}>{value}%</Button>
+            ))}
+          </div>
+          {isCompleted ? <p className="text-sm text-emerald-700">الالتزام منجز بالكامل. أعد فتحه إذا أردت تغيير النسبة.</p> : (
+            <Button type="button" onClick={handleSaveProgress} disabled={updateCommitment.isPending || progress === commitment.progress}>
+              <Save className="h-4 w-4" />{updateCommitment.isPending ? "جارٍ الحفظ..." : "حفظ نسبة الإنجاز"}
+            </Button>
+          )}
         </CardContent>
       </Card>
 
@@ -310,7 +356,7 @@ export default function CommitmentDetails() {
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center justify-between gap-3 text-lg">
             <span>خطوات التنفيذ</span>
-            <span className="text-sm font-normal text-muted-foreground">{completedSteps} من {steps.length} · {progress}%</span>
+            <span className="text-sm font-normal text-muted-foreground">{completedSteps} من {steps.length} · {commitment.progress}%</span>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">

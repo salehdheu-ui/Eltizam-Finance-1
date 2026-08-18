@@ -43,17 +43,21 @@ export default function Dashboard() {
     () => commitments.filter((commitment) => commitment.status === "active"),
     [commitments],
   );
-  const priorityCommitments = useMemo(
+  const evaluatedCommitments = useMemo(
     () => activeCommitments
       .map((commitment) => ({ commitment, timing: getCommitmentTiming(commitment, today) }))
-      .filter(({ timing }) => timing.daysLeft <= 7)
-      .sort((first, second) => first.timing.daysLeft - second.timing.daysLeft)
-      .slice(0, 5),
+      .sort((first, second) => {
+        if (first.timing.daysLeft !== second.timing.daysLeft) {
+          return first.timing.daysLeft - second.timing.daysLeft;
+        }
+        return second.commitment.createdAt - first.commitment.createdAt;
+      }),
     [activeCommitments, today],
   );
-  const overdueCount = priorityCommitments.filter(({ timing }) => timing.tone === "danger").length;
-  const todayCount = priorityCommitments.filter(({ timing }) => timing.tone === "warning").length;
-  const weekCount = priorityCommitments.filter(({ timing }) => timing.daysLeft >= 0 && timing.daysLeft <= 7).length;
+  const priorityCommitments = evaluatedCommitments.slice(0, 5);
+  const overdueCount = evaluatedCommitments.filter(({ timing }) => timing.tone === "danger").length;
+  const todayCount = evaluatedCommitments.filter(({ timing }) => timing.tone === "warning").length;
+  const weekCount = evaluatedCommitments.filter(({ timing }) => timing.daysLeft >= 0 && timing.daysLeft <= 7).length;
   const upcomingObligations = getUpcomingObligations(obligations, 3);
   const hasFinancialActivity = (dashboard?.recentTransactions?.length ?? 0) > 0
     || (dashboard?.totalBalance ?? 0) !== 0
@@ -121,7 +125,7 @@ export default function Dashboard() {
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-bold">الأولوية الآن</h2>
-            <p className="text-sm text-muted-foreground">الأقرب يظهر أولاً</p>
+            <p className="text-sm text-muted-foreground">الأقرب أولاً، ثم بقية التزاماتك</p>
           </div>
           {activeCommitments.length > 0 ? (
             <Link href="/commitments"><Button variant="link" className="h-auto p-0">عرض الكل</Button></Link>
@@ -149,6 +153,12 @@ export default function Dashboard() {
                     <div className="min-w-0 flex-1">
                       <h3 className="truncate font-bold">{commitment.title}</h3>
                       <p className={cn("mt-1 text-xs", timing.tone === "danger" ? "text-red-700" : timing.tone === "warning" ? "text-amber-700" : "text-muted-foreground")}>{timing.label}</p>
+                      <div className="mt-2 flex items-center gap-2">
+                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                          <div className="h-full rounded-full bg-emerald-600" style={{ width: `${commitment.progress}%` }} />
+                        </div>
+                        <span className="text-[11px] font-semibold text-emerald-700">{commitment.progress}%</span>
+                      </div>
                     </div>
                     <ChevronLeft className="h-4 w-4 shrink-0 text-muted-foreground" />
                   </CardContent>
@@ -160,8 +170,8 @@ export default function Dashboard() {
           <Card className="border-dashed bg-muted/20">
             <CardContent className="py-9 text-center">
               <ListChecks className="mx-auto h-9 w-9 text-primary/60" />
-              <h3 className="mt-3 font-bold">لا يوجد شيء عاجل</h3>
-              <p className="mt-1 text-sm text-muted-foreground">أضف أول التزام، وسيظهر هنا في الوقت المناسب.</p>
+              <h3 className="mt-3 font-bold">لا توجد التزامات نشطة</h3>
+              <p className="mt-1 text-sm text-muted-foreground">أضف أول التزام وسيظهر هنا مباشرة.</p>
             </CardContent>
           </Card>
         )}
