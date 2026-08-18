@@ -138,6 +138,11 @@ const databaseMigrations: DatabaseMigration[] = [
     name: "recompute_bank_email_gaps_per_account",
     up: async () => { await recomputeBankEmailGapsPerAccount(); },
   },
+  {
+    version: 24,
+    name: "ensure_commitment_shares_table",
+    up: async () => { await ensureCommitmentSharesTable(); },
+  },
 ];
 
 async function ensureSchemaMigrationsTable() {
@@ -832,4 +837,24 @@ async function ensureBankEmailEventAnalysisColumns() {
   // Existing rows predate direction tracking; derive it from the type we did store.
   await pgExec("UPDATE bank_email_events SET direction = CASE WHEN transaction_type = 'income' THEN 'credit' ELSE 'debit' END WHERE direction IS NULL AND transaction_type IS NOT NULL");
   await pgExec("CREATE INDEX IF NOT EXISTS bank_email_events_connection_received_idx ON bank_email_events (connection_id, received_at DESC)");
+}
+
+async function ensureCommitmentSharesTable() {
+  await pgExec(`
+    CREATE TABLE IF NOT EXISTS commitment_shares (
+      id SERIAL PRIMARY KEY,
+      commitment_id INTEGER NOT NULL REFERENCES commitments(id) ON DELETE CASCADE,
+      owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      assignee_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'pending',
+      completion_note TEXT DEFAULT '',
+      assigned_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
+      responded_at INTEGER,
+      completed_at INTEGER,
+      UNIQUE(commitment_id, assignee_user_id)
+    )
+  `);
+
+  await pgExec("CREATE INDEX IF NOT EXISTS commitment_shares_owner_idx ON commitment_shares (owner_user_id, commitment_id)");
+  await pgExec("CREATE INDEX IF NOT EXISTS commitment_shares_assignee_idx ON commitment_shares (assignee_user_id, status, assigned_at DESC)");
 }

@@ -11,6 +11,8 @@ import {
   Plus,
   Receipt,
   Trash2,
+  UserRoundPlus,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +27,9 @@ import {
   useCreateCommitmentStep,
   useDeleteCommitmentProof,
   useDeleteCommitmentStep,
+  useCommitmentShares,
+  useCreateCommitmentShare,
+  useRevokeCommitmentShare,
   useToggleCommitmentStep,
   useUpdateCommitmentStatus,
 } from "@/lib/hooks";
@@ -60,16 +65,20 @@ export default function CommitmentDetails() {
   const { data: commitment, isLoading } = useCommitment(commitmentId);
   const { data: steps = [] } = useCommitmentSteps(commitmentId);
   const { data: proofs = [] } = useCommitmentProofs(commitmentId);
+  const { data: shares = [] } = useCommitmentShares(commitmentId);
   const createStep = useCreateCommitmentStep(commitmentId);
   const toggleStep = useToggleCommitmentStep(commitmentId);
   const deleteStep = useDeleteCommitmentStep(commitmentId);
   const createProof = useCreateCommitmentProof(commitmentId);
   const deleteProof = useDeleteCommitmentProof(commitmentId);
   const updateStatus = useUpdateCommitmentStatus();
+  const createShare = useCreateCommitmentShare(commitmentId);
+  const revokeShare = useRevokeCommitmentShare(commitmentId);
   const [stepTitle, setStepTitle] = useState("");
   const [proofLabel, setProofLabel] = useState("");
   const [proofValue, setProofValue] = useState("");
   const [proofKind, setProofKind] = useState<"note" | "link" | "receipt">("note");
+  const [assigneeEmail, setAssigneeEmail] = useState("");
 
   const completedSteps = useMemo(() => steps.filter((step) => step.isCompleted).length, [steps]);
   const progress = steps.length > 0 ? Math.round((completedSteps / steps.length) * 100) : 0;
@@ -91,6 +100,13 @@ export default function CommitmentDetails() {
     });
     setProofLabel("");
     setProofValue("");
+  };
+
+  const handleShare = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!assigneeEmail.trim()) return;
+    await createShare.mutateAsync(assigneeEmail.trim());
+    setAssigneeEmail("");
   };
 
   if (isLoading) {
@@ -145,6 +161,31 @@ export default function CommitmentDetails() {
               {commitment.personName ? <p><span className="text-muted-foreground">الشخص:</span> {commitment.personName}</p> : null}
               {commitment.assetName ? <p><span className="text-muted-foreground">مرتبط بـ:</span> {commitment.assetName}</p> : null}
               {commitment.notes ? <p className="sm:col-span-2"><span className="text-muted-foreground">ملاحظة:</span> {commitment.notes}</p> : null}
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card className="border-primary/15 bg-gradient-to-br from-primary/5 to-background">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-lg"><UserRoundPlus className="h-5 w-5 text-primary" />إسناد لشخص آخر</CardTitle>
+          <p className="text-sm text-muted-foreground">أرسل المهمة إلى مستخدم مسجّل. سيرى العنوان والموعد فقط، وليس المبلغ أو الملاحظات أو الإثباتات.</p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <form onSubmit={handleShare} className="flex flex-col gap-2 sm:flex-row">
+            <Input type="email" value={assigneeEmail} onChange={(event) => setAssigneeEmail(event.target.value)} placeholder="بريد الشخص المسجّل في التزام" aria-label="بريد الشخص" required />
+            <Button type="submit" disabled={createShare.isPending} className="sm:shrink-0">{createShare.isPending ? "جارٍ الإرسال..." : "إسناد المهمة"}</Button>
+          </form>
+
+          {shares.length > 0 ? (
+            <div className="divide-y rounded-xl border bg-background/60">
+              {shares.map((share) => (
+                <div key={share.id} className="flex flex-wrap items-center gap-3 p-3 text-sm">
+                  <div className="min-w-0 flex-1"><p className="font-medium">{share.assigneeName}</p><p className="truncate text-xs text-muted-foreground">{share.assigneeEmail}</p>{share.completionNote ? <p className="mt-1 text-xs text-emerald-700">ملاحظة الإنجاز: {share.completionNote}</p> : null}</div>
+                  <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">{share.status === "pending" ? "بانتظار الرد" : share.status === "accepted" ? "قيد التنفيذ" : share.status === "completed" ? "تم الإنجاز" : share.status === "declined" ? "اعتذر" : "تم الإلغاء"}</span>
+                  {share.status !== "revoked" && share.status !== "completed" ? <Button type="button" size="sm" variant="ghost" className="text-destructive" disabled={revokeShare.isPending} onClick={() => revokeShare.mutate(share.id)}><X className="h-4 w-4" />إلغاء</Button> : null}
+                </div>
+              ))}
             </div>
           ) : null}
         </CardContent>

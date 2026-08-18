@@ -128,9 +128,12 @@ export default function Commitments() {
 
   return (
     <div className="space-y-5 py-4" dir="rtl">
-      <div>
-        <h1 className="text-2xl font-bold">التزاماتي</h1>
-        <p className="mt-1 text-sm text-muted-foreground">كل ما تريد تذكره أو إنجازه أو متابعته، مالياً أو شخصياً.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">التزاماتي</h1>
+          <p className="mt-1 text-sm text-muted-foreground">كل ما تريد تذكره أو إنجازه أو متابعته، مالياً أو شخصياً.</p>
+        </div>
+        <Button type="button" variant="outline" className="gap-2" onClick={() => setLocation("/shared-commitments")}><UsersRound className="h-4 w-4" />مهام مُسندة إليّ</Button>
       </div>
 
       <QuickCommitment />

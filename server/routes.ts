@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { hashPlainPassword, setupAuth } from "./auth";
 import { writeAuditEvent } from "./audit";
 import { createManualBackup, listAllBackups } from "./backup";
-import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, integrationSettings, upsertIntegrationSettingSchema, upsertEmailChannelSchema, upsertPushChannelSchema, transactions, categories, bankEmailEvents, bankCategoryRules, automationLog, commitmentOccurrences, commitments, notificationPreferences } from "@shared/schema";
+import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, integrationSettings, upsertIntegrationSettingSchema, upsertEmailChannelSchema, upsertPushChannelSchema, transactions, categories, bankEmailEvents, bankCategoryRules, automationLog, commitmentOccurrences, commitments, commitmentShares, notificationPreferences, users } from "@shared/schema";
 import { buildWriteQueueKey, enqueueWrite } from "./write-queue";
 import { z } from "zod";
 import { buildRuleKey, registerBankInboxRoutes } from "./bank-inbox";
@@ -25,7 +25,7 @@ import { isClaudeConfigured, readDocument, understandCommitment } from "./unders
 import multer from "multer";
 import path from "path";
 import { db } from "./db";
-import { and, asc, desc, eq, gte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import {
   INTEGRATION_PROVIDERS,
   PROVIDER_CALLBACK_PATHS,
@@ -1578,6 +1578,158 @@ export async function registerRoutes(
       res.json({ message: "تم حذف الإثبات" });
     } catch (e) { next(e); }
   });
+
+  // Sharing is intentionally separate from ownership. The owner keeps every
+  // private detail; the recipient gets only enough information to accept and
+  // complete the assigned task.
+  app.get("/api/commitments/:id/shares", requireAuth, async (req, res, next) => {
+    try {
+      const commitmentId = parseRouteId(req.params.id);
+      const owned = await storage.getCommitmentById(commitmentId, req.user!.id);
+      if (!owned) return res.status(404).json({ message: "الالتزام غير موجود" });
+
+      const shares = await db.select({
+        id: commitmentShares.id,
+        status: commitmentShares.status,
+        assignedAt: commitmentShares.assignedAt,
+        respondedAt: commitmentShares.respondedAt,
+        completedAt: commitmentShares.completedAt,
+        completionNote: commitmentShares.completionNote,
+        assigneeName: users.name,
+        assigneeEmail: users.email,
+      })
+        .from(commitmentShares)
+        .innerJoin(users, eq(users.id, commitmentShares.assigneeUserId))
+        .where(and(eq(commitmentShares.commitmentId, commitmentId), eq(commitmentShares.ownerUserId, req.user!.id)))
+        .orderBy(desc(commitmentShares.assignedAt));
+      res.json(shares);
+    } catch (e) { next(e); }
+  });
+
+  app.post("/api/commitments/:id/shares", requireAuth, async (req, res, next) => {
+    try {
+      const commitmentId = parseRouteId(req.params.id);
+      const owned = await storage.getCommitmentById(commitmentId, req.user!.id);
+      if (!owned) return res.status(404).json({ message: "الالتزام غير موجود" });
+
+      const email = z.string().trim().email("أدخل بريد المستخدم بشكل صحيح").max(254).parse(req.body.email).toLowerCase();
+      const [assignee] = await db.select({ id: users.id, name: users.name, isActive: users.isActive })
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1);
+      if (!assignee || !assignee.isActive) {
+        return res.status(404).json({ message: "لا يوجد مستخدم نشط بهذا البريد" });
+      }
+      if (assignee.id === req.user!.id) {
+        return res.status(400).json({ message: "لا يمكنك إسناد الالتزام إلى نفسك" });
+      }
+
+      const [existing] = await db.select().from(commitmentShares).where(and(
+        eq(commitmentShares.commitmentId, commitmentId),
+        eq(commitmentShares.assigneeUserId, assignee.id),
+      )).limit(1);
+      const now = Math.floor(Date.now() / 1000);
+      let share;
+      if (existing) {
+        if (existing.status === "pending" || existing.status === "accepted") {
+          return res.status(409).json({ message: "هذه المهمة مُسندة لهذا المستخدم بالفعل" });
+        }
+        [share] = await db.update(commitmentShares)
+          .set({ status: "pending", assignedAt: now, respondedAt: null, completedAt: null, completionNote: "" })
+          .where(eq(commitmentShares.id, existing.id))
+          .returning();
+      } else {
+        [share] = await db.insert(commitmentShares).values({
+          commitmentId,
+          ownerUserId: req.user!.id,
+          assigneeUserId: assignee.id,
+          status: "pending",
+          assignedAt: now,
+        }).returning();
+      }
+
+      res.status(201).json({ ...share, assigneeName: assignee.name, assigneeEmail: email });
+    } catch (e) { next(e); }
+  });
+
+  app.patch("/api/commitments/:id/shares/:shareId/revoke", requireAuth, async (req, res, next) => {
+    try {
+      const commitmentId = parseRouteId(req.params.id);
+      const shareId = parseRouteId(req.params.shareId);
+      const [share] = await db.update(commitmentShares)
+        .set({ status: "revoked" })
+        .where(and(
+          eq(commitmentShares.id, shareId),
+          eq(commitmentShares.commitmentId, commitmentId),
+          eq(commitmentShares.ownerUserId, req.user!.id),
+        ))
+        .returning();
+      if (!share) return res.status(404).json({ message: "هذا الإسناد غير موجود" });
+      res.json(share);
+    } catch (e) { next(e); }
+  });
+
+  app.get("/api/shared-commitments", requireAuth, async (req, res, next) => {
+    try {
+      const shared = await db.select({
+        id: commitmentShares.id,
+        status: commitmentShares.status,
+        assignedAt: commitmentShares.assignedAt,
+        respondedAt: commitmentShares.respondedAt,
+        completedAt: commitmentShares.completedAt,
+        completionNote: commitmentShares.completionNote,
+        commitmentId: commitments.id,
+        title: commitments.title,
+        type: commitments.type,
+        dueDate: commitments.dueDate,
+        ownerName: users.name,
+      })
+        .from(commitmentShares)
+        .innerJoin(commitments, eq(commitments.id, commitmentShares.commitmentId))
+        .innerJoin(users, eq(users.id, commitmentShares.ownerUserId))
+        .where(and(
+          eq(commitmentShares.assigneeUserId, req.user!.id),
+          inArray(commitmentShares.status, ["pending", "accepted", "completed"]),
+        ))
+        .orderBy(asc(commitments.dueDate), desc(commitmentShares.assignedAt));
+      res.json(shared);
+    } catch (e) { next(e); }
+  });
+
+  app.patch("/api/shared-commitments/:shareId/respond", requireAuth, async (req, res, next) => {
+    try {
+      const shareId = parseRouteId(req.params.shareId);
+      const status = z.enum(["accepted", "declined"]).parse(req.body.status);
+      const [share] = await db.update(commitmentShares)
+        .set({ status, respondedAt: Math.floor(Date.now() / 1000) })
+        .where(and(
+          eq(commitmentShares.id, shareId),
+          eq(commitmentShares.assigneeUserId, req.user!.id),
+          eq(commitmentShares.status, "pending"),
+        ))
+        .returning();
+      if (!share) return res.status(404).json({ message: "لا توجد مهمة معلقة بهذا الرقم" });
+      res.json(share);
+    } catch (e) { next(e); }
+  });
+
+  app.patch("/api/shared-commitments/:shareId/complete", requireAuth, async (req, res, next) => {
+    try {
+      const shareId = parseRouteId(req.params.shareId);
+      const completionNote = z.string().trim().max(500).optional().parse(req.body.completionNote) ?? "";
+      const [share] = await db.update(commitmentShares)
+        .set({ status: "completed", completionNote, completedAt: Math.floor(Date.now() / 1000) })
+        .where(and(
+          eq(commitmentShares.id, shareId),
+          eq(commitmentShares.assigneeUserId, req.user!.id),
+          eq(commitmentShares.status, "accepted"),
+        ))
+        .returning();
+      if (!share) return res.status(404).json({ message: "لا توجد مهمة مقبولة بهذا الرقم" });
+      res.json(share);
+    } catch (e) { next(e); }
+  });
+
   app.get("/api/commitments", requireAuth, async (req, res, next) => {
     try {
       res.json(await storage.getCommitments(req.user!.id));
