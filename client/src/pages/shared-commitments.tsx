@@ -15,8 +15,20 @@ function formatDate(timestamp: number | null) {
 const statusLabels = {
   pending: "بانتظار موافقتك",
   accepted: "قيد التنفيذ",
-  completed: "تم الإنجاز",
+  completed: "بانتظار اعتماد المالك",
+  approved: "اعتمد المالك الإنجاز",
 } as const;
+
+const typeLabels: Record<string, string> = {
+  financial: "مالي",
+  government: "حكومي",
+  home: "المنزل",
+  vehicle: "المركبة",
+  health: "الصحة",
+  family: "الأسرة",
+  work: "العمل",
+  personal: "شخصي",
+};
 
 export default function SharedCommitments() {
   const [, setLocation] = useLocation();
@@ -35,6 +47,14 @@ export default function SharedCommitments() {
         <Button variant="outline" onClick={() => setLocation("/commitments")}>التزاماتي</Button>
       </header>
 
+      {!isLoading && shares.length > 0 ? (
+        <div className="grid grid-cols-3 gap-2">
+          <Card><CardContent className="p-3 text-center"><p className="text-xl font-bold">{shares.filter((share) => share.status === "pending").length}</p><p className="text-xs text-muted-foreground">بانتظار الرد</p></CardContent></Card>
+          <Card><CardContent className="p-3 text-center"><p className="text-xl font-bold">{shares.filter((share) => share.status === "accepted" || share.status === "completed").length}</p><p className="text-xs text-muted-foreground">تحت التنفيذ</p></CardContent></Card>
+          <Card><CardContent className="p-3 text-center"><p className="text-xl font-bold text-emerald-700">{shares.filter((share) => share.status === "approved").length}</p><p className="text-xs text-muted-foreground">معتمدة</p></CardContent></Card>
+        </div>
+      ) : null}
+
       {isLoading ? (
         <Card><CardContent className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></CardContent></Card>
       ) : shares.length === 0 ? (
@@ -46,24 +66,26 @@ export default function SharedCommitments() {
             const isPending = share.status === "pending";
             const isAccepted = share.status === "accepted";
             const isCompleted = share.status === "completed";
+            const isApproved = share.status === "approved";
             return (
-              <Card key={share.id} className={isCompleted ? "border-emerald-200 bg-emerald-50/40" : "border-border/70"}>
+              <Card key={share.id} className={isApproved ? "border-emerald-200 bg-emerald-50/40" : isCompleted ? "border-amber-200 bg-amber-50/40" : "border-border/70"}>
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
                         <span className="rounded-full bg-primary/10 px-2.5 py-1 font-medium text-primary">{statusLabels[share.status]}</span>
-                        <span className="rounded-full bg-muted px-2.5 py-1 text-muted-foreground">{share.type}</span>
+                        <span className="rounded-full bg-muted px-2.5 py-1 text-muted-foreground">{typeLabels[share.type] || "عام"}</span>
                       </div>
-                      <h2 className={"text-lg font-bold " + (isCompleted ? "text-muted-foreground line-through" : "")}>{share.title}</h2>
+                      <h2 className={"text-lg font-bold " + (isApproved ? "text-muted-foreground line-through" : "")}>{share.title}</h2>
                     </div>
-                    {isCompleted ? <CircleCheck className="h-6 w-6 shrink-0 text-emerald-600" /> : <UserRound className="h-6 w-6 shrink-0 text-primary" />}
+                    {isApproved ? <CircleCheck className="h-6 w-6 shrink-0 text-emerald-600" /> : <UserRound className="h-6 w-6 shrink-0 text-primary" />}
                   </div>
 
                   <div className="mt-4 space-y-2 text-sm text-muted-foreground">
                     <p className="flex items-center gap-2"><UserRound className="h-4 w-4" />من: {share.ownerName}</p>
                     <p className="flex items-center gap-2"><CalendarDays className="h-4 w-4" />الموعد: {formatDate(share.dueDate)}</p>
-                    {isCompleted && share.completionNote ? <p className="rounded-xl bg-background/70 p-3 text-foreground">ملاحظتك: {share.completionNote}</p> : null}
+                    {(isCompleted || isApproved) && share.completionNote ? <p className="rounded-xl bg-background/70 p-3 text-foreground">ملاحظتك: {share.completionNote}</p> : null}
+                    {isAccepted && share.reviewNote ? <p className="rounded-xl bg-amber-50 p-3 text-amber-800">طلب المالك تعديلًا: {share.reviewNote}</p> : null}
                   </div>
 
                   {isPending ? (

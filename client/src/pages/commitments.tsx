@@ -7,6 +7,7 @@ import {
   Check,
   ChevronLeft,
   CircleCheck,
+  ClipboardList,
   Clock3,
   FileText,
   HeartPulse,
@@ -133,7 +134,10 @@ export default function Commitments() {
           <h1 className="text-2xl font-bold">التزاماتي</h1>
           <p className="mt-1 text-sm text-muted-foreground">كل ما تريد تذكره أو إنجازه أو متابعته، مالياً أو شخصياً.</p>
         </div>
-        <Button type="button" variant="outline" className="gap-2" onClick={() => setLocation("/shared-commitments")}><UsersRound className="h-4 w-4" />مهام مُسندة إليّ</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" className="gap-2" onClick={() => setLocation("/shared-commitments/manage")}><ClipboardList className="h-4 w-4" />متابعة ما أسندته</Button>
+          <Button type="button" variant="outline" className="gap-2" onClick={() => setLocation("/shared-commitments")}><UsersRound className="h-4 w-4" />مهام مُسندة إليّ</Button>
+        </div>
       </div>
 
       <QuickCommitment />

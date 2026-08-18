@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { CurrencyDisplay } from "@/components/ui/currency-display";
-import { Check, Loader2, Mic, MicOff, Sparkles, X } from "lucide-react";
+import { Check, Loader2, Sparkles, X } from "lucide-react";
 
 type Draft = {
   title: string;
@@ -28,24 +28,10 @@ const TYPE_LABELS: Record<string, string> = {
   health: "صحة", family: "أسرة", work: "عمل", personal: "شخصي",
 };
 
-/** The Web Speech API is vendor-prefixed in Chrome and absent elsewhere. */
-function getSpeechRecognition(): (new () => SpeechRecognition) | null {
-  const w = window as unknown as {
-    SpeechRecognition?: new () => SpeechRecognition;
-    webkitSpeechRecognition?: new () => SpeechRecognition;
-  };
-  return w.SpeechRecognition || w.webkitSpeechRecognition || null;
-}
-
 export default function QuickCommitment() {
   const { toast } = useToast();
   const [text, setText] = useState("");
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [listening, setListening] = useState(false);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
-  const speechAvailable = typeof window !== "undefined" && getSpeechRecognition() !== null;
-
-  useEffect(() => () => recognitionRef.current?.abort(), []);
 
   const understand = useMutation({
     mutationFn: async (value: string) => {
@@ -79,41 +65,6 @@ export default function QuickCommitment() {
     onError: (error: Error) => toast({ title: "تعذرت الإضافة", description: error.message, variant: "destructive" }),
   });
 
-  const toggleDictation = () => {
-    if (listening) {
-      recognitionRef.current?.stop();
-      setListening(false);
-      return;
-    }
-
-    const Recognition = getSpeechRecognition();
-    if (!Recognition) return;
-
-    const recognition = new Recognition();
-    recognition.lang = "ar-OM";
-    recognition.continuous = false;
-    recognition.interimResults = true;
-
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      const transcript = Array.from(event.results).map((result) => result[0].transcript).join("");
-      setText(transcript);
-      // Only act once the browser marks the phrase final; interim results change
-      // word by word and would fire a request per syllable.
-      if (event.results[event.results.length - 1].isFinal) {
-        understand.mutate(transcript);
-      }
-    };
-    recognition.onerror = () => {
-      setListening(false);
-      toast({ title: "تعذر الاستماع", description: "تأكد من إذن الميكروفون.", variant: "destructive" });
-    };
-    recognition.onend = () => setListening(false);
-
-    recognitionRef.current = recognition;
-    recognition.start();
-    setListening(true);
-  };
-
   const dueLabel = draft?.dueDate
     ? new Intl.DateTimeFormat("ar-OM", { dateStyle: "medium" }).format(new Date(draft.dueDate * 1000))
     : null;
@@ -125,7 +76,7 @@ export default function QuickCommitment() {
           <Sparkles className="h-5 w-5" />
         </div>
         <div>
-          <h2 className="font-bold">اكتب أو قل التزامك</h2>
+          <h2 className="font-bold">أضف التزامك بسرعة</h2>
           <p className="text-sm text-muted-foreground">مثل: إيجار البيت 300 ريال كل شهر يوم 5</p>
         </div>
       </div>
@@ -143,17 +94,6 @@ export default function QuickCommitment() {
           placeholder="اكتب بلغتك العادية…"
           className="h-12 flex-1"
         />
-        {speechAvailable ? (
-          <Button
-            variant={listening ? "destructive" : "outline"}
-            size="icon"
-            className="h-12 w-12 shrink-0"
-            onClick={toggleDictation}
-            aria-label={listening ? "إيقاف الاستماع" : "الإدخال بالصوت"}
-          >
-            {listening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-          </Button>
-        ) : null}
         <Button
           className="h-12 shrink-0"
           onClick={() => understand.mutate(text)}
@@ -162,10 +102,6 @@ export default function QuickCommitment() {
           {understand.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "افهمه"}
         </Button>
       </div>
-
-      {listening ? (
-        <p className="mt-2 text-center text-xs text-primary">نستمع… تكلم الآن</p>
-      ) : null}
 
       {draft ? (
         <div className="mt-4 rounded-xl border border-primary/20 bg-primary/5 p-3">

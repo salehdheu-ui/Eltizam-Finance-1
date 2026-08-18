@@ -143,9 +143,13 @@ export const commitmentShares = pgTable("commitment_shares", {
   assigneeUserId: integer("assignee_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   status: text("status").notNull().default("pending"),
   completionNote: text("completion_note").default(""),
+  reviewNote: text("review_note").default(""),
   assignedAt: integer("assigned_at").notNull().default(sql`extract(epoch from now())::integer`),
   respondedAt: integer("responded_at"),
   completedAt: integer("completed_at"),
+  reviewedAt: integer("reviewed_at"),
+  remindedAt: integer("reminded_at"),
+  escalatedAt: integer("escalated_at"),
 });
 /**
  * One dated instance of a commitment. A recurring commitment is a rule; these

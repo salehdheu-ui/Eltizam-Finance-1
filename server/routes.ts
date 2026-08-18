@@ -117,6 +117,12 @@ async function runQueuedWrite<T>(res: Response, key: string, task: () => Promise
   return queued.result;
 }
 
+function notifyShareUser(notification: Parameters<typeof notify>[0]) {
+  void notify(notification).catch((error) => {
+    console.warn("Shared commitment notification failed", error);
+  });
+}
+
 const applyVariableObligationPaymentSchema = z.object({
   amount: z.number().positive("المبلغ يجب أن يكون أكبر من صفر"),
 });
@@ -1595,6 +1601,8 @@ export async function registerRoutes(
         respondedAt: commitmentShares.respondedAt,
         completedAt: commitmentShares.completedAt,
         completionNote: commitmentShares.completionNote,
+        reviewNote: commitmentShares.reviewNote,
+        reviewedAt: commitmentShares.reviewedAt,
         assigneeName: users.name,
         assigneeEmail: users.email,
       })
@@ -1635,7 +1643,7 @@ export async function registerRoutes(
           return res.status(409).json({ message: "هذه المهمة مُسندة لهذا المستخدم بالفعل" });
         }
         [share] = await db.update(commitmentShares)
-          .set({ status: "pending", assignedAt: now, respondedAt: null, completedAt: null, completionNote: "" })
+          .set({ status: "pending", assignedAt: now, respondedAt: null, completedAt: null, reviewedAt: null, remindedAt: null, escalatedAt: null, completionNote: "", reviewNote: "" })
           .where(eq(commitmentShares.id, existing.id))
           .returning();
       } else {
@@ -1648,6 +1656,13 @@ export async function registerRoutes(
         }).returning();
       }
 
+      notifyShareUser({
+        userId: assignee.id,
+        title: "مهمة مشتركة جديدة",
+        body: `أسند ${req.user!.name} إليك مهمة جديدة. افتح منصة التزام لقبولها أو الاعتذار عنها.`,
+        dedupeKey: `commitment-share:${share.id}:invite:${share.assignedAt}`,
+        url: "/shared-commitments",
+      });
       res.status(201).json({ ...share, assigneeName: assignee.name, assigneeEmail: email });
     } catch (e) { next(e); }
   });
@@ -1656,15 +1671,24 @@ export async function registerRoutes(
     try {
       const commitmentId = parseRouteId(req.params.id);
       const shareId = parseRouteId(req.params.shareId);
+      const revokedAt = Math.floor(Date.now() / 1000);
       const [share] = await db.update(commitmentShares)
         .set({ status: "revoked" })
         .where(and(
           eq(commitmentShares.id, shareId),
           eq(commitmentShares.commitmentId, commitmentId),
           eq(commitmentShares.ownerUserId, req.user!.id),
+          inArray(commitmentShares.status, ["pending", "accepted", "completed"]),
         ))
         .returning();
       if (!share) return res.status(404).json({ message: "هذا الإسناد غير موجود" });
+      notifyShareUser({
+        userId: share.assigneeUserId,
+        title: "تم إلغاء إسناد مهمة",
+        body: "ألغى مالك المهمة إسنادها إليك. لا يلزمك اتخاذ أي إجراء.",
+        dedupeKey: `commitment-share:${share.id}:revoked:${revokedAt}`,
+        url: "/shared-commitments",
+      });
       res.json(share);
     } catch (e) { next(e); }
   });
@@ -1678,6 +1702,8 @@ export async function registerRoutes(
         respondedAt: commitmentShares.respondedAt,
         completedAt: commitmentShares.completedAt,
         completionNote: commitmentShares.completionNote,
+        reviewNote: commitmentShares.reviewNote,
+        reviewedAt: commitmentShares.reviewedAt,
         commitmentId: commitments.id,
         title: commitments.title,
         type: commitments.type,
@@ -1689,10 +1715,52 @@ export async function registerRoutes(
         .innerJoin(users, eq(users.id, commitmentShares.ownerUserId))
         .where(and(
           eq(commitmentShares.assigneeUserId, req.user!.id),
-          inArray(commitmentShares.status, ["pending", "accepted", "completed"]),
+          inArray(commitmentShares.status, ["pending", "accepted", "completed", "approved"]),
         ))
         .orderBy(asc(commitments.dueDate), desc(commitmentShares.assignedAt));
       res.json(shared);
+    } catch (e) { next(e); }
+  });
+
+  app.get("/api/shared-commitments/managed", requireAuth, async (req, res, next) => {
+    try {
+      const managed = await db.select({
+        id: commitmentShares.id,
+        status: commitmentShares.status,
+        assignedAt: commitmentShares.assignedAt,
+        respondedAt: commitmentShares.respondedAt,
+        completedAt: commitmentShares.completedAt,
+        reviewedAt: commitmentShares.reviewedAt,
+        completionNote: commitmentShares.completionNote,
+        reviewNote: commitmentShares.reviewNote,
+        commitmentId: commitments.id,
+        title: commitments.title,
+        type: commitments.type,
+        dueDate: commitments.dueDate,
+        assigneeName: users.name,
+        assigneeEmail: users.email,
+      })
+        .from(commitmentShares)
+        .innerJoin(commitments, eq(commitments.id, commitmentShares.commitmentId))
+        .innerJoin(users, eq(users.id, commitmentShares.assigneeUserId))
+        .where(eq(commitmentShares.ownerUserId, req.user!.id))
+        .orderBy(sql`${commitments.dueDate} ASC NULLS LAST`, desc(commitmentShares.assignedAt));
+      res.json(managed);
+    } catch (e) { next(e); }
+  });
+
+  app.get("/api/shared-commitments/people", requireAuth, async (req, res, next) => {
+    try {
+      const people = await db.selectDistinct({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+      })
+        .from(commitmentShares)
+        .innerJoin(users, eq(users.id, commitmentShares.assigneeUserId))
+        .where(eq(commitmentShares.ownerUserId, req.user!.id))
+        .orderBy(asc(users.name));
+      res.json(people);
     } catch (e) { next(e); }
   });
 
@@ -1709,6 +1777,15 @@ export async function registerRoutes(
         ))
         .returning();
       if (!share) return res.status(404).json({ message: "لا توجد مهمة معلقة بهذا الرقم" });
+      notifyShareUser({
+        userId: share.ownerUserId,
+        title: status === "accepted" ? "تم قبول مهمة مشتركة" : "اعتذر المكلّف عن المهمة",
+        body: status === "accepted"
+          ? `قبل ${req.user!.name} المهمة المسندة إليه.`
+          : `اعتذر ${req.user!.name} عن المهمة المسندة إليه.`,
+        dedupeKey: `commitment-share:${share.id}:response:${status}:${share.respondedAt}`,
+        url: `/commitments/${share.commitmentId}`,
+      });
       res.json(share);
     } catch (e) { next(e); }
   });
@@ -1718,7 +1795,7 @@ export async function registerRoutes(
       const shareId = parseRouteId(req.params.shareId);
       const completionNote = z.string().trim().max(500).optional().parse(req.body.completionNote) ?? "";
       const [share] = await db.update(commitmentShares)
-        .set({ status: "completed", completionNote, completedAt: Math.floor(Date.now() / 1000) })
+        .set({ status: "completed", completionNote, reviewNote: "", reviewedAt: null, completedAt: Math.floor(Date.now() / 1000) })
         .where(and(
           eq(commitmentShares.id, shareId),
           eq(commitmentShares.assigneeUserId, req.user!.id),
@@ -1726,6 +1803,52 @@ export async function registerRoutes(
         ))
         .returning();
       if (!share) return res.status(404).json({ message: "لا توجد مهمة مقبولة بهذا الرقم" });
+      notifyShareUser({
+        userId: share.ownerUserId,
+        title: "مهمة جاهزة للاعتماد",
+        body: `أرسل ${req.user!.name} المهمة للمراجعة. افتح الالتزام لاعتماد الإنجاز أو إعادته.`,
+        dedupeKey: `commitment-share:${share.id}:completed:${share.completedAt}`,
+        url: `/commitments/${share.commitmentId}`,
+      });
+      res.json(share);
+    } catch (e) { next(e); }
+  });
+
+  app.patch("/api/commitments/:id/shares/:shareId/review", requireAuth, async (req, res, next) => {
+    try {
+      const commitmentId = parseRouteId(req.params.id);
+      const shareId = parseRouteId(req.params.shareId);
+      const { action, reviewNote } = z.object({
+        action: z.enum(["approve", "rework"]),
+        reviewNote: z.string().trim().max(500).optional().default(""),
+      }).parse(req.body);
+      if (action === "rework" && !reviewNote) {
+        return res.status(400).json({ message: "اكتب ملاحظة قصيرة توضح المطلوب تعديله" });
+      }
+
+      const reviewedAt = Math.floor(Date.now() / 1000);
+      const [share] = await db.update(commitmentShares)
+        .set(action === "approve"
+          ? { status: "approved", reviewNote, reviewedAt }
+          : { status: "accepted", reviewNote, reviewedAt, completedAt: null, remindedAt: null, escalatedAt: null })
+        .where(and(
+          eq(commitmentShares.id, shareId),
+          eq(commitmentShares.commitmentId, commitmentId),
+          eq(commitmentShares.ownerUserId, req.user!.id),
+          eq(commitmentShares.status, "completed"),
+        ))
+        .returning();
+      if (!share) return res.status(404).json({ message: "لا توجد نتيجة معلقة للمراجعة" });
+
+      notifyShareUser({
+        userId: share.assigneeUserId,
+        title: action === "approve" ? "تم اعتماد إنجازك" : "أعيدت المهمة للتعديل",
+        body: action === "approve"
+          ? "اعتمد مالك المهمة إنجازك. شكرًا لك."
+          : "أعاد مالك المهمة إليك للتعديل. افتح منصة التزام لقراءة الملاحظة بأمان.",
+        dedupeKey: `commitment-share:${share.id}:review:${action}:${reviewedAt}`,
+        url: "/shared-commitments",
+      });
       res.json(share);
     } catch (e) { next(e); }
   });
