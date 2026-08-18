@@ -143,6 +143,11 @@ const databaseMigrations: DatabaseMigration[] = [
     name: "ensure_commitment_shares_table",
     up: async () => { await ensureCommitmentSharesTable(); },
   },
+  {
+    version: 25,
+    name: "ensure_commitment_share_workflow_columns",
+    up: async () => { await ensureCommitmentShareWorkflowColumns(); },
+  },
 ];
 
 async function ensureSchemaMigrationsTable() {
@@ -848,13 +853,32 @@ async function ensureCommitmentSharesTable() {
       assignee_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       status TEXT NOT NULL DEFAULT 'pending',
       completion_note TEXT DEFAULT '',
+      review_note TEXT DEFAULT '',
       assigned_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
       responded_at INTEGER,
       completed_at INTEGER,
+      reviewed_at INTEGER,
+      reminded_at INTEGER,
+      escalated_at INTEGER,
       UNIQUE(commitment_id, assignee_user_id)
     )
   `);
 
   await pgExec("CREATE INDEX IF NOT EXISTS commitment_shares_owner_idx ON commitment_shares (owner_user_id, commitment_id)");
   await pgExec("CREATE INDEX IF NOT EXISTS commitment_shares_assignee_idx ON commitment_shares (assignee_user_id, status, assigned_at DESC)");
+}
+
+async function ensureCommitmentShareWorkflowColumns() {
+  if (!(await columnExists("commitment_shares", "review_note"))) {
+    await pgExec("ALTER TABLE commitment_shares ADD COLUMN review_note TEXT DEFAULT ''");
+  }
+  if (!(await columnExists("commitment_shares", "reviewed_at"))) {
+    await pgExec("ALTER TABLE commitment_shares ADD COLUMN reviewed_at INTEGER");
+  }
+  if (!(await columnExists("commitment_shares", "reminded_at"))) {
+    await pgExec("ALTER TABLE commitment_shares ADD COLUMN reminded_at INTEGER");
+  }
+  if (!(await columnExists("commitment_shares", "escalated_at"))) {
+    await pgExec("ALTER TABLE commitment_shares ADD COLUMN escalated_at INTEGER");
+  }
 }

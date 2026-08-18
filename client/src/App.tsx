@@ -27,6 +27,7 @@ const Obligations = lazy(() => import("@/pages/obligations"));
 const Commitments = lazy(() => import("@/pages/commitments"));
 const CommitmentDetails = lazy(() => import("@/pages/commitment-details"));
 const SharedCommitments = lazy(() => import("@/pages/shared-commitments"));
+const ManagedCommitments = lazy(() => import("@/pages/managed-commitments"));
 const SavingsPlanDetails = lazy(() => import("@/pages/savings-plan-details"));
 const SavingsGoalsPage = lazy(() => import("@/pages/savings-goals"));
 const VariableObligationDetails = lazy(() => import("@/pages/variable-obligation-details"));
@@ -151,6 +152,7 @@ function Router() {
           <Route path="/obligations/:id" component={VariableObligationDetails} />
           <Route path="/obligations" component={Obligations} />
           <Route path="/commitments/:id" component={CommitmentDetails} />
+          <Route path="/shared-commitments/manage" component={ManagedCommitments} />
           <Route path="/shared-commitments" component={SharedCommitments} />
           <Route path="/commitments" component={Commitments} />
           <Route path="/settings" component={Settings} />

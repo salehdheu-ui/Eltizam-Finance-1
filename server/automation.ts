@@ -1,13 +1,15 @@
-import { and, asc, desc, eq, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import {
   automationLog,
   commitmentOccurrences,
   commitmentProofs,
+  commitmentShares,
   commitments,
+  users,
   type Commitment,
 } from "@shared/schema";
 import { db } from "./db";
-import { notify } from "./notifications";
+import { getPreferences, notify } from "./notifications";
 
 const DAY = 86400;
 
@@ -21,7 +23,8 @@ export type AutomationAction =
   | "marked_missed"
   | "escalated"
   | "auto_closed"
-  | "postponed";
+  | "postponed"
+  | "weekly_summary";
 
 function now() {
   return Math.floor(Date.now() / 1000);
@@ -153,6 +156,7 @@ async function raiseReminders(commitment: Commitment) {
     eq(commitmentOccurrences.commitmentId, commitment.id),
     eq(commitmentOccurrences.status, "pending"),
     isNull(commitmentOccurrences.remindedAt),
+    gte(commitmentOccurrences.dueDate, startOfDay(now())),
     lte(commitmentOccurrences.dueDate, windowEnd),
   ));
 
@@ -317,13 +321,170 @@ async function autoCloseOnProof(commitment: Commitment) {
   return 1;
 }
 
+/**
+ * Reminds the assignee without leaking the task title or any private owner
+ * details into email, WhatsApp or webhooks. The owner gets a separate alert
+ * only when the shared task is actually overdue.
+ */
+async function processSharedCommitmentAlerts(ownerUserId: number) {
+  const rows = await db.select({
+    shareId: commitmentShares.id,
+    commitmentId: commitments.id,
+    assigneeUserId: commitmentShares.assigneeUserId,
+    title: commitments.title,
+    dueDate: commitments.dueDate,
+    reminderDaysBefore: commitments.reminderDaysBefore,
+    escalateAfterDays: commitments.escalateAfterDays,
+    remindedAt: commitmentShares.remindedAt,
+    escalatedAt: commitmentShares.escalatedAt,
+  })
+    .from(commitmentShares)
+    .innerJoin(commitments, eq(commitments.id, commitmentShares.commitmentId))
+    .where(and(
+      eq(commitmentShares.ownerUserId, ownerUserId),
+      inArray(commitmentShares.status, ["pending", "accepted"]),
+      eq(commitments.status, "active"),
+    ));
+
+  const current = now();
+  const today = startOfDay(current);
+  let reminders = 0;
+  let escalated = 0;
+
+  for (const row of rows) {
+    if (!row.dueDate) continue;
+    const dueLabel = new Date(row.dueDate * 1000).toLocaleDateString("ar-OM");
+    const reminderWindowEnd = current + Math.max(0, row.reminderDaysBefore) * DAY;
+
+    if (!row.remindedAt && row.dueDate >= today && row.dueDate <= reminderWindowEnd) {
+      const [claimed] = await db.update(commitmentShares)
+        .set({ remindedAt: current })
+        .where(and(eq(commitmentShares.id, row.shareId), isNull(commitmentShares.remindedAt)))
+        .returning({ id: commitmentShares.id });
+      if (claimed) {
+        reminders += 1;
+        await record({
+          userId: ownerUserId,
+          action: "reminder_due",
+          summary: `تم تذكير المكلّف باقتراب موعد ${row.title}`,
+          commitmentId: row.commitmentId,
+        });
+        await notify({
+          userId: row.assigneeUserId,
+          title: "موعد مهمة مشتركة يقترب",
+          body: `لديك مهمة مشتركة موعدها ${dueLabel}. افتح منصة التزام للاطلاع عليها.`,
+          dedupeKey: `commitment-share:${row.shareId}:due-reminder:${row.dueDate}`,
+          url: "/shared-commitments",
+        }).catch((error) => console.error("Shared reminder failed:", error instanceof Error ? error.message : "unknown"));
+      }
+    }
+
+    const escalationThreshold = row.escalateAfterDays ? current - row.escalateAfterDays * DAY : null;
+    if (!row.escalatedAt && escalationThreshold !== null && row.dueDate <= escalationThreshold) {
+      const [claimed] = await db.update(commitmentShares)
+        .set({ escalatedAt: current })
+        .where(and(eq(commitmentShares.id, row.shareId), isNull(commitmentShares.escalatedAt)))
+        .returning({ id: commitmentShares.id });
+      if (claimed) {
+        escalated += 1;
+        await record({
+          userId: ownerUserId,
+          action: "escalated",
+          summary: `تأخرت المهمة المسندة: ${row.title}`,
+          commitmentId: row.commitmentId,
+        });
+        await Promise.all([
+          notify({
+            userId: row.assigneeUserId,
+            title: "مهمة مشتركة متأخرة",
+            body: `لديك مهمة مشتركة تجاوزت موعد ${dueLabel}. افتح منصة التزام لتحديث حالتها.`,
+            dedupeKey: `commitment-share:${row.shareId}:overdue-assignee:${row.dueDate}`,
+            url: "/shared-commitments",
+            urgent: true,
+          }),
+          notify({
+            userId: ownerUserId,
+            title: "مهمة مسندة متأخرة",
+            body: "تأخرت إحدى المهام التي أسندتها. افتح منصة التزام للمتابعة.",
+            dedupeKey: `commitment-share:${row.shareId}:overdue-owner:${row.dueDate}`,
+            url: `/commitments/${row.commitmentId}`,
+            urgent: true,
+          }),
+        ]).catch((error) => console.error("Shared escalation failed:", error instanceof Error ? error.message : "unknown"));
+      }
+    }
+  }
+
+  return { reminders, escalated };
+}
+
+function weeklyDedupeKey(timestamp = now()) {
+  const date = new Date(timestamp * 1000);
+  const day = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((date.getTime() - yearStart.getTime()) / 1000 / DAY) + 1) / 7);
+  return `${date.getUTCFullYear()}-${String(week).padStart(2, "0")}`;
+}
+
+/** A compact, privacy-safe weekly summary. It contains counts only so an email,
+ * WhatsApp message or webhook never exposes commitment titles or amounts. */
+async function sendWeeklySummary(userId: number) {
+  const preferences = await getPreferences(userId);
+  if (!preferences?.weeklySummary) return 0;
+
+  const current = now();
+  const today = startOfDay(current);
+  const weekEnd = today + 7 * DAY;
+  const [activeRows, dueRows, missedRows, reviewRows] = await Promise.all([
+    db.select({ count: sql<number>`count(*)::int` }).from(commitments).where(and(
+      eq(commitments.userId, userId),
+      eq(commitments.status, "active"),
+    )),
+    db.select({ count: sql<number>`count(*)::int` }).from(commitmentOccurrences).where(and(
+      eq(commitmentOccurrences.userId, userId),
+      eq(commitmentOccurrences.status, "pending"),
+      gte(commitmentOccurrences.dueDate, today),
+      lte(commitmentOccurrences.dueDate, weekEnd),
+    )),
+    db.select({ count: sql<number>`count(*)::int` }).from(commitmentOccurrences).where(and(
+      eq(commitmentOccurrences.userId, userId),
+      eq(commitmentOccurrences.status, "missed"),
+    )),
+    db.select({ count: sql<number>`count(*)::int` }).from(commitmentShares).where(and(
+      eq(commitmentShares.ownerUserId, userId),
+      eq(commitmentShares.status, "completed"),
+    )),
+  ]);
+
+  const active = activeRows[0]?.count ?? 0;
+  const due = dueRows[0]?.count ?? 0;
+  const missed = missedRows[0]?.count ?? 0;
+  const review = reviewRows[0]?.count ?? 0;
+  const result = await notify({
+    userId,
+    title: "ملخص أسبوعك في التزام",
+    body: `${active} التزام نشط · ${due} خلال 7 أيام · ${missed} متأخر · ${review} ينتظر اعتمادك. افتح المنصة للمتابعة.`,
+    dedupeKey: `weekly-summary:${weeklyDedupeKey(current)}`,
+    url: "/commitments",
+  });
+
+  if (result.sent.length === 0) return 0;
+  await record({
+    userId,
+    action: "weekly_summary",
+    summary: `أُرسل ملخص الأسبوع: ${active} نشط، ${due} قريب، ${missed} متأخر، ${review} ينتظر الاعتماد`,
+  });
+  return 1;
+}
+
 export async function runAutomationForUser(userId: number) {
   const active = await db.select().from(commitments).where(and(
     eq(commitments.userId, userId),
     eq(commitments.status, "active"),
   ));
 
-  const totals = { occurrences: 0, reminders: 0, missed: 0, escalated: 0, closed: 0 };
+  const totals = { occurrences: 0, reminders: 0, missed: 0, escalated: 0, closed: 0, sharedReminders: 0, sharedEscalated: 0, weeklySummaries: 0 };
 
   for (const commitment of active) {
     try {
@@ -337,13 +498,18 @@ export async function runAutomationForUser(userId: number) {
     }
   }
 
+  const shared = await processSharedCommitmentAlerts(userId);
+  totals.sharedReminders = shared.reminders;
+  totals.sharedEscalated = shared.escalated;
+  totals.weeklySummaries = await sendWeeklySummary(userId);
+
   return totals;
 }
 
 async function runAutomationForEveryone() {
-  const owners = await db.selectDistinct({ userId: commitments.userId })
-    .from(commitments)
-    .where(eq(commitments.status, "active"));
+  const owners = await db.select({ userId: users.id })
+    .from(users)
+    .where(eq(users.isActive, true));
 
   for (const owner of owners) {
     try {
@@ -396,11 +562,24 @@ export async function undoAutomationEntry(userId: number, entryId: number) {
     occurrenceId?: number;
     commitmentId?: number;
     previousStatus?: string;
+    previousDueDate?: number;
+    previousPostponedFrom?: number | null;
+    previousRemindedAt?: number | null;
+    previousEscalatedAt?: number | null;
+    previousCompletedAt?: number | null;
   };
 
   if (payload.occurrenceId && payload.previousStatus) {
+    const restored: Record<string, unknown> = {
+      status: payload.previousStatus,
+      completedAt: payload.previousCompletedAt ?? null,
+    };
+    if (payload.previousDueDate !== undefined) restored.dueDate = payload.previousDueDate;
+    if (payload.previousPostponedFrom !== undefined) restored.postponedFrom = payload.previousPostponedFrom;
+    if (payload.previousRemindedAt !== undefined) restored.remindedAt = payload.previousRemindedAt;
+    if (payload.previousEscalatedAt !== undefined) restored.escalatedAt = payload.previousEscalatedAt;
     await db.update(commitmentOccurrences)
-      .set({ status: payload.previousStatus, completedAt: null })
+      .set(restored)
       .where(and(
         eq(commitmentOccurrences.id, payload.occurrenceId),
         eq(commitmentOccurrences.userId, userId),
@@ -430,7 +609,19 @@ export async function postponeOccurrence(userId: number, occurrenceId: number, d
   const [commitment] = await db.select().from(commitments)
     .where(eq(commitments.id, occurrence.commitmentId));
 
-  const newDueDate = occurrence.dueDate + days * DAY;
+  let newDueDate = occurrence.dueDate + days * DAY;
+  // A recurring commitment may already have its next occurrence on that exact
+  // timestamp. Keep both on the requested day while avoiding the unique key.
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const [collision] = await db.select({ id: commitmentOccurrences.id })
+      .from(commitmentOccurrences)
+      .where(and(
+        eq(commitmentOccurrences.commitmentId, occurrence.commitmentId),
+        eq(commitmentOccurrences.dueDate, newDueDate),
+      ));
+    if (!collision || collision.id === occurrence.id) break;
+    newDueDate += 60;
+  }
   await db.update(commitmentOccurrences).set({
     dueDate: newDueDate,
     status: "pending",
@@ -446,7 +637,15 @@ export async function postponeOccurrence(userId: number, occurrenceId: number, d
     summary: `أُجّل ${commitment?.title ?? "التزام"} ${days} يوماً`,
     commitmentId: occurrence.commitmentId,
     occurrenceId: occurrence.id,
-    undoPayload: { occurrenceId: occurrence.id, previousStatus: occurrence.status },
+    undoPayload: {
+      occurrenceId: occurrence.id,
+      previousStatus: occurrence.status,
+      previousDueDate: occurrence.dueDate,
+      previousPostponedFrom: occurrence.postponedFrom,
+      previousRemindedAt: occurrence.remindedAt,
+      previousEscalatedAt: occurrence.escalatedAt,
+      previousCompletedAt: occurrence.completedAt,
+    },
   });
 
   return { ok: true as const, dueDate: newDueDate };

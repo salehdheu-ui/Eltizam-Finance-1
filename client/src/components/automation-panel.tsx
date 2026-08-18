@@ -21,6 +21,7 @@ const ACTION_LABELS: Record<string, string> = {
   escalated: "تصعيد",
   auto_closed: "إغلاق تلقائي",
   postponed: "تأجيل",
+  weekly_summary: "ملخص أسبوعي",
 };
 
 function formatDate(timestamp: number) {
@@ -50,8 +51,11 @@ export default function AutomationPanel() {
       const parts = [
         totals.occurrences ? `${totals.occurrences} موعد` : "",
         totals.reminders ? `${totals.reminders} تذكير` : "",
+        totals.sharedReminders ? `${totals.sharedReminders} تذكير مشترك` : "",
         totals.missed ? `${totals.missed} فائت` : "",
+        totals.escalated || totals.sharedEscalated ? `${totals.escalated + totals.sharedEscalated} تصعيد` : "",
         totals.closed ? `${totals.closed} أُغلق` : "",
+        totals.weeklySummaries ? "ملخص أسبوعي" : "",
       ].filter(Boolean);
       toast({
         title: "تم تحديث المواعيد",
@@ -126,10 +130,26 @@ export default function AutomationPanel() {
                     <Button
                       size="sm"
                       variant="outline"
+                      onClick={() => postpone.mutate({ id: occurrence.id, days: 1 })}
+                      disabled={postpone.isPending}
+                    >
+                      <AlarmClock className="h-4 w-4" /> للغد
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
                       onClick={() => postpone.mutate({ id: occurrence.id, days: 7 })}
                       disabled={postpone.isPending}
                     >
-                      <AlarmClock className="h-4 w-4" /> أجّل أسبوعاً
+                      أسبوع
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => postpone.mutate({ id: occurrence.id, days: 30 })}
+                      disabled={postpone.isPending}
+                    >
+                      شهر
                     </Button>
                     <Button
                       size="sm"

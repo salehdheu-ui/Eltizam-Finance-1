@@ -19,32 +19,59 @@ type RecurringIncomeUpdatePayload = Partial<RecurringIncomePayload> & { id: numb
 type ObligationPayload = Omit<Obligation, "id" | "userId" | "createdAt" | "updatedAt">;
 type ObligationUpdatePayload = Partial<ObligationPayload> & { id: number };
 type CommitmentPayload = Pick<Commitment, "title" | "type" | "frequency" | "dueDate" | "amount" | "personName" | "assetName" | "notes">;
-type CommitmentUpdatePayload = Partial<CommitmentPayload> & { id: number };
+type CommitmentUpdatePayload = Partial<CommitmentPayload & Pick<Commitment, "reminderDaysBefore" | "escalateAfterDays" | "autoCloseOnProof">> & { id: number };
 type SavingsGoalPayload = Pick<SavingsGoal, "planId" | "planTitle" | "title" | "walletId" | "targetAmount" | "monthlyAmount" | "years">;
 
 export type OwnedCommitmentShare = {
   id: number;
-  status: "pending" | "accepted" | "declined" | "completed" | "revoked";
+  status: "pending" | "accepted" | "declined" | "completed" | "approved" | "revoked";
   assignedAt: number;
   respondedAt: number | null;
   completedAt: number | null;
   completionNote: string | null;
+  reviewNote: string | null;
+  reviewedAt: number | null;
   assigneeName: string;
   assigneeEmail: string;
 };
 
 export type SharedCommitment = {
   id: number;
-  status: "pending" | "accepted" | "completed";
+  status: "pending" | "accepted" | "completed" | "approved";
   assignedAt: number;
   respondedAt: number | null;
   completedAt: number | null;
   completionNote: string | null;
+  reviewNote: string | null;
+  reviewedAt: number | null;
   commitmentId: number;
   title: string;
   type: string;
   dueDate: number | null;
   ownerName: string;
+};
+
+export type ManagedCommitmentShare = {
+  id: number;
+  status: "pending" | "accepted" | "declined" | "completed" | "approved" | "revoked";
+  assignedAt: number;
+  respondedAt: number | null;
+  completedAt: number | null;
+  reviewedAt: number | null;
+  completionNote: string | null;
+  reviewNote: string | null;
+  commitmentId: number;
+  title: string;
+  type: string;
+  dueDate: number | null;
+  assigneeName: string;
+  assigneeEmail: string;
+};
+
+export type SharedCommitmentPerson = {
+  id: number;
+  name: string;
+  email: string;
 };
 
 export type ReportsSummary = {
@@ -423,7 +450,7 @@ export function useRunAutomation() {
   return useMutation({
     mutationFn: async () => {
       const response = await apiRequest("POST", "/api/automation/run");
-      return response.json() as Promise<{ occurrences: number; reminders: number; missed: number; escalated: number; closed: number }>;
+      return response.json() as Promise<{ occurrences: number; reminders: number; missed: number; escalated: number; closed: number; sharedReminders: number; sharedEscalated: number; weeklySummaries: number }>;
     },
     onSuccess: invalidateAutomation,
   });
@@ -731,8 +758,10 @@ export function useCreateCommitment() {
 export function useUpdateCommitment() {
   return useMutation({
     mutationFn: ({ id, ...data }: CommitmentUpdatePayload) => apiRequest("PATCH", `/api/commitments/${id}`, data),
-    onSuccess: () => {
+    onSuccess: (_response, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/commitments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/commitments", variables.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/occurrences"] });
     },
   });
 }
@@ -766,6 +795,8 @@ export function useCommitmentShares(id: number | undefined) {
 function invalidateSharedCommitmentQueries(id?: number) {
   if (id) queryClient.invalidateQueries({ queryKey: ["/api/commitments", id, "shares"] });
   queryClient.invalidateQueries({ queryKey: ["/api/shared-commitments"] });
+  queryClient.invalidateQueries({ queryKey: ["/api/shared-commitments/managed"] });
+  queryClient.invalidateQueries({ queryKey: ["/api/shared-commitments/people"] });
 }
 
 export function useCreateCommitmentShare(id: number | undefined) {
@@ -782,8 +813,24 @@ export function useRevokeCommitmentShare(commitmentId: number | undefined) {
   });
 }
 
+export function useReviewCommitmentShare(commitmentId: number | undefined) {
+  return useMutation({
+    mutationFn: ({ shareId, action, reviewNote }: { shareId: number; action: "approve" | "rework"; reviewNote?: string }) =>
+      apiRequest("PATCH", `/api/commitments/${commitmentId}/shares/${shareId}/review`, { action, reviewNote }),
+    onSuccess: () => invalidateSharedCommitmentQueries(commitmentId),
+  });
+}
+
 export function useSharedCommitments() {
   return useQuery<SharedCommitment[]>({ queryKey: ["/api/shared-commitments"] });
+}
+
+export function useManagedCommitmentShares() {
+  return useQuery<ManagedCommitmentShare[]>({ queryKey: ["/api/shared-commitments/managed"] });
+}
+
+export function useSharedCommitmentPeople() {
+  return useQuery<SharedCommitmentPerson[]>({ queryKey: ["/api/shared-commitments/people"] });
 }
 
 export function useRespondToCommitmentShare() {
