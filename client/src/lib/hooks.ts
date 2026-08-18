@@ -22,6 +22,31 @@ type CommitmentPayload = Pick<Commitment, "title" | "type" | "frequency" | "dueD
 type CommitmentUpdatePayload = Partial<CommitmentPayload> & { id: number };
 type SavingsGoalPayload = Pick<SavingsGoal, "planId" | "planTitle" | "title" | "walletId" | "targetAmount" | "monthlyAmount" | "years">;
 
+export type OwnedCommitmentShare = {
+  id: number;
+  status: "pending" | "accepted" | "declined" | "completed" | "revoked";
+  assignedAt: number;
+  respondedAt: number | null;
+  completedAt: number | null;
+  completionNote: string | null;
+  assigneeName: string;
+  assigneeEmail: string;
+};
+
+export type SharedCommitment = {
+  id: number;
+  status: "pending" | "accepted" | "completed";
+  assignedAt: number;
+  respondedAt: number | null;
+  completedAt: number | null;
+  completionNote: string | null;
+  commitmentId: number;
+  title: string;
+  type: string;
+  dueDate: number | null;
+  ownerName: string;
+};
+
 export type ReportsSummary = {
   period: string;
   summary: {
@@ -728,6 +753,52 @@ export function useDeleteCommitment() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/commitments"] });
     },
+  });
+}
+
+export function useCommitmentShares(id: number | undefined) {
+  return useQuery<OwnedCommitmentShare[]>({
+    queryKey: ["/api/commitments", id, "shares"],
+    enabled: !!id,
+  });
+}
+
+function invalidateSharedCommitmentQueries(id?: number) {
+  if (id) queryClient.invalidateQueries({ queryKey: ["/api/commitments", id, "shares"] });
+  queryClient.invalidateQueries({ queryKey: ["/api/shared-commitments"] });
+}
+
+export function useCreateCommitmentShare(id: number | undefined) {
+  return useMutation({
+    mutationFn: (email: string) => apiRequest("POST", `/api/commitments/${id}/shares`, { email }),
+    onSuccess: () => invalidateSharedCommitmentQueries(id),
+  });
+}
+
+export function useRevokeCommitmentShare(commitmentId: number | undefined) {
+  return useMutation({
+    mutationFn: (shareId: number) => apiRequest("PATCH", `/api/commitments/${commitmentId}/shares/${shareId}/revoke`),
+    onSuccess: () => invalidateSharedCommitmentQueries(commitmentId),
+  });
+}
+
+export function useSharedCommitments() {
+  return useQuery<SharedCommitment[]>({ queryKey: ["/api/shared-commitments"] });
+}
+
+export function useRespondToCommitmentShare() {
+  return useMutation({
+    mutationFn: ({ id, status }: { id: number; status: "accepted" | "declined" }) =>
+      apiRequest("PATCH", `/api/shared-commitments/${id}/respond`, { status }),
+    onSuccess: () => invalidateSharedCommitmentQueries(),
+  });
+}
+
+export function useCompleteSharedCommitment() {
+  return useMutation({
+    mutationFn: ({ id, completionNote }: { id: number; completionNote?: string }) =>
+      apiRequest("PATCH", `/api/shared-commitments/${id}/complete`, { completionNote }),
+    onSuccess: () => invalidateSharedCommitmentQueries(),
   });
 }
 // Obligations Hooks

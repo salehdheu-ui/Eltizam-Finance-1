@@ -129,6 +129,24 @@ export const commitments = pgTable("commitments", {
   createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
   updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
 });
+
+/**
+ * A deliberately narrow sharing boundary. The owner keeps financial amounts,
+ * notes, proofs and private steps; an assignee only receives the task, its
+ * type and due date. This makes delegation useful without turning a personal
+ * commitment into a shared financial record.
+ */
+export const commitmentShares = pgTable("commitment_shares", {
+  id: serial("id").primaryKey(),
+  commitmentId: integer("commitment_id").notNull().references(() => commitments.id, { onDelete: "cascade" }),
+  ownerUserId: integer("owner_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  assigneeUserId: integer("assignee_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("pending"),
+  completionNote: text("completion_note").default(""),
+  assignedAt: integer("assigned_at").notNull().default(sql`extract(epoch from now())::integer`),
+  respondedAt: integer("responded_at"),
+  completedAt: integer("completed_at"),
+});
 /**
  * One dated instance of a commitment. A recurring commitment is a rule; these
  * are the times it actually comes due, so a missed August does not disappear
@@ -168,6 +186,7 @@ export const automationLog = pgTable("automation_log", {
 
 export type CommitmentOccurrence = typeof commitmentOccurrences.$inferSelect;
 export type AutomationLogEntry = typeof automationLog.$inferSelect;
+export type CommitmentShare = typeof commitmentShares.$inferSelect;
 
 /** Where a user wants to be reached, and how quiet they want it kept. */
 export const notificationPreferences = pgTable("notification_preferences", {
