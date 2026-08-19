@@ -4,7 +4,8 @@ import { storage } from "./storage";
 import { hashPlainPassword, setupAuth } from "./auth";
 import { writeAuditEvent } from "./audit";
 import { createManualBackup, listAllBackups } from "./backup";
-import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, integrationSettings, upsertIntegrationSettingSchema, upsertEmailChannelSchema, upsertPushChannelSchema, transactions, categories, bankEmailEvents, bankCategoryRules, automationLog, commitmentOccurrences, commitments, commitmentShares, commitmentSteps, inAppNotifications, notificationPreferences, users } from "@shared/schema";
+import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, appSections, integrationSettings, upsertIntegrationSettingSchema, upsertEmailChannelSchema, upsertPushChannelSchema, transactions, categories, bankEmailEvents, bankCategoryRules, automationLog, commitmentOccurrences, commitments, commitmentShares, commitmentSteps, inAppNotifications, notificationPreferences, users } from "@shared/schema";
+import { APP_SECTION_KEYS, DEFAULT_APP_SECTIONS } from "@shared/app-sections";
 import { buildWriteQueueKey, enqueueWrite } from "./write-queue";
 import { z } from "zod";
 import { buildRuleKey, registerBankInboxRoutes } from "./bank-inbox";
@@ -141,6 +142,21 @@ const adminApprovePasswordResetSchema = z.object({
   temporaryPassword: z.string().min(8).max(128),
 });
 
+const adminAppSectionsSchema = z.object({
+  sections: z.array(z.object({
+    key: z.enum(APP_SECTION_KEYS),
+    isEnabled: z.boolean(),
+  })).length(APP_SECTION_KEYS.length),
+}).superRefine(({ sections }, context) => {
+  const keys = new Set(sections.map((section) => section.key));
+  if (keys.size !== APP_SECTION_KEYS.length || APP_SECTION_KEYS.some((key) => !keys.has(key))) {
+    context.addIssue({ code: "custom", message: "يجب إرسال جميع الأقسام مرة واحدة دون تكرار" });
+  }
+  if (!sections.some((section) => section.isEnabled)) {
+    context.addIssue({ code: "custom", message: "يجب إبقاء قسم واحد مفعّلاً على الأقل" });
+  }
+});
+
 const walletUpdateSchema = insertWalletSchema.partial().extend({
   balance: z.number().finite().optional(),
 });
@@ -195,6 +211,27 @@ function getBucketLabel(dateValue: number, period: string) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
+async function getConfiguredAppSections() {
+  await db.insert(appSections).values(DEFAULT_APP_SECTIONS.map((section, position) => ({
+    key: section.key,
+    isEnabled: true,
+    position,
+  }))).onConflictDoNothing({ target: appSections.key });
+
+  const rows = await db.select().from(appSections).orderBy(asc(appSections.position), asc(appSections.key));
+  const rowsByKey = new Map(rows.map((row) => [row.key, row]));
+
+  return DEFAULT_APP_SECTIONS.map((definition, defaultPosition) => {
+    const row = rowsByKey.get(definition.key);
+    return {
+      ...definition,
+      isEnabled: row?.isEnabled ?? true,
+      position: row?.position ?? defaultPosition,
+      updatedAt: row?.updatedAt ?? null,
+    };
+  }).sort((first, second) => first.position - second.position);
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -202,6 +239,39 @@ export async function registerRoutes(
   setupAuth(app);
   registerBankInboxRoutes(app);
   startAutomationEngine();
+
+  app.get("/api/app-sections", requireAuth, async (_req, res, next) => {
+    try {
+      res.json(await getConfiguredAppSections());
+    } catch (e) { next(e); }
+  });
+
+  app.put("/api/admin/app-sections", requireSystemAdmin, async (req, res, next) => {
+    try {
+      const { sections } = adminAppSectionsSchema.parse(req.body);
+      const updatedAt = Math.floor(Date.now() / 1000);
+
+      await runQueuedWrite(res, buildWriteQueueKey("admin", "app-sections"), () => db.transaction(async (transaction) => {
+        for (let position = 0; position < sections.length; position += 1) {
+          const section = sections[position];
+          await transaction.update(appSections)
+            .set({ isEnabled: section.isEnabled, position, updatedAt })
+            .where(eq(appSections.key, section.key));
+        }
+      }));
+
+      await writeAuditEvent({
+        action: "admin.app_sections.updated",
+        actorUserId: req.user?.id,
+        actorRole: req.user?.role,
+        targetUserId: null,
+        ipAddress: req.ip,
+        metadata: { sections },
+      });
+
+      res.json(await getConfiguredAppSections());
+    } catch (e) { next(e); }
+  });
 
   app.get("/api/admin/stats", requireSystemAdmin, async (_req, res, next) => {
     try {

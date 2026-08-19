@@ -131,6 +131,16 @@ export const commitments = pgTable("commitments", {
   updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
 });
 
+/** Global navigation and feature visibility controlled by the system admin. */
+export const appSections = pgTable("app_sections", {
+  key: text("section_key").primaryKey(),
+  isEnabled: boolean("is_enabled").notNull().default(true),
+  position: integer("position").notNull().default(0),
+  updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
+export type AppSectionSetting = typeof appSections.$inferSelect;
+
 /**
  * A deliberately narrow sharing boundary. The owner keeps financial amounts,
  * notes, proofs and financial amounts. An assignee receives the task, its

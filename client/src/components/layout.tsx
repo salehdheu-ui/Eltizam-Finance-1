@@ -1,5 +1,5 @@
 import { useLocation } from "wouter";
-import { Home, ListFilter, Plus, Settings, Loader2, BarChart3, Menu, X, ChevronLeft, Receipt, Landmark, LogOut, Sparkles, Goal, BookOpen, ListChecks, Handshake } from "lucide-react";
+import { Home, ListFilter, Plus, Settings, Loader2, BarChart3, Menu, X, ChevronLeft, Receipt, Landmark, LogOut, Sparkles, Goal, BookOpen, ListChecks, Handshake, Mail, Tags, WalletCards } from "lucide-react";
 import { CurrencyDisplay } from "@/components/ui/currency-display";
 import { cn, formatCurrency } from "@/lib/utils";
 import { Button } from "./ui/button";
@@ -18,9 +18,27 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError, apiRequest } from "@/lib/queryClient";
 import { queryClient } from "@/lib/queryClient";
-import { useCategories, useWallets, useCreateTransaction, useUser, useObligation, useVariableObligationStatuses, useLogout } from "@/lib/hooks";
+import { useAppSections, useCategories, useWallets, useCreateTransaction, useUser, useObligation, useVariableObligationStatuses, useLogout } from "@/lib/hooks";
 import { InstallPrompt } from "@/components/install-prompt";
 import { NotificationCenter } from "@/components/notification-center";
+import { DEFAULT_APP_SECTIONS, type AppSectionKey } from "@shared/app-sections";
+
+const sectionIcons: Record<AppSectionKey, typeof Home> = {
+  dashboard: Home,
+  commitments: ListChecks,
+  transactions: ListFilter,
+  reports: BarChart3,
+  shared_commitments: Handshake,
+  obligations: Receipt,
+  income: Landmark,
+  wallets: WalletCards,
+  categories: Tags,
+  financial_plans: Sparkles,
+  savings_goals: Goal,
+  bank_inbox: Mail,
+  settings: Settings,
+  user_guide: BookOpen,
+};
 
 function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
@@ -87,6 +105,7 @@ export default function Layout({ children }: LayoutProps) {
   const { data: categoriesData } = useCategories();
   const { data: walletsData } = useWallets();
   const { data: user } = useUser();
+  const { data: configuredSections } = useAppSections(Boolean(user));
   const { data: sourceObligation } = useObligation(sourceObligationNumericId);
   const { data: sourceObligationStatuses = [] } = useVariableObligationStatuses(sourceObligationNumericId);
   const createTransaction = useCreateTransaction();
@@ -199,20 +218,16 @@ export default function Layout({ children }: LayoutProps) {
     };
   }, [location]);
 
-  // Main bottom navigation (most important)
-  const mainNavItems = [
-    { href: "/", icon: Home, label: "الرئيسية" },
-    { href: "/commitments", icon: ListChecks, label: "التزاماتي" },
-    { href: "/transactions", icon: ListFilter, label: "المعاملات" },
-    { href: "/reports", icon: BarChart3, label: "التقارير" },
-  ];
-
-  // Sidebar navigation (less frequently used)
+  const visibleSections = (configuredSections ?? DEFAULT_APP_SECTIONS.map((section, position) => ({
+    ...section,
+    isEnabled: true,
+    position,
+    updatedAt: null,
+  }))).filter((section) => section.isEnabled);
+  const mainNavItems = visibleSections.slice(0, 4).map((section) => ({ ...section, icon: sectionIcons[section.key] }));
   const sidebarItems = [
-    { href: "/shared-commitments", icon: Handshake, label: "مهام مُسندة إليّ" },
-    { href: "/settings", icon: Settings, label: "الإعدادات" },
-    { href: "/user-guide", icon: BookOpen, label: "دليل الاستخدام" },
-    ...(isSystemAdmin ? [{ href: "/admin/users", icon: Settings, label: "إدارة المستخدمين" }] : []),
+    ...visibleSections.slice(4).map((section) => ({ ...section, icon: sectionIcons[section.key] })),
+    ...(isSystemAdmin ? [{ href: "/admin/users", icon: Settings, label: "إدارة النظام" }] : []),
   ];
 
   const handleLogout = async () => {
@@ -364,7 +379,7 @@ export default function Layout({ children }: LayoutProps) {
             </div>
 
             {/* Sidebar Items */}
-            <nav className="flex-1 p-4 space-y-2">
+            <nav className="flex-1 space-y-2 overflow-y-auto p-4">
               {sidebarItems.map((item) => {
                 const isActive = item.href === "/" ? location === "/" : location === item.href || location.startsWith(item.href + "/");
                 const Icon = item.icon;
