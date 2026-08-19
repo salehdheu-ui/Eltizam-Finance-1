@@ -5,8 +5,9 @@ import { CurrencyDisplay } from "@/components/ui/currency-display";
 import { useMemo, useState } from "react";
 import { cn, formatObligationDueDate, formatRelativeArabicDate, getUpcomingObligations, normalizeArabicText } from "@/lib/utils";
 import { Link } from "wouter";
-import { useCommitments, useDashboard, useObligations, useUpdateCommitmentStatus, useUser } from "@/lib/hooks";
+import { useCommitments, useDashboard, useDashboardSections, useObligations, useUpdateCommitmentStatus, useUser } from "@/lib/hooks";
 import type { Commitment } from "@shared/schema";
+import { DEFAULT_DASHBOARD_SECTIONS, type DashboardSectionKey } from "@shared/dashboard-sections";
 import InsightsPanel from "@/components/insights-panel";
 import QuickCommitment from "@/components/quick-commitment";
 import { useToast } from "@/hooks/use-toast";
@@ -42,6 +43,7 @@ export default function Dashboard() {
   const { data: dashboard, isLoading } = useDashboard();
   const { data: obligations, isLoading: isLoadingObligations } = useObligations();
   const { data: commitments = [], isLoading: isLoadingCommitments } = useCommitments();
+  const { data: configuredDashboardSections } = useDashboardSections(Boolean(user));
   const updateCommitmentStatus = useUpdateCommitmentStatus();
   const [showQuickCommitment, setShowQuickCommitment] = useState(false);
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
@@ -82,6 +84,15 @@ export default function Dashboard() {
     || (dashboard?.totalIncome ?? 0) !== 0
     || (dashboard?.totalExpenses ?? 0) !== 0;
   const isLoadingImportant = isLoadingCommitments || isLoadingObligations;
+  const dashboardSections = configuredDashboardSections ?? DEFAULT_DASHBOARD_SECTIONS.map((section, position) => ({
+    ...section,
+    isEnabled: true,
+    position,
+    updatedAt: null,
+  }));
+  const dashboardSectionMap = new Map(dashboardSections.map((section) => [section.key, section]));
+  const isDashboardSectionEnabled = (key: DashboardSectionKey) => dashboardSectionMap.get(key)?.isEnabled ?? true;
+  const dashboardSectionOrder = (key: DashboardSectionKey) => (dashboardSectionMap.get(key)?.position ?? 0) + 1;
 
   const openQuickCommitment = () => {
     setShowQuickCommitment(true);
@@ -121,7 +132,7 @@ export default function Dashboard() {
 
   return (
     <div className="animate-in fade-in flex flex-col gap-5 px-1 py-4 pb-24 duration-300 sm:gap-6 sm:px-2 sm:py-6 xl:px-0 xl:py-8" dir="rtl">
-      <header className="flex items-center justify-between gap-4">
+      <header className="flex items-center justify-between gap-4" style={{ order: 0 }}>
         <div className="min-w-0">
           <p className="text-sm text-muted-foreground">مرحباً بعودتك</p>
           <h1 className="truncate text-xl font-bold sm:text-2xl">{user?.name || "المستخدم"}</h1>
@@ -133,7 +144,7 @@ export default function Dashboard() {
         </Link>
       </header>
 
-      <Card className="overflow-hidden border-none bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-xl">
+      {isDashboardSectionEnabled("focus_summary") ? <Card className="overflow-hidden border-none bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-xl" style={{ order: dashboardSectionOrder("focus_summary") }}>
         <CardContent className="relative p-5 sm:p-6">
           <div className="absolute -left-8 -top-8 h-28 w-28 rounded-full bg-white/10 blur-2xl" />
           <div className="relative">
@@ -175,10 +186,10 @@ export default function Dashboard() {
             </div>
           </div>
         </CardContent>
-      </Card>
+      </Card> : null}
 
-      {showQuickCommitment ? (
-        <section id="quick-commitment" className="animate-in slide-in-from-top-2 xl:max-w-4xl">
+      {isDashboardSectionEnabled("focus_summary") && showQuickCommitment ? (
+        <section id="quick-commitment" className="animate-in slide-in-from-top-2 xl:max-w-4xl" style={{ order: dashboardSectionOrder("focus_summary") }}>
           <div className="mb-2 flex items-center justify-between">
             <p className="text-sm font-semibold text-primary">اكتب التزامك كما تفكر فيه</p>
             <Button type="button" variant="ghost" size="sm" onClick={() => setShowQuickCommitment(false)}>
@@ -190,9 +201,11 @@ export default function Dashboard() {
         </section>
       ) : null}
 
-      <InsightsPanel />
+      {isDashboardSectionEnabled("weekly_insights") ? (
+        <div style={{ order: dashboardSectionOrder("weekly_insights") }}><InsightsPanel /></div>
+      ) : null}
 
-      <section className="xl:max-w-4xl">
+      {isDashboardSectionEnabled("priorities") ? <section className="xl:max-w-4xl" style={{ order: dashboardSectionOrder("priorities") }}>
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-bold">الأولوية الآن</h2>
@@ -281,10 +294,10 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         )}
-      </section>
+      </section> : null}
 
-      {upcomingObligations.length > 0 ? (
-        <section className="xl:max-w-4xl">
+      {isDashboardSectionEnabled("upcoming_obligations") && upcomingObligations.length > 0 ? (
+        <section className="xl:max-w-4xl" style={{ order: dashboardSectionOrder("upcoming_obligations") }}>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-lg font-bold">دفعات قريبة</h2>
             <Link href="/obligations"><Button variant="link" className="h-auto p-0">التفاصيل</Button></Link>
@@ -306,8 +319,8 @@ export default function Dashboard() {
         </section>
       ) : null}
 
-      {hasFinancialActivity ? (
-        <section className="xl:max-w-4xl">
+      {isDashboardSectionEnabled("financial_summary") && hasFinancialActivity ? (
+        <section className="xl:max-w-4xl" style={{ order: dashboardSectionOrder("financial_summary") }}>
           <h2 className="mb-3 text-lg font-bold">المال باختصار</h2>
           <Card className="border-border/60 shadow-sm">
             <CardContent className="p-4">
@@ -321,8 +334,8 @@ export default function Dashboard() {
         </section>
       ) : null}
 
-      {!isLoading && dashboard?.recentTransactions && dashboard.recentTransactions.length > 0 ? (
-        <section className="xl:max-w-4xl">
+      {isDashboardSectionEnabled("recent_transactions") && !isLoading && dashboard?.recentTransactions && dashboard.recentTransactions.length > 0 ? (
+        <section className="xl:max-w-4xl" style={{ order: dashboardSectionOrder("recent_transactions") }}>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-lg font-bold">آخر المعاملات</h2>
             <Link href="/transactions"><Button variant="link" className="h-auto p-0">عرض الكل</Button></Link>

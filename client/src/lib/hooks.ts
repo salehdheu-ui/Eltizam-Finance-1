@@ -3,6 +3,7 @@ import { apiRequest } from "./queryClient";
 import { queryClient } from "./queryClient";
 import type { User, Wallet, Category, Transaction, RecurringIncome, Obligation, ObligationPayment, VariableObligationMonthStatus, Commitment, CommitmentStep, CommitmentProof, SavingsGoal } from "@shared/schema";
 import type { AppSectionKey } from "@shared/app-sections";
+import type { DashboardSectionKey } from "@shared/dashboard-sections";
 
 type WalletPayload = Pick<Wallet, "name" | "type" | "balance" | "color">;
 type WalletUpdatePayload = Partial<WalletPayload> & { id: number };
@@ -154,6 +155,15 @@ export type AppSectionConfig = {
   key: AppSectionKey;
   label: string;
   href: string;
+  description: string;
+  isEnabled: boolean;
+  position: number;
+  updatedAt: number | null;
+};
+
+export type DashboardSectionConfig = {
+  key: DashboardSectionKey;
+  label: string;
   description: string;
   isEnabled: boolean;
   position: number;
@@ -365,6 +375,26 @@ export function useAdminSaveAppSections() {
     },
     onSuccess: (sections) => {
       queryClient.setQueryData(["/api/app-sections"], sections);
+    },
+  });
+}
+
+export function useDashboardSections(enabled = true) {
+  return useQuery<DashboardSectionConfig[]>({
+    queryKey: ["/api/dashboard-sections"],
+    enabled,
+    refetchInterval: 30_000,
+  });
+}
+
+export function useAdminSaveDashboardSections() {
+  return useMutation({
+    mutationFn: async (sections: Array<Pick<DashboardSectionConfig, "key" | "isEnabled">>) => {
+      const response = await apiRequest("PUT", "/api/admin/dashboard-sections", { sections });
+      return response.json() as Promise<DashboardSectionConfig[]>;
+    },
+    onSuccess: (sections) => {
+      queryClient.setQueryData(["/api/dashboard-sections"], sections);
     },
   });
 }

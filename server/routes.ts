@@ -4,8 +4,9 @@ import { storage } from "./storage";
 import { hashPlainPassword, setupAuth } from "./auth";
 import { writeAuditEvent } from "./audit";
 import { createManualBackup, listAllBackups } from "./backup";
-import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, appSections, integrationSettings, upsertIntegrationSettingSchema, upsertEmailChannelSchema, upsertPushChannelSchema, transactions, categories, bankEmailEvents, bankCategoryRules, automationLog, commitmentOccurrences, commitments, commitmentShares, commitmentSteps, inAppNotifications, notificationPreferences, obligationPayments, users } from "@shared/schema";
+import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, appSections, dashboardSections, integrationSettings, upsertIntegrationSettingSchema, upsertEmailChannelSchema, upsertPushChannelSchema, transactions, categories, bankEmailEvents, bankCategoryRules, automationLog, commitmentOccurrences, commitments, commitmentShares, commitmentSteps, inAppNotifications, notificationPreferences, obligationPayments, users } from "@shared/schema";
 import { APP_SECTION_KEYS, DEFAULT_APP_SECTIONS } from "@shared/app-sections";
+import { DASHBOARD_SECTION_KEYS, DEFAULT_DASHBOARD_SECTIONS } from "@shared/dashboard-sections";
 import { buildWriteQueueKey, enqueueWrite } from "./write-queue";
 import { z } from "zod";
 import { buildRuleKey, registerBankInboxRoutes } from "./bank-inbox";
@@ -157,6 +158,18 @@ const adminAppSectionsSchema = z.object({
   }
 });
 
+const adminDashboardSectionsSchema = z.object({
+  sections: z.array(z.object({
+    key: z.enum(DASHBOARD_SECTION_KEYS),
+    isEnabled: z.boolean(),
+  })).length(DASHBOARD_SECTION_KEYS.length),
+}).superRefine(({ sections }, context) => {
+  const keys = new Set(sections.map((section) => section.key));
+  if (keys.size !== DASHBOARD_SECTION_KEYS.length || DASHBOARD_SECTION_KEYS.some((key) => !keys.has(key))) {
+    context.addIssue({ code: "custom", message: "يجب إرسال جميع مكونات الرئيسية مرة واحدة دون تكرار" });
+  }
+});
+
 const walletUpdateSchema = insertWalletSchema.partial().extend({
   balance: z.number().finite().optional(),
 });
@@ -264,6 +277,27 @@ async function getConfiguredAppSections() {
   }).sort((first, second) => first.position - second.position);
 }
 
+async function getConfiguredDashboardSections() {
+  await db.insert(dashboardSections).values(DEFAULT_DASHBOARD_SECTIONS.map((section, position) => ({
+    key: section.key,
+    isEnabled: true,
+    position,
+  }))).onConflictDoNothing({ target: dashboardSections.key });
+
+  const rows = await db.select().from(dashboardSections).orderBy(asc(dashboardSections.position), asc(dashboardSections.key));
+  const rowsByKey = new Map(rows.map((row) => [row.key, row]));
+
+  return DEFAULT_DASHBOARD_SECTIONS.map((definition, defaultPosition) => {
+    const row = rowsByKey.get(definition.key);
+    return {
+      ...definition,
+      isEnabled: row?.isEnabled ?? true,
+      position: row?.position ?? defaultPosition,
+      updatedAt: row?.updatedAt ?? null,
+    };
+  }).sort((first, second) => first.position - second.position);
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -302,6 +336,39 @@ export async function registerRoutes(
       });
 
       res.json(await getConfiguredAppSections());
+    } catch (e) { next(e); }
+  });
+
+  app.get("/api/dashboard-sections", requireAuth, async (_req, res, next) => {
+    try {
+      res.json(await getConfiguredDashboardSections());
+    } catch (e) { next(e); }
+  });
+
+  app.put("/api/admin/dashboard-sections", requireSystemAdmin, async (req, res, next) => {
+    try {
+      const { sections } = adminDashboardSectionsSchema.parse(req.body);
+      const updatedAt = Math.floor(Date.now() / 1000);
+
+      await runQueuedWrite(res, buildWriteQueueKey("admin", "dashboard-sections"), () => db.transaction(async (transaction) => {
+        for (let position = 0; position < sections.length; position += 1) {
+          const section = sections[position];
+          await transaction.update(dashboardSections)
+            .set({ isEnabled: section.isEnabled, position, updatedAt })
+            .where(eq(dashboardSections.key, section.key));
+        }
+      }));
+
+      await writeAuditEvent({
+        action: "admin.dashboard_sections.updated",
+        actorUserId: req.user?.id,
+        actorRole: req.user?.role,
+        targetUserId: null,
+        ipAddress: req.ip,
+        metadata: { sections },
+      });
+
+      res.json(await getConfiguredDashboardSections());
     } catch (e) { next(e); }
   });
 

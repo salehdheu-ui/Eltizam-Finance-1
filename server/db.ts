@@ -2,6 +2,7 @@ import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@shared/schema";
 import { DEFAULT_APP_SECTIONS } from "@shared/app-sections";
+import { DEFAULT_DASHBOARD_SECTIONS } from "@shared/dashboard-sections";
 import { databaseUrl } from "../db-path";
 
 const pool = new pg.Pool({ connectionString: databaseUrl });
@@ -168,6 +169,11 @@ const databaseMigrations: DatabaseMigration[] = [
     version: 29,
     name: "ensure_bank_obligation_reconciliation",
     up: async () => { await ensureBankObligationReconciliation(); },
+  },
+  {
+    version: 30,
+    name: "ensure_dashboard_sections_table",
+    up: async () => { await ensureDashboardSectionsTable(); },
   },
 ];
 
@@ -683,6 +689,29 @@ async function ensureAppSectionsTable() {
   }
 
   await pgExec("CREATE INDEX IF NOT EXISTS app_sections_position_idx ON app_sections (position, section_key)");
+}
+
+async function ensureDashboardSectionsTable() {
+  await pgExec(`
+    CREATE TABLE IF NOT EXISTS dashboard_sections (
+      section_key TEXT PRIMARY KEY,
+      is_enabled BOOLEAN NOT NULL DEFAULT true,
+      position INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer
+    )
+  `);
+
+  for (let position = 0; position < DEFAULT_DASHBOARD_SECTIONS.length; position += 1) {
+    const section = DEFAULT_DASHBOARD_SECTIONS[position];
+    await pool.query(
+      `INSERT INTO dashboard_sections (section_key, is_enabled, position)
+       VALUES ($1, true, $2)
+       ON CONFLICT (section_key) DO NOTHING`,
+      [section.key, position],
+    );
+  }
+
+  await pgExec("CREATE INDEX IF NOT EXISTS dashboard_sections_position_idx ON dashboard_sections (position, section_key)");
 }
 
 async function ensureBankObligationReconciliation() {
