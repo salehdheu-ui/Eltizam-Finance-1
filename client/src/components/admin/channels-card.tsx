@@ -12,13 +12,16 @@ import {
   useAdminGenerateVapidKeys,
   useAdminSaveEmailChannel,
   useAdminSavePushChannel,
+  useAdminSaveN8nChannel,
   useAdminTestEmailChannel,
+  useAdminTestN8nChannel,
   type AdminEmailChannel,
+  type AdminN8nChannel,
   type AdminPushChannel,
 } from "@/lib/hooks";
 import { formatDate } from "@/lib/utils";
 
-function StatusBadge({ channel }: { channel: AdminEmailChannel | AdminPushChannel }) {
+function StatusBadge({ channel }: { channel: AdminEmailChannel | AdminPushChannel | AdminN8nChannel }) {
   if (channel.hasDatabaseRecord && !channel.isEnabled) {
     return <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs text-amber-700">موقوف</span>;
   }
@@ -35,7 +38,7 @@ function StatusBadge({ channel }: { channel: AdminEmailChannel | AdminPushChanne
 function ChannelShell({
   channel, description, children, actions,
 }: {
-  channel: AdminEmailChannel | AdminPushChannel;
+  channel: AdminEmailChannel | AdminPushChannel | AdminN8nChannel;
   description: string;
   children: React.ReactNode;
   actions: React.ReactNode;
@@ -331,6 +334,117 @@ function PushChannelForm({ channel }: { channel: AdminPushChannel }) {
   );
 }
 
+function N8nChannelForm({ channel }: { channel: AdminN8nChannel }) {
+  const { toast } = useToast();
+  const [draft, setDraft] = useState(() => ({
+    webhookUrl: channel.webhookUrl,
+    authHeaderName: channel.authHeaderName,
+    authToken: "",
+    isEnabled: channel.isEnabled,
+  }));
+  const save = useAdminSaveN8nChannel();
+  const remove = useAdminDeleteChannel();
+  const test = useAdminTestN8nChannel();
+
+  useEffect(() => {
+    setDraft({
+      webhookUrl: channel.webhookUrl,
+      authHeaderName: channel.authHeaderName,
+      authToken: "",
+      isEnabled: channel.isEnabled,
+    });
+  }, [channel]);
+
+  const isBusy = save.isPending || remove.isPending || test.isPending;
+
+  const handleSave = async () => {
+    if (!draft.webhookUrl.trim()) {
+      toast({ title: "تنبيه", description: "أدخل رابط الـ Webhook من n8n", variant: "destructive" });
+      return;
+    }
+    try {
+      await save.mutateAsync({
+        webhookUrl: draft.webhookUrl.trim(),
+        authHeaderName: draft.authHeaderName.trim() || undefined,
+        authToken: draft.authToken.trim() || undefined,
+        isEnabled: draft.isEnabled,
+      });
+      setDraft((current) => ({ ...current, authToken: "" }));
+      toast({ title: "تم الحفظ", description: "حُدّث ربط n8n" });
+    } catch (error) {
+      toast({ title: "خطأ", description: error instanceof Error ? error.message : "تعذر الحفظ", variant: "destructive" });
+    }
+  };
+
+  const handleTest = async () => {
+    try {
+      const result = await test.mutateAsync();
+      toast({ title: "تم الإرسال", description: result.message });
+    } catch (error) {
+      toast({ title: "خطأ", description: error instanceof Error ? error.message : "تعذر الإرسال", variant: "destructive" });
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm("هل تريد حذف ربط n8n المحفوظ؟ ستتوقف الأتمتة ما لم يكن مضبوطاً في متغيرات البيئة.")) return;
+    try {
+      await remove.mutateAsync("n8n");
+      toast({ title: "تم الحذف" });
+    } catch (error) {
+      toast({ title: "خطأ", description: error instanceof Error ? error.message : "تعذر الحذف", variant: "destructive" });
+    }
+  };
+
+  return (
+    <ChannelShell
+      channel={channel}
+      description="يُرسل كل إشعار إلى مسار Webhook في n8n لتشغيل الأتمتة عليه. الرابط والمفتاح يُحفظان مشفّرين، ولا تظهر هذه القناة للمستخدمين."
+      actions={
+        <>
+          <Button onClick={handleSave} disabled={isBusy}>
+            {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "حفظ الربط"}
+          </Button>
+          <Button variant="outline" onClick={handleTest} disabled={isBusy || !channel.configured}>
+            {test.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            إرسال حدث تجريبي
+          </Button>
+          {channel.hasDatabaseRecord ? (
+            <Button variant="destructive" size="icon" onClick={handleDelete} disabled={isBusy} aria-label="حذف ربط n8n">
+              {remove.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            </Button>
+          ) : null}
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <div className="space-y-2">
+          <Label htmlFor="n8n-url" className="text-sm">رابط الـ Webhook</Label>
+          <Input id="n8n-url" value={draft.webhookUrl} dir="ltr" placeholder="https://n8n.example.com/webhook/eltizam"
+            onChange={(event) => setDraft((current) => ({ ...current, webhookUrl: event.target.value }))} />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="n8n-header" className="text-sm">اسم ترويسة المصادقة (اختياري)</Label>
+          <Input id="n8n-header" value={draft.authHeaderName} dir="ltr" placeholder="x-eltizam-token"
+            onChange={(event) => setDraft((current) => ({ ...current, authHeaderName: event.target.value }))} />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="n8n-token" className="text-sm">قيمة الترويسة (Token)</Label>
+          <Input id="n8n-token" type="password" value={draft.authToken} dir="ltr"
+            placeholder={channel.authTokenMasked ? `محفوظ حالياً (${channel.authTokenMasked})` : "المفتاح السري"}
+            onChange={(event) => setDraft((current) => ({ ...current, authToken: event.target.value }))} />
+          {channel.authTokenMasked ? (
+            <p className="text-xs text-muted-foreground">اتركه فارغاً للإبقاء على الحالي.</p>
+          ) : null}
+        </div>
+        <div className="flex items-center justify-between rounded-xl bg-muted/40 p-3">
+          <span className="text-sm">تفعيل القناة</span>
+          <Switch checked={draft.isEnabled} onCheckedChange={(checked) => setDraft((current) => ({ ...current, isEnabled: checked }))} />
+        </div>
+      </div>
+    </ChannelShell>
+  );
+}
+
 export default function AdminChannelsCard() {
   const { data, isLoading } = useAdminChannels();
 
@@ -357,6 +471,7 @@ export default function AdminChannelsCard() {
           <div className="space-y-4">
             <EmailChannelForm channel={data.email} />
             <PushChannelForm channel={data.push} />
+            <N8nChannelForm channel={data.n8n} />
           </div>
         )}
       </CardContent>

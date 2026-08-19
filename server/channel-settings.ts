@@ -11,9 +11,9 @@ import { decryptSecret, encryptSecret } from "./integration-settings";
  * on. An admin-saved row is authoritative once it exists; the environment stays
  * the fallback so an existing deployment keeps working untouched.
  */
-export type NotificationChannelKey = "email" | "push";
+export type NotificationChannelKey = "email" | "push" | "n8n";
 
-export const NOTIFICATION_CHANNEL_KEYS: NotificationChannelKey[] = ["email", "push"];
+export const NOTIFICATION_CHANNEL_KEYS: NotificationChannelKey[] = ["email", "push", "n8n"];
 
 export type MailConfig = {
   host: string;
@@ -33,8 +33,24 @@ export type PushConfig = {
   source: "database" | "environment";
 };
 
+/**
+ * Outgoing webhook into an n8n workflow.
+ *
+ * Admin-managed rather than per-user: it is one automation endpoint for the
+ * whole deployment, so it sits beside the other channels an admin configures
+ * and never shows up in the settings a normal user can reach.
+ */
+export type N8nConfig = {
+  webhookUrl: string;
+  /** Optional header n8n checks on the way in, e.g. a header auth credential. */
+  authHeaderName: string;
+  authToken: string;
+  source: "database" | "environment";
+};
+
 type StoredEmailConfig = Omit<MailConfig, "source">;
 type StoredPushConfig = Omit<PushConfig, "source">;
+type StoredN8nConfig = Omit<N8nConfig, "source">;
 
 const CACHE_TTL_MS = 30_000;
 const cache = new Map<NotificationChannelKey, { value: unknown; expiresAt: number }>();
@@ -68,7 +84,7 @@ export async function readStoredConfig<T>(channel: NotificationChannelKey): Prom
 
 export async function saveChannelConfig(
   channel: NotificationChannelKey,
-  config: StoredEmailConfig | StoredPushConfig,
+  config: StoredEmailConfig | StoredPushConfig | StoredN8nConfig,
   options: { isEnabled: boolean; updatedByUserId?: number },
 ) {
   const now = Math.floor(Date.now() / 1000);
@@ -196,4 +212,30 @@ export function resolvePushConfig(): Promise<PushConfig | null> {
       source: "database",
     };
   }, environmentPushConfig);
+}
+
+function environmentN8nConfig(): N8nConfig | null {
+  const webhookUrl = process.env.N8N_WEBHOOK_URL?.trim() || "";
+  if (!webhookUrl) return null;
+
+  return {
+    webhookUrl,
+    authHeaderName: process.env.N8N_AUTH_HEADER?.trim() || "",
+    authToken: process.env.N8N_AUTH_TOKEN?.trim() || "",
+    source: "environment",
+  };
+}
+
+export function resolveN8nConfig(): Promise<N8nConfig | null> {
+  return resolve<N8nConfig>("n8n", (stored) => {
+    const webhookUrl = String(stored.webhookUrl || "").trim();
+    if (!webhookUrl) return null;
+
+    return {
+      webhookUrl,
+      authHeaderName: String(stored.authHeaderName || "").trim(),
+      authToken: String(stored.authToken || ""),
+      source: "database",
+    };
+  }, environmentN8nConfig);
 }

@@ -195,7 +195,24 @@ export type AdminPushChannel = {
   privateKeyMasked: string | null;
 };
 
-export type AdminChannels = { email: AdminEmailChannel; push: AdminPushChannel };
+export type AdminN8nChannel = {
+  channel: "n8n";
+  label: string;
+  configured: boolean;
+  source: "database" | "environment" | null;
+  hasDatabaseRecord: boolean;
+  isEnabled: boolean;
+  updatedAt: number | null;
+  webhookUrl: string;
+  authHeaderName: string;
+  authTokenMasked: string | null;
+};
+
+export type AdminChannels = {
+  email: AdminEmailChannel;
+  push: AdminPushChannel;
+  n8n: AdminN8nChannel;
+};
 
 export function useAdminChannels() {
   return useQuery<AdminChannels>({ queryKey: ["/api/admin/channels"] });
@@ -235,8 +252,26 @@ export function useAdminGenerateVapidKeys() {
 
 export function useAdminDeleteChannel() {
   return useMutation({
-    mutationFn: (channel: "email" | "push") => apiRequest("DELETE", `/api/admin/channels/${channel}`),
+    mutationFn: (channel: "email" | "push" | "n8n") => apiRequest("DELETE", `/api/admin/channels/${channel}`),
     onSuccess: invalidateChannelQueries,
+  });
+}
+
+export function useAdminSaveN8nChannel() {
+  return useMutation({
+    mutationFn: (data: {
+      webhookUrl: string; authHeaderName?: string; authToken?: string; isEnabled?: boolean;
+    }) => apiRequest("PUT", "/api/admin/channels/n8n", data),
+    onSuccess: invalidateChannelQueries,
+  });
+}
+
+export function useAdminTestN8nChannel() {
+  return useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/admin/channels/n8n/test", {});
+      return response.json() as Promise<{ message: string }>;
+    },
   });
 }
 

@@ -7,10 +7,10 @@ import {
   users,
 } from "@shared/schema";
 import { db } from "./db";
-import { resolvePushConfig } from "./channel-settings";
+import { resolvePushConfig, getChannelRecord, resolveN8nConfig } from "./channel-settings";
 import { sendPlainEmail } from "./mail";
 
-export type NotificationChannel = "email" | "push" | "telegram" | "whatsapp" | "webhook";
+export type NotificationChannel = "email" | "push" | "telegram" | "whatsapp" | "webhook" | "n8n";
 
 export type Notification = {
   userId: number;
@@ -167,6 +167,75 @@ async function deliverWhatsapp(notification: Notification, number: string | null
   }
 }
 
+/**
+ * Refuses the cloud metadata service.
+ *
+ * The n8n URL is admin-supplied and fetched by the server, so it is an SSRF
+ * sink. Private ranges stay allowed on purpose — a self-hosted n8n on the LAN
+ * is the normal deployment — but 169.254.0.0/16 is never a real n8n host and is
+ * the one target that hands back instance credentials.
+ */
+function isBlockedWebhookHost(hostname: string) {
+  const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  return host === "169.254.169.254" || host.startsWith("169.254.") || host === "fd00:ec2::254";
+}
+
+export function assertSafeWebhookUrl(rawUrl: string) {
+  const reject = (message: string) => Object.assign(new Error(message), { status: 400 });
+
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw reject("رابط Webhook غير صالح");
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw reject("يجب أن يبدأ الرابط بـ http أو https");
+  }
+
+  if (isBlockedWebhookHost(parsed.hostname)) {
+    throw reject("هذا العنوان غير مسموح به");
+  }
+
+  return parsed;
+}
+
+/**
+ * Forwards the event to the n8n webhook the admin configured, so workflows can
+ * react to it. Delivery is per user but the endpoint is deployment-wide, which
+ * is why the config comes from the channel settings and not the user record.
+ */
+export async function deliverN8n(notification: Notification) {
+  const config = await resolveN8nConfig();
+  if (!config) throw new Error("لم يُضبط رابط n8n");
+
+  assertSafeWebhookUrl(config.webhookUrl);
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (config.authHeaderName && config.authToken) {
+    headers[config.authHeaderName] = config.authToken;
+  }
+
+  const response = await fetch(config.webhookUrl, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      event: "eltizam.notification",
+      userId: notification.userId,
+      title: notification.title,
+      body: notification.body,
+      url: notification.url ?? null,
+      dedupeKey: notification.dedupeKey,
+      urgent: Boolean(notification.urgent),
+      at: new Date().toISOString(),
+    }),
+    signal: AbortSignal.timeout(10_000),
+  });
+
+  if (!response.ok) throw new Error(`n8n رد بالرمز ${response.status}`);
+}
+
 async function deliverWebhook(notification: Notification, url: string | null) {
   if (!url) throw new Error("لم يُضبط رابط Webhook");
 
@@ -199,12 +268,18 @@ export async function notify(notification: Notification) {
     return { sent: [] as NotificationChannel[], skipped: ["quiet-hours"] };
   }
 
+  const n8nRecord = await getChannelRecord("n8n");
+  const n8nEnabled = Boolean(await resolveN8nConfig()) && (n8nRecord?.isEnabled ?? true);
+
   const wanted: Array<[NotificationChannel, boolean, () => Promise<void>]> = [
     ["push", preferences.pushEnabled, () => deliverPush(notification)],
     ["email", preferences.emailEnabled, () => deliverEmail(notification)],
     ["telegram", preferences.telegramEnabled, () => deliverTelegram(notification, preferences.telegramChatId)],
     ["whatsapp", preferences.whatsappEnabled, () => deliverWhatsapp(notification, preferences.whatsappNumber)],
     ["webhook", Boolean(preferences.webhookUrl), () => deliverWebhook(notification, preferences.webhookUrl)],
+    // Enabled by the admin for the whole deployment rather than per user, so it
+    // is gated on the channel record instead of a preference flag.
+    ["n8n", n8nEnabled, () => deliverN8n(notification)],
   ];
 
   const sent: NotificationChannel[] = [];

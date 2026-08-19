@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { hashPlainPassword, setupAuth } from "./auth";
 import { writeAuditEvent } from "./audit";
 import { createManualBackup, listAllBackups } from "./backup";
-import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, integrationSettings, upsertIntegrationSettingSchema, upsertEmailChannelSchema, upsertPushChannelSchema, transactions, categories, bankEmailEvents, bankCategoryRules, automationLog, commitmentOccurrences, commitments, commitmentShares, notificationPreferences, users } from "@shared/schema";
+import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, integrationSettings, upsertIntegrationSettingSchema, upsertEmailChannelSchema, upsertPushChannelSchema, upsertN8nChannelSchema, transactions, categories, bankEmailEvents, bankCategoryRules, automationLog, commitmentOccurrences, commitments, commitmentShares, notificationPreferences, users } from "@shared/schema";
 import { buildWriteQueueKey, enqueueWrite } from "./write-queue";
 import { apiRateLimit, expensiveRateLimit, writeRateLimit } from "./rate-limit";
 import {
@@ -16,13 +16,14 @@ import {
 import { z } from "zod";
 import { buildRuleKey, registerBankInboxRoutes } from "./bank-inbox";
 import { postponeOccurrence, runAutomationForUser, startAutomationEngine, undoAutomationEntry } from "./automation";
-import { generateVapidKeys, getPreferences, getPublicVapidKey, notify, removePushSubscription, savePushSubscription } from "./notifications";
+import { assertSafeWebhookUrl, deliverN8n, generateVapidKeys, getPreferences, getPublicVapidKey, notify, removePushSubscription, savePushSubscription } from "./notifications";
 import { canSendMail, sendTestEmail } from "./mail";
 import {
   deleteChannelConfig,
   getChannelRecord,
   readStoredConfig,
   resolveMailConfig,
+  resolveN8nConfig,
   resolvePushConfig,
   saveChannelConfig,
 } from "./channel-settings";
@@ -495,13 +496,16 @@ export async function registerRoutes(
    * and an empty field on save keeps whatever is already there.
    */
   async function buildChannelsView() {
-    const [emailRecord, pushRecord, emailStored, pushStored, mailConfig, pushConfig] = await Promise.all([
+    const [emailRecord, pushRecord, n8nRecord, emailStored, pushStored, n8nStored, mailConfig, pushConfig, n8nConfig] = await Promise.all([
       getChannelRecord("email"),
       getChannelRecord("push"),
+      getChannelRecord("n8n"),
       readStoredConfig<Record<string, unknown>>("email"),
       readStoredConfig<Record<string, unknown>>("push"),
+      readStoredConfig<Record<string, unknown>>("n8n"),
       resolveMailConfig(),
       resolvePushConfig(),
+      resolveN8nConfig(),
     ]);
 
     return {
@@ -532,6 +536,18 @@ export async function registerRoutes(
         publicKey: String(pushStored?.publicKey ?? "") || (pushRecord ? "" : pushConfig?.publicKey ?? ""),
         subject: String(pushStored?.subject ?? "") || (pushRecord ? "" : pushConfig?.subject ?? ""),
         privateKeyMasked: maskSecret(pushStored?.privateKey ? String(pushStored.privateKey) : null),
+      },
+      n8n: {
+        channel: "n8n" as const,
+        label: "أتمتة n8n (Webhook)",
+        configured: Boolean(n8nConfig),
+        source: n8nConfig?.source ?? null,
+        hasDatabaseRecord: Boolean(n8nRecord),
+        isEnabled: n8nRecord?.isEnabled ?? true,
+        updatedAt: n8nRecord?.updatedAt ?? null,
+        webhookUrl: String(n8nStored?.webhookUrl ?? "") || (n8nRecord ? "" : n8nConfig?.webhookUrl ?? ""),
+        authHeaderName: String(n8nStored?.authHeaderName ?? "") || (n8nRecord ? "" : n8nConfig?.authHeaderName ?? ""),
+        authTokenMasked: maskSecret(n8nStored?.authToken ? String(n8nStored.authToken) : null),
       },
     };
   }
@@ -610,9 +626,64 @@ export async function registerRoutes(
     } catch (e) { next(e); }
   });
 
+  app.put("/api/admin/channels/n8n", requireSystemAdmin, async (req, res, next) => {
+    try {
+      const input = upsertN8nChannelSchema.parse(req.body);
+      const stored = await readStoredConfig<Record<string, unknown>>("n8n");
+      // A blank token on update keeps the saved one, matching how the email and
+      // push forms let an admin re-save without retyping the secret.
+      const authToken = input.authToken?.trim() || String(stored?.authToken ?? "");
+      const authHeaderName = input.authHeaderName ?? String(stored?.authHeaderName ?? "");
+
+      if (authToken && !authHeaderName) {
+        return res.status(400).json({ message: "أدخل اسم الترويسة التي يتحقق منها n8n" });
+      }
+
+      assertSafeWebhookUrl(input.webhookUrl);
+
+      await runQueuedWrite(res, buildWriteQueueKey("admin-channel", "n8n"), () => saveChannelConfig("n8n", {
+        webhookUrl: input.webhookUrl,
+        authHeaderName,
+        authToken,
+      }, { isEnabled: input.isEnabled ?? true, updatedByUserId: req.user!.id }));
+
+      await writeAuditEvent({
+        action: "admin.channel.updated",
+        actorUserId: req.user?.id,
+        actorRole: req.user?.role,
+        targetUserId: null,
+        ipAddress: req.ip,
+        metadata: { channel: "n8n", secretRotated: Boolean(input.authToken?.trim()), isEnabled: input.isEnabled ?? true },
+      });
+      res.json(await buildChannelsView());
+    } catch (e) { next(e); }
+  });
+
+  /** Fires one real event at the configured workflow so the admin can confirm
+   *  n8n receives it before relying on it. */
+  app.post("/api/admin/channels/n8n/test", requireSystemAdmin, expensiveRateLimit, async (req, res, next) => {
+    try {
+      const config = await resolveN8nConfig();
+      if (!config) {
+        return res.status(400).json({ message: "احفظ رابط n8n أولًا" });
+      }
+
+      await deliverN8n({
+        userId: req.user!.id,
+        title: "اختبار اتصال n8n",
+        body: "هذه رسالة اختبار من التزام للتأكد من وصول الأحداث إلى n8n",
+        dedupeKey: `n8n-test-${Date.now()}`,
+      });
+
+      res.json({ message: "تم إرسال حدث اختباري إلى n8n بنجاح" });
+    } catch (e) { next(e); }
+  });
+
   app.delete("/api/admin/channels/:channel", requireSystemAdmin, async (req, res, next) => {
     try {
-      const channel = req.params.channel === "email" || req.params.channel === "push" ? req.params.channel : null;
+      const channel = req.params.channel === "email" || req.params.channel === "push" || req.params.channel === "n8n"
+        ? req.params.channel
+        : null;
       if (!channel) return res.status(404).json({ message: "قناة غير مدعومة" });
 
       const existing = await getChannelRecord(channel);

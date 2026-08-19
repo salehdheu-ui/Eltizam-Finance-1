@@ -4,8 +4,10 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import {
   colorSchema,
+  httpUrlSchema,
   moneySchema,
   optionalSafeMultiline,
+  optionalSafeText,
   recurringDayOfMonthSchema,
   signedMoneySchema,
   safeText,
@@ -615,6 +617,21 @@ export const upsertPushChannelSchema = z.object({
   publicKey: z.string().trim().min(1, "يجب إدخال مفتاح Push العام").max(300),
   privateKey: z.string().trim().max(300).optional(),
   subject: z.string().trim().max(200).optional().default(""),
+  isEnabled: z.boolean().optional(),
+});
+
+/**
+ * n8n automation webhook, configured by a system admin.
+ *
+ * webhookUrl goes through the shared http(s) validator, so a javascript: or
+ * file: URL cannot be stored here. authToken is optional on update: a blank
+ * value means "keep the saved token", the same convention the email and push
+ * channels use for their secrets.
+ */
+export const upsertN8nChannelSchema = z.object({
+  webhookUrl: httpUrlSchema,
+  authHeaderName: optionalSafeText(TEXT_LIMITS.shortName),
+  authToken: z.string().trim().max(500).optional(),
   isEnabled: z.boolean().optional(),
 });
 
