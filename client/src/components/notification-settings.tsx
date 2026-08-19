@@ -62,13 +62,15 @@ export default function NotificationSettings() {
   const sendTest = useMutation({
     mutationFn: async () => {
       const response = await apiRequest("POST", "/api/notifications/test");
-      return response.json() as Promise<{ sent: string[]; skipped: string[] }>;
+      return response.json() as Promise<{ inApp: boolean; sent: string[]; skipped: string[] }>;
     },
     onSuccess: (result) => {
       toast({
-        title: result.sent.length ? `أُرسلت عبر: ${result.sent.join("، ")}` : "لم تُرسل أي قناة",
+        title: result.sent.length
+          ? `أُرسلت عبر: ${result.sent.join("، ")}`
+          : result.inApp ? "وصل الإشعار داخل النظام" : "لم تُرسل أي قناة",
         description: result.skipped.length ? result.skipped.join(" · ") : undefined,
-        variant: result.sent.length ? undefined : "destructive",
+        variant: result.sent.length || result.inApp ? undefined : "destructive",
       });
     },
     onError: (error: Error) => toast({ title: "تعذر الإرسال", description: error.message, variant: "destructive" }),
@@ -96,6 +98,8 @@ export default function NotificationSettings() {
       });
 
       await apiRequest("POST", "/api/notifications/push/subscribe", subscription.toJSON());
+      await apiRequest("PATCH", "/api/notifications/preferences", { pushEnabled: true });
+      await queryClient.invalidateQueries({ queryKey: ["/api/notifications/preferences"] });
       setPushState("on");
       toast({ title: "فُعّلت الإشعارات على هذا الجهاز" });
     } catch (error) {
@@ -114,6 +118,8 @@ export default function NotificationSettings() {
         await apiRequest("POST", "/api/notifications/push/unsubscribe", { endpoint: subscription.endpoint });
         await subscription.unsubscribe();
       }
+      await apiRequest("PATCH", "/api/notifications/preferences", { pushEnabled: false });
+      await queryClient.invalidateQueries({ queryKey: ["/api/notifications/preferences"] });
       setPushState("off");
       toast({ title: "أُوقفت الإشعارات على هذا الجهاز" });
     } finally {

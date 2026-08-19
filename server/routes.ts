@@ -4,12 +4,12 @@ import { storage } from "./storage";
 import { hashPlainPassword, setupAuth } from "./auth";
 import { writeAuditEvent } from "./audit";
 import { createManualBackup, listAllBackups } from "./backup";
-import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, integrationSettings, upsertIntegrationSettingSchema, upsertEmailChannelSchema, upsertPushChannelSchema, transactions, categories, bankEmailEvents, bankCategoryRules, automationLog, commitmentOccurrences, commitments, commitmentShares, notificationPreferences, users } from "@shared/schema";
+import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, integrationSettings, upsertIntegrationSettingSchema, upsertEmailChannelSchema, upsertPushChannelSchema, transactions, categories, bankEmailEvents, bankCategoryRules, automationLog, commitmentOccurrences, commitments, commitmentShares, inAppNotifications, notificationPreferences, users } from "@shared/schema";
 import { buildWriteQueueKey, enqueueWrite } from "./write-queue";
 import { z } from "zod";
 import { buildRuleKey, registerBankInboxRoutes } from "./bank-inbox";
 import { postponeOccurrence, runAutomationForUser, startAutomationEngine, undoAutomationEntry } from "./automation";
-import { generateVapidKeys, getPreferences, getPublicVapidKey, notify, removePushSubscription, savePushSubscription } from "./notifications";
+import { generateVapidKeys, getPreferences, getPublicVapidKey, notify, removePushSubscription, saveInAppNotification, savePushSubscription } from "./notifications";
 import { canSendMail, sendTestEmail } from "./mail";
 import {
   deleteChannelConfig,
@@ -25,7 +25,7 @@ import { isClaudeConfigured, readDocument, understandCommitment } from "./unders
 import multer from "multer";
 import path from "path";
 import { db } from "./db";
-import { and, asc, desc, eq, gte, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
 import {
   INTEGRATION_PROVIDERS,
   PROVIDER_CALLBACK_PATHS,
@@ -117,8 +117,14 @@ async function runQueuedWrite<T>(res: Response, key: string, task: () => Promise
   return queued.result;
 }
 
-function notifyShareUser(notification: Parameters<typeof notify>[0]) {
-  void notify(notification).catch((error) => {
+async function notifyShareUser(notification: Parameters<typeof notify>[0]) {
+  try {
+    await saveInAppNotification(notification);
+  } catch (error) {
+    console.warn("In-app shared commitment notification failed", error);
+  }
+
+  void notify(notification, { skipInApp: true }).catch((error) => {
     console.warn("Shared commitment notification failed", error);
   });
 }
@@ -1320,6 +1326,54 @@ export async function registerRoutes(
     } catch (e) { next(e); }
   });
 
+  app.get("/api/notifications/in-app", requireAuth, async (req, res, next) => {
+    try {
+      const [notifications, unread] = await Promise.all([
+        db.select().from(inAppNotifications)
+          .where(eq(inAppNotifications.userId, req.user!.id))
+          .orderBy(desc(inAppNotifications.createdAt))
+          .limit(30),
+        db.select({ count: sql<number>`count(*)::int` }).from(inAppNotifications)
+          .where(and(
+            eq(inAppNotifications.userId, req.user!.id),
+            isNull(inAppNotifications.readAt),
+          )),
+      ]);
+
+      res.json({ notifications, unreadCount: unread[0]?.count ?? 0 });
+    } catch (e) { next(e); }
+  });
+
+  app.patch("/api/notifications/in-app/:id/read", requireAuth, async (req, res, next) => {
+    try {
+      const notificationId = parseRouteId(req.params.id);
+      const [updated] = await db.update(inAppNotifications)
+        .set({ readAt: Math.floor(Date.now() / 1000) })
+        .where(and(
+          eq(inAppNotifications.id, notificationId),
+          eq(inAppNotifications.userId, req.user!.id),
+        ))
+        .returning();
+
+      if (!updated) return res.status(404).json({ message: "الإشعار غير موجود" });
+      res.json(updated);
+    } catch (e) { next(e); }
+  });
+
+  app.post("/api/notifications/in-app/read-all", requireAuth, async (req, res, next) => {
+    try {
+      const updated = await db.update(inAppNotifications)
+        .set({ readAt: Math.floor(Date.now() / 1000) })
+        .where(and(
+          eq(inAppNotifications.userId, req.user!.id),
+          isNull(inAppNotifications.readAt),
+        ))
+        .returning({ id: inAppNotifications.id });
+
+      res.json({ updated: updated.length });
+    } catch (e) { next(e); }
+  });
+
   app.get("/api/notifications/preferences", requireAuth, async (req, res, next) => {
     try {
       const preferences = await getPreferences(req.user!.id);
@@ -1667,7 +1721,7 @@ export async function registerRoutes(
         }).returning();
       }
 
-      notifyShareUser({
+      await notifyShareUser({
         userId: assignee.id,
         title: "مهمة مشتركة جديدة",
         body: `أسند ${req.user!.name} إليك مهمة جديدة. افتح منصة التزام لقبولها أو الاعتذار عنها.`,
@@ -1693,7 +1747,7 @@ export async function registerRoutes(
         ))
         .returning();
       if (!share) return res.status(404).json({ message: "هذا الإسناد غير موجود" });
-      notifyShareUser({
+      await notifyShareUser({
         userId: share.assigneeUserId,
         title: "تم إلغاء إسناد مهمة",
         body: "ألغى مالك المهمة إسنادها إليك. لا يلزمك اتخاذ أي إجراء.",
@@ -1788,7 +1842,7 @@ export async function registerRoutes(
         ))
         .returning();
       if (!share) return res.status(404).json({ message: "لا توجد مهمة معلقة بهذا الرقم" });
-      notifyShareUser({
+      await notifyShareUser({
         userId: share.ownerUserId,
         title: status === "accepted" ? "تم قبول مهمة مشتركة" : "اعتذر المكلّف عن المهمة",
         body: status === "accepted"
@@ -1814,7 +1868,7 @@ export async function registerRoutes(
         ))
         .returning();
       if (!share) return res.status(404).json({ message: "لا توجد مهمة مقبولة بهذا الرقم" });
-      notifyShareUser({
+      await notifyShareUser({
         userId: share.ownerUserId,
         title: "مهمة جاهزة للاعتماد",
         body: `أرسل ${req.user!.name} المهمة للمراجعة. افتح الالتزام لاعتماد الإنجاز أو إعادته.`,
@@ -1851,7 +1905,7 @@ export async function registerRoutes(
         .returning();
       if (!share) return res.status(404).json({ message: "لا توجد نتيجة معلقة للمراجعة" });
 
-      notifyShareUser({
+      await notifyShareUser({
         userId: share.assigneeUserId,
         title: action === "approve" ? "تم اعتماد إنجازك" : "أعيدت المهمة للتعديل",
         body: action === "approve"

@@ -210,6 +210,20 @@ export const notificationPreferences = pgTable("notification_preferences", {
   updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
 });
 
+/** A durable inbox entry shown inside the app. Unlike external delivery
+ * channels, this is always created, even when the user has disabled push or is
+ * currently inside quiet hours. */
+export const inAppNotifications = pgTable("in_app_notifications", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  url: text("url"),
+  dedupeKey: text("dedupe_key").notNull(),
+  readAt: integer("read_at"),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
 /** A browser subscribed to push. Keyed by endpoint because that is what the
  *  push service treats as the identity of a device. */
 export const pushSubscriptions = pgTable("push_subscriptions", {
@@ -252,6 +266,7 @@ export const commitmentDocuments = pgTable("commitment_documents", {
 });
 
 export type NotificationPreference = typeof notificationPreferences.$inferSelect;
+export type InAppNotification = typeof inAppNotifications.$inferSelect;
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
 export type CommitmentDocument = typeof commitmentDocuments.$inferSelect;
 

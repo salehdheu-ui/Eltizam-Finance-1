@@ -153,6 +153,11 @@ const databaseMigrations: DatabaseMigration[] = [
     name: "ensure_commitment_progress_column",
     up: async () => { await ensureCommitmentProgressColumn(); },
   },
+  {
+    version: 27,
+    name: "ensure_in_app_notifications_table",
+    up: async () => { await ensureInAppNotificationsTable(); },
+  },
 ];
 
 async function ensureSchemaMigrationsTable() {
@@ -608,6 +613,42 @@ async function ensureNotificationTables() {
   await pgExec("CREATE INDEX IF NOT EXISTS push_subscriptions_user_idx ON push_subscriptions (user_id)");
   await pgExec("CREATE INDEX IF NOT EXISTS notification_deliveries_user_idx ON notification_deliveries (user_id, created_at DESC)");
   await pgExec("CREATE INDEX IF NOT EXISTS commitment_documents_commitment_idx ON commitment_documents (user_id, commitment_id, created_at DESC)");
+}
+
+async function ensureInAppNotificationsTable() {
+  await pgExec(`
+    CREATE TABLE IF NOT EXISTS in_app_notifications (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      url TEXT,
+      dedupe_key TEXT NOT NULL,
+      read_at INTEGER,
+      created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
+      UNIQUE(user_id, dedupe_key)
+    )
+  `);
+
+  await pgExec("CREATE INDEX IF NOT EXISTS in_app_notifications_user_idx ON in_app_notifications (user_id, created_at DESC)");
+  await pgExec("CREATE INDEX IF NOT EXISTS in_app_notifications_unread_idx ON in_app_notifications (user_id, read_at, created_at DESC)");
+
+  // Existing active assignments were valid but had no durable in-app signal.
+  // Backfill them once so recipients can discover them immediately after this
+  // migration without asking the owner to revoke and reassign the task.
+  await pgExec(`
+    INSERT INTO in_app_notifications (user_id, title, body, url, dedupe_key, created_at)
+    SELECT
+      share.assignee_user_id,
+      'مهمة مشتركة جديدة',
+      'لديك مهمة أسندها مستخدم آخر. افتحها للقبول أو الاعتذار.',
+      '/shared-commitments',
+      'commitment-share:' || share.id || ':invite:' || share.assigned_at,
+      share.assigned_at
+    FROM commitment_shares AS share
+    WHERE share.status IN ('pending', 'accepted', 'completed')
+    ON CONFLICT (user_id, dedupe_key) DO NOTHING
+  `);
 }
 
 async function ensureCommitmentAutomationTables() {

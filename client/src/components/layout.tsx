@@ -1,5 +1,5 @@
 import { useLocation } from "wouter";
-import { Home, ListFilter, Plus, Settings, Loader2, BarChart3, Menu, X, ChevronLeft, Receipt, Landmark, LogOut, Sparkles, Goal, BookOpen, ListChecks } from "lucide-react";
+import { Home, ListFilter, Plus, Settings, Loader2, BarChart3, Menu, X, ChevronLeft, Receipt, Landmark, LogOut, Sparkles, Goal, BookOpen, ListChecks, Handshake } from "lucide-react";
 import { CurrencyDisplay } from "@/components/ui/currency-display";
 import { cn, formatCurrency } from "@/lib/utils";
 import { Button } from "./ui/button";
@@ -20,6 +20,7 @@ import { ApiError, apiRequest } from "@/lib/queryClient";
 import { queryClient } from "@/lib/queryClient";
 import { useCategories, useWallets, useCreateTransaction, useUser, useObligation, useVariableObligationStatuses, useLogout } from "@/lib/hooks";
 import { InstallPrompt } from "@/components/install-prompt";
+import { NotificationCenter } from "@/components/notification-center";
 
 function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
@@ -208,6 +209,7 @@ export default function Layout({ children }: LayoutProps) {
 
   // Sidebar navigation (less frequently used)
   const sidebarItems = [
+    { href: "/shared-commitments", icon: Handshake, label: "مهام مُسندة إليّ" },
     { href: "/settings", icon: Settings, label: "الإعدادات" },
     { href: "/user-guide", icon: BookOpen, label: "دليل الاستخدام" },
     ...(isSystemAdmin ? [{ href: "/admin/users", icon: Settings, label: "إدارة المستخدمين" }] : []),
@@ -322,6 +324,9 @@ export default function Layout({ children }: LayoutProps) {
           >
             <Menu className="h-5 w-5" />
           </Button>
+          <div className="mr-auto">
+            <NotificationCenter />
+          </div>
         </div>
       </header>
 

@@ -74,6 +74,20 @@ export type SharedCommitmentPerson = {
   email: string;
 };
 
+export type InAppNotification = {
+  id: number;
+  title: string;
+  body: string;
+  url: string | null;
+  readAt: number | null;
+  createdAt: number;
+};
+
+export type InAppNotificationFeed = {
+  notifications: InAppNotification[];
+  unreadCount: number;
+};
+
 export type ReportsSummary = {
   period: string;
   summary: {
@@ -818,6 +832,27 @@ export function useCreateCommitmentShare(id: number | undefined) {
   return useMutation({
     mutationFn: (identifier: string) => apiRequest("POST", `/api/commitments/${id}/shares`, { identifier }),
     onSuccess: () => invalidateSharedCommitmentQueries(id),
+  });
+}
+
+export function useInAppNotifications() {
+  return useQuery<InAppNotificationFeed>({
+    queryKey: ["/api/notifications/in-app"],
+    refetchInterval: 15_000,
+  });
+}
+
+export function useMarkInAppNotificationRead() {
+  return useMutation({
+    mutationFn: (id: number) => apiRequest("PATCH", `/api/notifications/in-app/${id}/read`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/notifications/in-app"] }),
+  });
+}
+
+export function useMarkAllInAppNotificationsRead() {
+  return useMutation({
+    mutationFn: () => apiRequest("POST", "/api/notifications/in-app/read-all"),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/notifications/in-app"] }),
   });
 }
 

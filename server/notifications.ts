@@ -1,6 +1,7 @@
 import webpush from "web-push";
 import { and, eq } from "drizzle-orm";
 import {
+  inAppNotifications,
   notificationDeliveries,
   notificationPreferences,
   pushSubscriptions,
@@ -68,6 +69,18 @@ async function ensureVapid() {
 
 export function generateVapidKeys() {
   return webpush.generateVAPIDKeys();
+}
+
+export async function saveInAppNotification(notification: Notification) {
+  const [created] = await db.insert(inAppNotifications).values({
+    userId: notification.userId,
+    title: notification.title,
+    body: notification.body,
+    url: notification.url ?? null,
+    dedupeKey: notification.dedupeKey,
+  }).onConflictDoNothing().returning();
+
+  return created ?? null;
 }
 
 export async function getPublicVapidKey() {
@@ -191,12 +204,13 @@ async function deliverWebhook(notification: Notification, url: string | null) {
  * first: the unique key on (user, channel, dedupe) is what makes a second pass
  * a no-op rather than a duplicate reminder.
  */
-export async function notify(notification: Notification) {
+export async function notify(notification: Notification, options: { skipInApp?: boolean } = {}) {
+  const inApp = options.skipInApp ? null : await saveInAppNotification(notification);
   const preferences = await getPreferences(notification.userId);
-  if (!preferences) return { sent: [] as NotificationChannel[], skipped: ["no-preferences"] };
+  if (!preferences) return { inApp: Boolean(inApp), sent: [] as NotificationChannel[], skipped: ["no-preferences"] };
 
   if (!notification.urgent && isQuietNow(preferences.quietHoursStart, preferences.quietHoursEnd)) {
-    return { sent: [] as NotificationChannel[], skipped: ["quiet-hours"] };
+    return { inApp: Boolean(inApp), sent: [] as NotificationChannel[], skipped: ["quiet-hours"] };
   }
 
   const wanted: Array<[NotificationChannel, boolean, () => Promise<void>]> = [
@@ -238,7 +252,7 @@ export async function notify(notification: Notification) {
     }
   }
 
-  return { sent, skipped: failed };
+  return { inApp: Boolean(inApp), sent, skipped: failed };
 }
 
 export async function savePushSubscription(userId: number, subscription: {
