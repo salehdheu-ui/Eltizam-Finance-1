@@ -816,7 +816,7 @@ function invalidateSharedCommitmentQueries(id?: number) {
 
 export function useCreateCommitmentShare(id: number | undefined) {
   return useMutation({
-    mutationFn: (email: string) => apiRequest("POST", `/api/commitments/${id}/shares`, { email }),
+    mutationFn: (identifier: string) => apiRequest("POST", `/api/commitments/${id}/shares`, { identifier }),
     onSuccess: () => invalidateSharedCommitmentQueries(id),
   });
 }
