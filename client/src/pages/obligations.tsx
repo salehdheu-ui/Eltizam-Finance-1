@@ -1,4 +1,4 @@
-import { Plus, Loader2, Trash2, Edit2, Power, PowerOff, Calendar, Wallet, AlertCircle, Receipt, Repeat, X, Filter, ArrowLeftRight, Sparkles, Printer } from "lucide-react";
+import { Plus, Loader2, Trash2, Edit2, Power, PowerOff, Calendar, Wallet, AlertCircle, Receipt, Repeat, X, Filter, ArrowLeftRight, Sparkles, Printer, BadgeCheck, Landmark } from "lucide-react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -64,6 +64,9 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
     notes: "",
     isActive: true,
     autoCreateTransaction: false,
+    bankAutoMatch: false,
+    bankMatchWindowStartDay: "23",
+    bankMatchWindowEndDay: "30",
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -91,6 +94,9 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
         notes: editingObligation.notes || "",
         isActive: editingObligation.isActive,
         autoCreateTransaction: editingObligation.autoCreateTransaction,
+        bankAutoMatch: editingObligation.bankAutoMatch,
+        bankMatchWindowStartDay: editingObligation.bankMatchWindowStartDay.toString(),
+        bankMatchWindowEndDay: editingObligation.bankMatchWindowEndDay.toString(),
       });
     } else {
       setFormData({
@@ -109,6 +115,9 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
         notes: "",
         isActive: true,
         autoCreateTransaction: false,
+        bankAutoMatch: false,
+        bankMatchWindowStartDay: "23",
+        bankMatchWindowEndDay: "30",
       });
     }
     setErrors({});
@@ -136,6 +145,15 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
     if (formData.scheduleType === "fixed" && formData.frequency === "one_time" && !formData.dueDate) {
       newErrors.dueDate = "يجب تحديد تاريخ دفع الالتزام";
     }
+    if (formData.bankAutoMatch) {
+      if (formData.scheduleType !== "fixed" || formData.frequency !== "monthly") newErrors.bankAutoMatch = "المطابقة البنكية متاحة للالتزام الشهري الثابت";
+      if (!formData.walletId) newErrors.walletId = "اختر المحفظة أو الحساب البنكي للمطابقة";
+      const startDay = Number(formData.bankMatchWindowStartDay);
+      const endDay = Number(formData.bankMatchWindowEndDay);
+      if (!Number.isInteger(startDay) || startDay < 1 || startDay > 31) newErrors.bankMatchWindowStartDay = "اليوم من 1 إلى 31";
+      if (!Number.isInteger(endDay) || endDay < 1 || endDay > 31) newErrors.bankMatchWindowEndDay = "اليوم من 1 إلى 31";
+      if (startDay > endDay) newErrors.bankMatchWindowEndDay = "يجب أن تكون النهاية بعد البداية";
+    }
     
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -162,6 +180,9 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
       notes: formData.notes || null,
       isActive: formData.isActive,
       autoCreateTransaction: formData.autoCreateTransaction,
+      bankAutoMatch: formData.bankAutoMatch,
+      bankMatchWindowStartDay: parseInt(formData.bankMatchWindowStartDay, 10),
+      bankMatchWindowEndDay: parseInt(formData.bankMatchWindowEndDay, 10),
     };
 
     try {
@@ -258,7 +279,7 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
                   <button
                     key={schedule.value}
                     type="button"
-                    onClick={() => setFormData({ ...formData, scheduleType: schedule.value, frequency: schedule.value === "variable" ? "one_time" : formData.frequency, dueDay: "", dueMonth: "", dueDate: formData.scheduleType === schedule.value ? formData.dueDate : "", endDate: schedule.value === "fixed" ? "" : formData.endDate })}
+                    onClick={() => setFormData({ ...formData, scheduleType: schedule.value, frequency: schedule.value === "variable" ? "one_time" : formData.frequency, dueDay: "", dueMonth: "", dueDate: formData.scheduleType === schedule.value ? formData.dueDate : "", endDate: schedule.value === "fixed" ? "" : formData.endDate, bankAutoMatch: schedule.value === "fixed" ? formData.bankAutoMatch : false })}
                     className={cn(
                       "min-h-11 px-3 py-2 rounded-xl text-sm transition-all",
                       formData.scheduleType === schedule.value
@@ -375,7 +396,7 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
                     <button
                       key={freq.value}
                       type="button"
-                      onClick={() => setFormData({ ...formData, frequency: freq.value, dueDay: "", dueMonth: "", dueDate: "" })}
+                      onClick={() => setFormData({ ...formData, frequency: freq.value, dueDay: "", dueMonth: "", dueDate: "", bankAutoMatch: freq.value === "monthly" ? formData.bankAutoMatch : false })}
                       className={cn(
                         "min-h-11 px-3 py-2 rounded-xl text-sm transition-all",
                         formData.frequency === freq.value
@@ -495,13 +516,14 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
                 id="walletId"
                 value={formData.walletId}
                 onChange={(e) => setFormData({ ...formData, walletId: e.target.value })}
-                className="app-select"
+                className={cn("app-select", errors.walletId && "border-destructive")}
               >
                 <option value="">بدون محفظة</option>
                 {wallets?.map((wallet) => (
                   <option key={wallet.id} value={wallet.id}>{wallet.name}</option>
                 ))}
               </select>
+              {errors.walletId ? <p className="text-xs text-destructive">{errors.walletId}</p> : null}
             </div>
 
             <div className="app-field">
@@ -536,12 +558,48 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
                 id="autoCreateTransaction"
                 checked={formData.autoCreateTransaction}
                 onChange={(e) => setFormData({ ...formData, autoCreateTransaction: e.target.checked })}
+                disabled={formData.bankAutoMatch}
                 className="h-4 w-4 rounded border-gray-300"
               />
               <Label htmlFor="autoCreateTransaction" className="text-sm cursor-pointer">
                 إنشاء معاملة تلقائياً عند الاستحقاق
               </Label>
             </div>
+
+            {formData.scheduleType === "fixed" && formData.frequency === "monthly" ? (
+              <div className="space-y-3 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    id="bankAutoMatch"
+                    checked={formData.bankAutoMatch}
+                    onChange={(event) => setFormData({ ...formData, bankAutoMatch: event.target.checked, autoCreateTransaction: event.target.checked ? false : formData.autoCreateTransaction })}
+                    className="mt-1 h-4 w-4 rounded border-gray-300"
+                  />
+                  <div>
+                    <Label htmlFor="bankAutoMatch" className="cursor-pointer font-semibold">مطابقة الخصم البنكي تلقائياً</Label>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">عند وصول رسالة خصم بنفس المبلغ ومن المحفظة المختارة، يسجل النظام دفعة الشهر دون إنشاء مصروف مكرر.</p>
+                  </div>
+                </div>
+
+                {formData.bankAutoMatch ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="bankMatchWindowStartDay" className="text-xs">من يوم</Label>
+                      <Input id="bankMatchWindowStartDay" type="number" min="1" max="31" value={formData.bankMatchWindowStartDay} onChange={(event) => setFormData({ ...formData, bankMatchWindowStartDay: event.target.value })} className={cn("app-input", errors.bankMatchWindowStartDay && "border-destructive")} />
+                      {errors.bankMatchWindowStartDay ? <p className="text-xs text-destructive">{errors.bankMatchWindowStartDay}</p> : null}
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="bankMatchWindowEndDay" className="text-xs">إلى يوم</Label>
+                      <Input id="bankMatchWindowEndDay" type="number" min="1" max="31" value={formData.bankMatchWindowEndDay} onChange={(event) => setFormData({ ...formData, bankMatchWindowEndDay: event.target.value })} className={cn("app-input", errors.bankMatchWindowEndDay && "border-destructive")} />
+                      {errors.bankMatchWindowEndDay ? <p className="text-xs text-destructive">{errors.bankMatchWindowEndDay}</p> : null}
+                    </div>
+                    <p className="col-span-2 text-xs text-muted-foreground">القيمة الافتراضية 23–30. في فبراير تُعامل نهاية النافذة تلقائياً كنهاية الشهر.</p>
+                  </div>
+                ) : null}
+                {errors.bankAutoMatch ? <p className="text-xs text-destructive">{errors.bankAutoMatch}</p> : null}
+              </div>
+            ) : null}
             </form>
           </div>
 
@@ -723,14 +781,14 @@ export default function Obligations() {
     .filter((o) => o.frequency === "monthly")
     .reduce((sum, o) => sum + o.amount, 0);
   const inactiveObligations = (obligations || []).filter((o) => !o.isActive);
-  const autoCreateCount = activeObligations.filter((o) => o.autoCreateTransaction).length;
+  const autoCreateCount = activeObligations.filter((o) => o.autoCreateTransaction || o.bankAutoMatch).length;
   const dueSoonCount = upcomingObligations.filter((o) => o.daysLeft <= 7).length;
   const filteredObligations = (obligations || []).filter((obligation) => {
     if (statusFilter === "active" && !obligation.isActive) return false;
     if (statusFilter === "inactive" && obligation.isActive) return false;
     if (frequencyFilter !== "all" && obligation.frequency !== frequencyFilter) return false;
     if (timingFilter === "upcoming" && !upcomingIds.has(obligation.id)) return false;
-    if (timingFilter === "auto" && !obligation.autoCreateTransaction) return false;
+    if (timingFilter === "auto" && !obligation.autoCreateTransaction && !obligation.bankAutoMatch) return false;
     return true;
   });
   const allObligations = obligations || [];
@@ -1226,6 +1284,7 @@ export default function Obligations() {
                     key={obligation.id} 
                     className={cn(
                       "bg-card p-4 rounded-2xl border border-border/50 shadow-sm transition-all",
+                      obligation.currentPayment && "border-emerald-300 bg-emerald-50/40 dark:border-emerald-800 dark:bg-emerald-950/20",
                       obligation.isActive ? "opacity-100" : "opacity-50 grayscale"
                     )}
                   >
@@ -1247,6 +1306,18 @@ export default function Obligations() {
                             </span>
                             {obligation.autoCreateTransaction ? (
                               <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">تلقائي</span>
+                            ) : null}
+                            {obligation.bankAutoMatch ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                                <Landmark className="h-3 w-3" />
+                                مطابقة بنكية {obligation.bankMatchWindowStartDay}–{obligation.bankMatchWindowEndDay}
+                              </span>
+                            ) : null}
+                            {obligation.currentPayment ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                                <BadgeCheck className="h-3 w-3" />
+                                مدفوع بنكيًا هذا الشهر
+                              </span>
                             ) : null}
                             {upcoming && upcoming.daysLeft <= 7 ? (
                               <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium dark:bg-amber-950 dark:text-amber-400">قريب</span>

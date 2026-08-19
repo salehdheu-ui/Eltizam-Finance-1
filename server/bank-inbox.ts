@@ -2,7 +2,7 @@ import type { Express, NextFunction, Request, Response } from "express";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
 import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, lte } from "drizzle-orm";
 import { z } from "zod";
-import { bankCategoryRules, bankEmailConnections, bankEmailEvents, categories, commitments, transactions } from "@shared/schema";
+import { bankCategoryRules, bankEmailConnections, bankEmailEvents, categories, commitments, obligationPayments, obligations, transactions } from "@shared/schema";
 import { db } from "./db";
 import { storage, UNKNOWN_ADJUSTMENT_NOTE } from "./storage";
 import { buildBankAnalysis } from "./bank-analysis";
@@ -308,6 +308,7 @@ async function resolveCategoryId(userId: number, hint: string | null, type: "inc
 
 async function findAutomaticLinks(
   userId: number,
+  walletId: number,
   merchant: string,
   categoryHint: string | null,
   amount: number,
@@ -316,8 +317,14 @@ async function findAutomaticLinks(
   transactionType: "income" | "expense" = "expense",
 ) {
   const ruleKey = buildRuleKey(counterparty, merchant);
-  const [activeCommitments, savedRule] = await Promise.all([
+  const monthKey = muscatMonthKey(receivedAt);
+  const [activeCommitments, activeObligations, paidObligations, savedRule] = await Promise.all([
     db.select().from(commitments).where(and(eq(commitments.userId, userId), eq(commitments.status, "active"))),
+    db.select().from(obligations).where(and(eq(obligations.userId, userId), eq(obligations.isActive, true), eq(obligations.bankAutoMatch, true))),
+    db.select({ obligationId: obligationPayments.obligationId }).from(obligationPayments).where(and(
+      eq(obligationPayments.userId, userId),
+      eq(obligationPayments.monthKey, monthKey),
+    )),
     findSavedRule(userId, ruleKey),
   ]);
 
@@ -336,6 +343,17 @@ async function findAutomaticLinks(
     return amountMatches && dateMatches;
   });
 
+  const alreadyPaid = new Set(paidObligations.map((payment) => payment.obligationId));
+  const obligationCandidates = transactionType === "expense" ? activeObligations.filter((item) => {
+    if (item.scheduleType !== "fixed" || item.frequency !== "monthly" || item.walletId !== walletId || alreadyPaid.has(item.id)) return false;
+    if (item.startDate > receivedAt || (item.endDate !== null && item.endDate < receivedAt)) return false;
+    const amountMatches = Math.abs(item.amount - amount) <= Math.max(0.05, amount * 0.02);
+    return amountMatches && isWithinBankMatchWindow(receivedAt, item.bankMatchWindowStartDay, item.bankMatchWindowEndDay);
+  }) : [];
+  const matchedObligation = savedRule?.obligationId
+    ? obligationCandidates.find((item) => item.id === savedRule.obligationId) ?? null
+    : obligationCandidates.length === 1 ? obligationCandidates[0] : null;
+
   if (savedRule) {
     await db.update(bankCategoryRules)
       .set({ hitCount: savedRule.hitCount + 1, updatedAt: Math.floor(Date.now() / 1000) })
@@ -345,8 +363,64 @@ async function findAutomaticLinks(
   return {
     categoryId,
     commitmentId: savedRule?.commitmentId ?? matchedCommitment?.id ?? null,
+    obligationId: matchedObligation?.id ?? null,
     matchedRule: Boolean(savedRule),
   };
+}
+
+const MUSCAT_OFFSET_SECONDS = 4 * 60 * 60;
+
+function muscatDateParts(timestamp: number) {
+  const date = new Date((timestamp + MUSCAT_OFFSET_SECONDS) * 1000);
+  return { year: date.getUTCFullYear(), month: date.getUTCMonth(), day: date.getUTCDate() };
+}
+
+function muscatMonthKey(timestamp: number) {
+  const { year, month } = muscatDateParts(timestamp);
+  return `${year}-${String(month + 1).padStart(2, "0")}`;
+}
+
+function isWithinBankMatchWindow(timestamp: number, startDay: number, endDay: number) {
+  const { year, month, day } = muscatDateParts(timestamp);
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const normalizedStart = Math.min(startDay, lastDay);
+  const normalizedEnd = Math.min(endDay, lastDay);
+  return day >= normalizedStart && day <= normalizedEnd;
+}
+
+async function recordObligationPayment(event: typeof bankEmailEvents.$inferSelect, transactionId: number) {
+  if (!event.obligationId || !event.amount || event.transactionType !== "expense") return null;
+
+  const [ownedObligation] = await db.select({ id: obligations.id }).from(obligations).where(and(
+    eq(obligations.id, event.obligationId),
+    eq(obligations.userId, event.userId),
+  ));
+  if (!ownedObligation) return null;
+
+  const now = Math.floor(Date.now() / 1000);
+  const [payment] = await db.insert(obligationPayments).values({
+    userId: event.userId,
+    obligationId: event.obligationId,
+    monthKey: muscatMonthKey(event.receivedAt),
+    amount: event.amount,
+    paidAt: event.receivedAt,
+    transactionId,
+    bankEventId: event.id,
+    source: "bank",
+    updatedAt: now,
+  }).onConflictDoUpdate({
+    target: [obligationPayments.userId, obligationPayments.obligationId, obligationPayments.monthKey],
+    set: {
+      amount: event.amount,
+      paidAt: event.receivedAt,
+      transactionId,
+      bankEventId: event.id,
+      source: "bank",
+      updatedAt: now,
+    },
+  }).returning();
+
+  return payment;
 }
 
 /**
@@ -474,7 +548,7 @@ async function importParsedEvent(params: {
   ));
   if (duplicate.length > 0) return { state: "duplicate" as const };
 
-  const links = await findAutomaticLinks(params.userId, params.parsed.merchant, params.parsed.categoryHint, params.parsed.amount, params.receivedAt, params.parsed.counterparty, params.parsed.transactionType);
+  const links = await findAutomaticLinks(params.userId, params.connection.walletId, params.parsed.merchant, params.parsed.categoryHint, params.parsed.amount, params.receivedAt, params.parsed.counterparty, params.parsed.transactionType);
   const gap = await measureBalanceGap(params.userId, params.connection.id, params.receivedAt, params.parsed);
   // The select above cannot prevent a concurrent run from inserting the same
   // message between the check and the write, so let the unique indexes decide.
@@ -503,6 +577,7 @@ async function importParsedEvent(params: {
     reference: params.parsed.reference,
     categoryId: links.categoryId,
     commitmentId: links.commitmentId,
+    obligationId: links.obligationId,
   }).onConflictDoNothing().returning();
 
   if (!event) return { state: "duplicate" as const };
@@ -533,6 +608,7 @@ async function importParsedEvent(params: {
         .set({ categoryId: links.categoryId })
         .where(and(eq(transactions.id, existing.id), isNull(transactions.categoryId)));
     }
+    await recordObligationPayment(merged, existing.id);
     return { state: "merged" as const, event: merged };
   }
 
@@ -575,6 +651,7 @@ async function importParsedEvent(params: {
     await db.update(transactions).set({ date: params.receivedAt }).where(eq(transactions.id, transaction.id));
 
     const [imported] = await db.update(bankEmailEvents).set({ status: "imported", transactionId: transaction.id }).where(eq(bankEmailEvents.id, event.id)).returning();
+    await recordObligationPayment(imported, transaction.id);
     return { state: "imported" as const, event: imported };
   } catch (error) {
     // Leaving the event in review keeps the message actionable, but the reason
@@ -1412,7 +1489,11 @@ export function registerBankInboxRoutes(app: Express) {
 
   app.patch("/api/bank-inbox/events/:id", requireAuth, async (req, res, next) => {
     try {
-      const input = z.object({ categoryId: z.number().int().positive().nullable().optional(), commitmentId: z.number().int().positive().nullable().optional() }).parse(req.body);
+      const input = z.object({
+        categoryId: z.number().int().positive().nullable().optional(),
+        commitmentId: z.number().int().positive().nullable().optional(),
+        obligationId: z.number().int().positive().nullable().optional(),
+      }).parse(req.body);
       const id = Number(req.params.id);
       const userId = req.user!.id;
       const [event] = await db.select().from(bankEmailEvents).where(and(eq(bankEmailEvents.id, id), eq(bankEmailEvents.userId, userId)));
@@ -1425,9 +1506,26 @@ export function registerBankInboxRoutes(app: Express) {
         const [ownedCommitment] = await db.select({ id: commitments.id }).from(commitments).where(and(eq(commitments.id, input.commitmentId), eq(commitments.userId, userId), eq(commitments.type, "financial")));
         if (!ownedCommitment) return res.status(404).json({ message: "الالتزام المالي المحدد غير موجود" });
       }
+      if (input.obligationId) {
+        const [ownedObligation] = await db.select({ id: obligations.id }).from(obligations).where(and(
+          eq(obligations.id, input.obligationId),
+          eq(obligations.userId, userId),
+          eq(obligations.isActive, true),
+        ));
+        if (!ownedObligation) return res.status(404).json({ message: "الالتزام المالي المحدد غير موجود" });
+      }
       const [updated] = await db.update(bankEmailEvents).set(input).where(and(eq(bankEmailEvents.id, id), eq(bankEmailEvents.userId, userId))).returning();
       if (event.transactionId && input.categoryId !== undefined) {
         await db.update(transactions).set({ categoryId: input.categoryId }).where(and(eq(transactions.id, event.transactionId), eq(transactions.userId, req.user!.id)));
+      }
+      if (input.obligationId !== undefined) {
+        await db.delete(obligationPayments).where(and(
+          eq(obligationPayments.userId, userId),
+          eq(obligationPayments.bankEventId, event.id),
+        ));
+        if (event.transactionId && input.obligationId) {
+          await recordObligationPayment(updated, event.transactionId);
+        }
       }
 
       // The correction is the point: remember it for this payee and stop asking.
@@ -1441,12 +1539,14 @@ export function registerBankInboxRoutes(app: Express) {
           matchLabel: event.counterparty || event.merchant || ruleKey,
           categoryId: input.categoryId ?? null,
           commitmentId: input.commitmentId ?? null,
+          obligationId: input.obligationId ?? null,
           updatedAt: now,
         }).onConflictDoUpdate({
           target: [bankCategoryRules.userId, bankCategoryRules.matchKey],
           set: {
             ...(input.categoryId !== undefined ? { categoryId: input.categoryId } : {}),
             ...(input.commitmentId !== undefined ? { commitmentId: input.commitmentId } : {}),
+            ...(input.obligationId !== undefined ? { obligationId: input.obligationId } : {}),
             matchLabel: event.counterparty || event.merchant || ruleKey,
             updatedAt: now,
           },
@@ -1518,6 +1618,7 @@ export function registerBankInboxRoutes(app: Express) {
         if (typeof event.balanceAfter === "number") {
           await storage.updateWallet(connection.walletId, req.user!.id, { balance: event.balanceAfter });
         }
+        await recordObligationPayment(merged, alreadyRecorded.id);
         return res.json(merged);
       }
 
@@ -1530,6 +1631,7 @@ export function registerBankInboxRoutes(app: Express) {
       }, { allowOverdraft: true, settleBalanceTo: event.balanceAfter });
       await db.update(transactions).set({ date: event.receivedAt }).where(eq(transactions.id, transaction.id));
       const [updated] = await db.update(bankEmailEvents).set({ status: "imported", transactionId: transaction.id }).where(eq(bankEmailEvents.id, id)).returning();
+      await recordObligationPayment(updated, transaction.id);
       res.json(updated);
     } catch (error) { next(error); }
   });
