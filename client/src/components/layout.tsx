@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { ApiError, apiRequest } from "@/lib/queryClient";
 import { queryClient } from "@/lib/queryClient";
 import { useCategories, useWallets, useCreateTransaction, useUser, useObligation, useVariableObligationStatuses, useLogout } from "@/lib/hooks";
+import { moneySchema, validateInput } from "@shared/validation";
 import { InstallPrompt } from "@/components/install-prompt";
 
 function startOfMonth(date: Date) {
@@ -247,7 +248,13 @@ export default function Layout({ children }: LayoutProps) {
     }
     
     try {
-      const parsedAmount = parseFloat(txAmount);
+      const validatedAmount = validateInput(moneySchema, txAmount);
+      if (!validatedAmount.ok) {
+        toast({ title: "خطأ", description: validatedAmount.message, variant: "destructive" });
+        return;
+      }
+
+      const parsedAmount = validatedAmount.data;
       if (isVariableObligationQuickPay && !quickPayAmountOptions.some((option) => option.amount === parsedAmount)) {
         toast({ title: "خطأ", description: "اختر مبلغًا من الخيارات الجاهزة لهذا الالتزام", variant: "destructive" });
         return;

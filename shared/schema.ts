@@ -2,6 +2,14 @@ import { sql } from "drizzle-orm";
 import { pgTable, text, integer, serial, doublePrecision, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import {
+  colorSchema,
+  moneySchema,
+  optionalSafeMultiline,
+  signedMoneySchema,
+  safeText,
+  TEXT_LIMITS,
+} from "./validation";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -413,6 +421,14 @@ export const insertWalletSchema = createInsertSchema(wallets).pick({
   type: true,
   balance: true,
   color: true,
+}).extend({
+  // drizzle-zod turns a text column into an unbounded z.string(), which accepts
+  // a megabyte of control characters. These bound and normalize the values on
+  // whichever side parses them.
+  name: safeText(TEXT_LIMITS.shortName, "يجب إدخال اسم المحفظة"),
+  type: safeText(TEXT_LIMITS.shortName).optional(),
+  balance: signedMoneySchema.optional(),
+  color: colorSchema.optional(),
 });
 
 export const insertCategorySchema = createInsertSchema(categories).pick({
@@ -421,6 +437,12 @@ export const insertCategorySchema = createInsertSchema(categories).pick({
   icon: true,
   color: true,
   budget: true,
+}).extend({
+  name: safeText(TEXT_LIMITS.shortName, "يجب إدخال اسم التصنيف"),
+  type: safeText(TEXT_LIMITS.shortName).optional(),
+  icon: safeText(TEXT_LIMITS.icon).optional(),
+  color: colorSchema.optional(),
+  budget: moneySchema.nullable().optional(),
 });
 
 export const insertTransactionSchema = createInsertSchema(transactions).pick({
@@ -432,6 +454,9 @@ export const insertTransactionSchema = createInsertSchema(transactions).pick({
 }).extend({
   walletId: z.number({ required_error: "يجب اختيار محفظة أو بنك" }),
   categoryId: z.number().nullable(),
+  amount: moneySchema,
+  type: safeText(TEXT_LIMITS.shortName).optional(),
+  note: optionalSafeMultiline(TEXT_LIMITS.note).nullable(),
 });
 
 export const insertRecurringIncomeSchema = createInsertSchema(recurringIncomes).pick({

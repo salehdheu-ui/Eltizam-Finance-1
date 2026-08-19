@@ -6,6 +6,13 @@ import { writeAuditEvent } from "./audit";
 import { createManualBackup, listAllBackups } from "./backup";
 import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, integrationSettings, upsertIntegrationSettingSchema, upsertEmailChannelSchema, upsertPushChannelSchema, transactions, categories, bankEmailEvents, bankCategoryRules, automationLog, commitmentOccurrences, commitments, commitmentShares, notificationPreferences, users } from "@shared/schema";
 import { buildWriteQueueKey, enqueueWrite } from "./write-queue";
+import { apiRateLimit, expensiveRateLimit, writeRateLimit } from "./rate-limit";
+import {
+  parseRouteId,
+  toOptionalNumber,
+  toRequiredNumber,
+  tryParseRouteId,
+} from "./http-validation";
 import { z } from "zod";
 import { buildRuleKey, registerBankInboxRoutes } from "./bank-inbox";
 import { postponeOccurrence, runAutomationForUser, startAutomationEngine, undoAutomationEntry } from "./automation";
@@ -69,33 +76,6 @@ function toAdminUser(user: Awaited<ReturnType<typeof storage.getUser>>) {
   return safeUser;
 }
 
-function parseRouteId(param: string | string[]) {
-  return parseInt(Array.isArray(param) ? param[0] : param, 10);
-}
-
-function toOptionalNumber(value: unknown) {
-  if (value === undefined) {
-    return undefined;
-  }
-
-  if (value === null || value === "") {
-    return null;
-  }
-
-  if (typeof value === "string") {
-    return Number(value);
-  }
-
-  return value;
-}
-
-function toRequiredNumber(value: unknown) {
-  if (typeof value === "string") {
-    return Number(value);
-  }
-
-  return value;
-}
 
 /** Buffered in memory: files are capped at 10MB and written once validated, so
  *  a temp file never outlives a rejected upload. */
@@ -193,7 +173,24 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // Baseline abuse budget for the whole API surface. Mounted before setupAuth
+  // so that the auth routes registered inside it are covered too; req.user is
+  // not resolved that early, so this tier keys on IP.
+  app.use("/api", apiRateLimit);
+
   setupAuth(app);
+
+  // Tighter budget for anything that changes state. Mounted after the session
+  // middleware so it keys per account, which keeps one office behind a single
+  // IP from sharing one budget.
+  const stateChangingMethods = new Set(["POST", "PATCH", "PUT", "DELETE"]);
+  app.use("/api", (req, res, next) => {
+    if (!stateChangingMethods.has(req.method)) {
+      return next();
+    }
+    return writeRateLimit(req, res, next);
+  });
+
   registerBankInboxRoutes(app);
   startAutomationEngine();
 
@@ -218,7 +215,7 @@ export async function registerRoutes(
     } catch (e) { next(e); }
   });
 
-  app.post("/api/admin/backups/manual", requireSystemAdmin, async (_req, res, next) => {
+  app.post("/api/admin/backups/manual", requireSystemAdmin, expensiveRateLimit, async (_req, res, next) => {
     try {
       const backup = await runQueuedWrite(
         res,
@@ -467,7 +464,7 @@ export async function registerRoutes(
     } catch (e) { next(e); }
   });
 
-  app.post("/api/admin/integrations/:provider/test", requireSystemAdmin, async (req, res, next) => {
+  app.post("/api/admin/integrations/:provider/test", requireSystemAdmin, expensiveRateLimit, async (req, res, next) => {
     try {
       const provider = parseIntegrationProvider(req.params.provider);
       if (!provider) {
@@ -607,7 +604,7 @@ export async function registerRoutes(
 
   /** Hands back a fresh pair for the admin to save. Replacing a live pair
    *  invalidates every subscription already handed out, so the UI warns first. */
-  app.post("/api/admin/channels/push/generate", requireSystemAdmin, async (_req, res, next) => {
+  app.post("/api/admin/channels/push/generate", requireSystemAdmin, expensiveRateLimit, async (_req, res, next) => {
     try {
       res.json(generateVapidKeys());
     } catch (e) { next(e); }
@@ -635,7 +632,7 @@ export async function registerRoutes(
   });
 
   /** Proves the saved SMTP settings actually deliver, rather than only parsing. */
-  app.post("/api/admin/channels/email/test", requireSystemAdmin, async (req, res, next) => {
+  app.post("/api/admin/channels/email/test", requireSystemAdmin, expensiveRateLimit, async (req, res, next) => {
     try {
       const { to } = z.object({ to: z.string().trim().email("بريد غير صالح") }).parse(req.body);
       await sendTestEmail(to);
@@ -1127,7 +1124,7 @@ export async function registerRoutes(
   });
   /** Turns a typed or dictated sentence into a draft commitment. Works on rules
    *  alone; Claude is consulted only when the sentence is ambiguous. */
-  app.post("/api/understand/commitment", requireAuth, async (req, res, next) => {
+  app.post("/api/understand/commitment", requireAuth, expensiveRateLimit, async (req, res, next) => {
     try {
       const { text } = z.object({ text: z.string().trim().min(2).max(500) }).parse(req.body);
       res.json(await understandCommitment(text));
@@ -1136,7 +1133,7 @@ export async function registerRoutes(
 
   /** Reads an uploaded contract or invoice. Needs an AI key — there is no
    *  offline path to understanding an arbitrary scanned document. */
-  app.post("/api/understand/document", requireAuth, uploadDocument.single("file"), async (req, res, next) => {
+  app.post("/api/understand/document", requireAuth, expensiveRateLimit, uploadDocument.single("file"), async (req, res, next) => {
     try {
       if (!req.file) return res.status(400).json({ message: "لم يُرفق ملف" });
       if (!isClaudeConfigured()) {
@@ -1154,7 +1151,7 @@ export async function registerRoutes(
     res.json({ aiConfigured: isClaudeConfigured() });
   });
 
-  app.post("/api/documents", requireAuth, uploadDocument.single("file"), async (req, res, next) => {
+  app.post("/api/documents", requireAuth, expensiveRateLimit, uploadDocument.single("file"), async (req, res, next) => {
     try {
       if (!req.file) return res.status(400).json({ message: "لم يُرفق ملف" });
 
@@ -1218,9 +1215,9 @@ export async function registerRoutes(
    */
   app.get("/api/calendar/:userId/:token.ics", async (req, res, next) => {
     try {
-      const userId = parseRouteId(req.params.userId);
+      const userId = tryParseRouteId(req.params.userId);
       const token = String(req.params.token || "").replace(/\.ics$/, "");
-      if (!Number.isFinite(userId) || token !== calendarToken(userId)) {
+      if (userId === null || token !== calendarToken(userId)) {
         return res.status(404).send("Not found");
       }
 
@@ -1388,7 +1385,7 @@ export async function registerRoutes(
 
   /** Sends a real notification through every enabled channel so the user can see
    *  which ones actually arrive rather than trusting the toggles. */
-  app.post("/api/notifications/test", requireAuth, async (req, res, next) => {
+  app.post("/api/notifications/test", requireAuth, expensiveRateLimit, async (req, res, next) => {
     try {
       const result = await notify({
         userId: req.user!.id,

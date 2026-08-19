@@ -13,6 +13,8 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
+import { insertCategorySchema } from "@shared/schema";
+import { validateInput } from "@shared/validation";
 import { Label } from "@/components/ui/label";
 import { CurrencyDisplay } from "@/components/ui/currency-display";
 import { cn } from "@/lib/utils";
@@ -47,14 +49,28 @@ export default function Categories() {
 
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCategoryName) return;
+    // Same schema the server parses with, so a bad value is caught here rather
+    // than bouncing back as a 400.
+    const validated = validateInput(insertCategorySchema, {
+      name: newCategoryName,
+      icon: selectedIcon,
+      type: activeTab,
+      color: typeColors[activeTab] || typeColors.expense,
+      budget: newBudget.trim() === "" ? 0 : newBudget,
+    });
+
+    if (!validated.ok) {
+      toast({ title: "خطأ", description: validated.message, variant: "destructive" });
+      return;
+    }
+
     try {
       await createCategory.mutateAsync({
-        name: newCategoryName,
-        icon: selectedIcon,
-        type: activeTab,
-        color: typeColors[activeTab] || typeColors.expense,
-        budget: parseFloat(newBudget) || 0,
+        ...validated.data,
+        icon: validated.data.icon ?? selectedIcon,
+        type: validated.data.type ?? activeTab,
+        color: validated.data.color ?? typeColors.expense,
+        budget: validated.data.budget ?? 0,
       });
       setIsAddDrawerOpen(false);
       setNewCategoryName("");

@@ -18,6 +18,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useWallets, useCreateWallet, useUpdateWallet, useDeleteWallet } from "@/lib/hooks";
 import type { Wallet } from "@shared/schema";
+import { insertWalletSchema } from "@shared/schema";
+import { signedMoneySchema, validateInput } from "@shared/validation";
 
 const walletColors = [
   { id: "slate", value: "from-slate-600 to-slate-800", bg: "bg-slate-700" },
@@ -46,9 +48,29 @@ export default function Wallets() {
 
   const handleAddWallet = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newWalletName || createWallet.isPending) return;
+    if (createWallet.isPending) return;
+
+    // Same schema the server parses with, so a bad value is caught here and
+    // reported next to the form instead of coming back as a 400.
+    const validated = validateInput(insertWalletSchema, {
+      name: newWalletName,
+      balance: newWalletBalance.trim() === "" ? 0 : newWalletBalance,
+      color: selectedColor,
+      type: "cash",
+    });
+
+    if (!validated.ok) {
+      toast({ title: "خطأ", description: validated.message, variant: "destructive" });
+      return;
+    }
+
     try {
-      await createWallet.mutateAsync({ name: newWalletName, balance: parseFloat(newWalletBalance) || 0, color: selectedColor, type: "cash" });
+      await createWallet.mutateAsync({
+        ...validated.data,
+        type: validated.data.type ?? "cash",
+        color: validated.data.color ?? selectedColor,
+        balance: validated.data.balance ?? 0,
+      });
       setIsAddDrawerOpen(false);
       setNewWalletName("");
       setNewWalletBalance("");
@@ -63,8 +85,28 @@ export default function Wallets() {
   const handleEditWallet = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedWallet || updateWallet.isPending) return;
+
+    const validatedName = validateInput(insertWalletSchema.shape.name, newWalletName);
+    if (!validatedName.ok) {
+      toast({ title: "خطأ", description: validatedName.message, variant: "destructive" });
+      return;
+    }
+
+    const validatedBalance = validateInput(
+      signedMoneySchema,
+      newWalletBalance.trim() === "" ? 0 : newWalletBalance,
+    );
+    if (!validatedBalance.ok) {
+      toast({ title: "خطأ", description: validatedBalance.message, variant: "destructive" });
+      return;
+    }
+
     try {
-      await updateWallet.mutateAsync({ id: selectedWallet.id, name: newWalletName, balance: parseFloat(newWalletBalance) || 0 });
+      await updateWallet.mutateAsync({
+        id: selectedWallet.id,
+        name: validatedName.data,
+        balance: validatedBalance.data,
+      });
       setIsEditDrawerOpen(false);
       toast({ title: "تم التعديل", description: "تم تحديث بيانات المحفظة بنجاح" });
     } catch (error) {

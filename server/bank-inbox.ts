@@ -1,4 +1,6 @@
 import type { Express, NextFunction, Request, Response } from "express";
+import { expensiveRateLimit } from "./rate-limit";
+import { parseRouteId } from "./http-validation";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
 import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, lte } from "drizzle-orm";
 import { z } from "zod";
@@ -1294,9 +1296,9 @@ export function registerBankInboxRoutes(app: Express) {
       res.redirect("/bank-inbox?error=oauth_failed");
     }
   });
-  app.post("/api/bank-inbox/connections/:id/sync", requireAuth, async (req, res, next) => {
+  app.post("/api/bank-inbox/connections/:id/sync", requireAuth, expensiveRateLimit, async (req, res, next) => {
     try {
-      const id = Number(req.params.id);
+      const id = parseRouteId(req.params.id);
       const [connection] = await db.select().from(bankEmailConnections).where(and(eq(bankEmailConnections.id, id), eq(bankEmailConnections.userId, req.user!.id)));
       if (!connection) return res.status(404).json({ message: "ربط البريد غير موجود" });
       return res.json(await syncConnection(req.user!.id, connection));
@@ -1317,7 +1319,7 @@ export function registerBankInboxRoutes(app: Express) {
         customSenders: z.string().max(500).optional(),
       }).parse(req.body);
 
-      const id = Number(req.params.id);
+      const id = parseRouteId(req.params.id);
       const userId = req.user!.id;
       const [connection] = await db.select().from(bankEmailConnections).where(and(
         eq(bankEmailConnections.id, id),
@@ -1386,7 +1388,7 @@ export function registerBankInboxRoutes(app: Express) {
    */
   app.post("/api/bank-inbox/connections/:id/reset", requireAuth, async (req, res, next) => {
     try {
-      const id = Number(req.params.id);
+      const id = parseRouteId(req.params.id);
       const userId = req.user!.id;
       const [connection] = await db.select().from(bankEmailConnections).where(and(
         eq(bankEmailConnections.id, id),
@@ -1413,7 +1415,7 @@ export function registerBankInboxRoutes(app: Express) {
   app.patch("/api/bank-inbox/events/:id", requireAuth, async (req, res, next) => {
     try {
       const input = z.object({ categoryId: z.number().int().positive().nullable().optional(), commitmentId: z.number().int().positive().nullable().optional() }).parse(req.body);
-      const id = Number(req.params.id);
+      const id = parseRouteId(req.params.id);
       const userId = req.user!.id;
       const [event] = await db.select().from(bankEmailEvents).where(and(eq(bankEmailEvents.id, id), eq(bankEmailEvents.userId, userId)));
       if (!event) return res.status(404).json({ message: "المعاملة المقترحة غير موجودة" });
@@ -1481,7 +1483,7 @@ export function registerBankInboxRoutes(app: Express) {
   app.delete("/api/bank-inbox/rules/:id", requireAuth, async (req, res, next) => {
     try {
       const deleted = await db.delete(bankCategoryRules).where(and(
-        eq(bankCategoryRules.id, Number(req.params.id)),
+        eq(bankCategoryRules.id, parseRouteId(req.params.id)),
         eq(bankCategoryRules.userId, req.user!.id),
       )).returning({ id: bankCategoryRules.id });
       if (deleted.length === 0) return res.status(404).json({ message: "القاعدة غير موجودة" });
@@ -1491,7 +1493,7 @@ export function registerBankInboxRoutes(app: Express) {
 
   app.post("/api/bank-inbox/events/:id/import", requireAuth, async (req, res, next) => {
     try {
-      const id = Number(req.params.id);
+      const id = parseRouteId(req.params.id);
       const [event] = await db.select().from(bankEmailEvents).where(and(eq(bankEmailEvents.id, id), eq(bankEmailEvents.userId, req.user!.id)));
       if (!event) return res.status(404).json({ message: "المعاملة المقترحة غير موجودة" });
       if (event.transactionId) return res.json(event);
@@ -1548,7 +1550,7 @@ export function registerBankInboxRoutes(app: Express) {
       const { purge } = z.object({ purge: z.boolean() }).parse(req.body ?? {});
       const userId = req.user!.id;
       const [connection] = await db.select().from(bankEmailConnections).where(and(
-        eq(bankEmailConnections.id, Number(req.params.id)),
+        eq(bankEmailConnections.id, parseRouteId(req.params.id)),
         eq(bankEmailConnections.userId, userId),
       ));
       if (!connection) return res.status(404).json({ message: "ربط البريد غير موجود" });

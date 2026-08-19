@@ -7,6 +7,7 @@ import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
 import { writeAuditEvent } from "./audit";
+import { consumeRateLimit, resetRateLimit } from "./rate-limit";
 import { canSendMail, sendPasswordResetEmail } from "./mail";
 import { User as SelectUser } from "@shared/schema";
 import { z } from "zod";
@@ -26,8 +27,6 @@ const passwordResetRateLimitWindowMs = 10 * 60 * 1000;
 const passwordResetRateLimitMaxAttempts = 5;
 const passwordResetTokenTtlSec = 10 * 60;
 const sessionCookieName = "eltizam.sid";
-const authAttempts = new Map<string, { count: number; windowStartedAt: number }>();
-const passwordResetAttempts = new Map<string, { count: number; windowStartedAt: number }>();
 const passwordStrengthMessage = "كلمة المرور ضعيفة. استخدم 8 أحرف على الأقل مع حرف كبير وحرف صغير ورقم واحد على الأقل";
 
 const passwordSchema = z.string()
@@ -161,56 +160,27 @@ function getRateLimitKey(identifier: string, ipAddress: string | undefined) {
   return `${identifier}:${ipAddress || "unknown"}`;
 }
 
+// These flows key on the submitted identifier rather than the request, so they
+// use the shared counter store directly instead of the route middleware.
 function consumeAuthAttempt(key: string) {
-  const now = Date.now();
-  const current = authAttempts.get(key);
-
-  if (!current || now - current.windowStartedAt > loginRateLimitWindowMs) {
-    authAttempts.set(key, { count: 1, windowStartedAt: now });
-    return { allowed: true, remaining: loginRateLimitMaxAttempts - 1, retryAfterSec: 0 };
-  }
-
-  if (current.count >= loginRateLimitMaxAttempts) {
-    return {
-      allowed: false,
-      remaining: 0,
-      retryAfterSec: Math.ceil((loginRateLimitWindowMs - (now - current.windowStartedAt)) / 1000),
-    };
-  }
-
-  current.count += 1;
-  authAttempts.set(key, current);
-  return { allowed: true, remaining: Math.max(loginRateLimitMaxAttempts - current.count, 0), retryAfterSec: 0 };
+  return consumeRateLimit("auth:login", key, loginRateLimitWindowMs, loginRateLimitMaxAttempts);
 }
 
 function clearAuthAttempts(key: string) {
-  authAttempts.delete(key);
+  resetRateLimit("auth:login", key);
 }
 
 function consumePasswordResetAttempt(key: string) {
-  const now = Date.now();
-  const current = passwordResetAttempts.get(key);
-
-  if (!current || now - current.windowStartedAt > passwordResetRateLimitWindowMs) {
-    passwordResetAttempts.set(key, { count: 1, windowStartedAt: now });
-    return { allowed: true, remaining: passwordResetRateLimitMaxAttempts - 1, retryAfterSec: 0 };
-  }
-
-  if (current.count >= passwordResetRateLimitMaxAttempts) {
-    return {
-      allowed: false,
-      remaining: 0,
-      retryAfterSec: Math.ceil((passwordResetRateLimitWindowMs - (now - current.windowStartedAt)) / 1000),
-    };
-  }
-
-  current.count += 1;
-  passwordResetAttempts.set(key, current);
-  return { allowed: true, remaining: Math.max(passwordResetRateLimitMaxAttempts - current.count, 0), retryAfterSec: 0 };
+  return consumeRateLimit(
+    "auth:password-reset",
+    key,
+    passwordResetRateLimitWindowMs,
+    passwordResetRateLimitMaxAttempts,
+  );
 }
 
 function clearPasswordResetAttempts(key: string) {
-  passwordResetAttempts.delete(key);
+  resetRateLimit("auth:password-reset", key);
 }
 
 async function hashPassword(password: string) {
