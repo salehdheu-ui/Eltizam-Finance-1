@@ -25,7 +25,7 @@ import { isClaudeConfigured, readDocument, understandCommitment } from "./unders
 import multer from "multer";
 import path from "path";
 import { db } from "./db";
-import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, or, sql } from "drizzle-orm";
 import {
   INTEGRATION_PROVIDERS,
   PROVIDER_CALLBACK_PATHS,
@@ -1620,13 +1620,23 @@ export async function registerRoutes(
       const owned = await storage.getCommitmentById(commitmentId, req.user!.id);
       if (!owned) return res.status(404).json({ message: "الالتزام غير موجود" });
 
-      const email = z.string().trim().email("أدخل بريد المستخدم بشكل صحيح").max(254).parse(req.body.email).toLowerCase();
-      const [assignee] = await db.select({ id: users.id, name: users.name, isActive: users.isActive })
+      // Keep accepting `email` for older clients while the UI moves to the
+      // clearer identifier field (username or email address).
+      const identifier = z.string()
+        .trim()
+        .min(1, "أدخل اسم المستخدم أو البريد الإلكتروني")
+        .max(254, "اسم المستخدم أو البريد طويل جدًا")
+        .parse(req.body.identifier ?? req.body.email);
+      const normalizedIdentifier = identifier.toLowerCase();
+      const [assignee] = await db.select({ id: users.id, name: users.name, email: users.email, isActive: users.isActive })
         .from(users)
-        .where(eq(users.email, email))
+        .where(or(
+          eq(users.username, identifier),
+          eq(users.email, normalizedIdentifier),
+        ))
         .limit(1);
       if (!assignee || !assignee.isActive) {
-        return res.status(404).json({ message: "لا يوجد مستخدم نشط بهذا البريد" });
+        return res.status(404).json({ message: "لا يوجد مستخدم نشط بهذا الاسم أو البريد" });
       }
       if (assignee.id === req.user!.id) {
         return res.status(400).json({ message: "لا يمكنك إسناد الالتزام إلى نفسك" });
@@ -1663,7 +1673,7 @@ export async function registerRoutes(
         dedupeKey: `commitment-share:${share.id}:invite:${share.assignedAt}`,
         url: "/shared-commitments",
       });
-      res.status(201).json({ ...share, assigneeName: assignee.name, assigneeEmail: email });
+      res.status(201).json({ ...share, assigneeName: assignee.name, assigneeEmail: assignee.email });
     } catch (e) { next(e); }
   });
 

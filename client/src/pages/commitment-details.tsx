@@ -91,7 +91,7 @@ export default function CommitmentDetails() {
   const [proofLabel, setProofLabel] = useState("");
   const [proofValue, setProofValue] = useState("");
   const [proofKind, setProofKind] = useState<"note" | "link" | "receipt">("note");
-  const [assigneeEmail, setAssigneeEmail] = useState("");
+  const [assigneeIdentifier, setAssigneeIdentifier] = useState("");
   const [reviewNotes, setReviewNotes] = useState<Record<number, string>>({});
   const [reminderDaysBefore, setReminderDaysBefore] = useState(3);
   const [escalateAfterDays, setEscalateAfterDays] = useState<number | null>(null);
@@ -133,9 +133,20 @@ export default function CommitmentDetails() {
 
   const handleShare = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!assigneeEmail.trim()) return;
-    await createShare.mutateAsync(assigneeEmail.trim());
-    setAssigneeEmail("");
+    const identifier = assigneeIdentifier.trim();
+    if (!identifier) return;
+
+    try {
+      await createShare.mutateAsync(identifier);
+      setAssigneeIdentifier("");
+      toast({ title: "تم إسناد المهمة", description: "سيصل إشعار إلى المستخدم ليقبل المهمة أو يعتذر عنها." });
+    } catch (error) {
+      toast({
+        title: "تعذر إسناد المهمة",
+        description: error instanceof Error ? error.message : "تحقق من اسم المستخدم أو البريد وحاول مرة أخرى.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleSaveAutomation = async () => {
@@ -298,7 +309,7 @@ export default function CommitmentDetails() {
               <p className="text-xs font-medium text-muted-foreground">أشخاص تعاملت معهم سابقًا</p>
               <div className="flex flex-wrap gap-2">
                 {availablePeople.map((person) => (
-                  <Button key={person.id} type="button" size="sm" variant={assigneeEmail === person.email ? "default" : "outline"} onClick={() => setAssigneeEmail(person.email)}>
+                  <Button key={person.id} type="button" size="sm" variant={assigneeIdentifier === person.email ? "default" : "outline"} onClick={() => setAssigneeIdentifier(person.email)}>
                     {person.name}
                   </Button>
                 ))}
@@ -306,7 +317,17 @@ export default function CommitmentDetails() {
             </div>
           ) : null}
           <form onSubmit={handleShare} className="flex flex-col gap-2 sm:flex-row">
-            <Input type="email" value={assigneeEmail} onChange={(event) => setAssigneeEmail(event.target.value)} placeholder="بريد الشخص المسجّل في التزام" aria-label="بريد الشخص" required />
+            <Input
+              type="text"
+              value={assigneeIdentifier}
+              onChange={(event) => setAssigneeIdentifier(event.target.value)}
+              placeholder="اسم المستخدم أو البريد الإلكتروني"
+              aria-label="اسم المستخدم أو البريد الإلكتروني"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              required
+            />
             <Button type="submit" disabled={createShare.isPending} className="sm:shrink-0">{createShare.isPending ? "جارٍ الإرسال..." : "إسناد المهمة"}</Button>
           </form>
 

@@ -1,13 +1,17 @@
-import { Calendar, ChevronLeft, CircleAlert, Clock3, ListChecks, Loader2, Receipt, Settings, Sparkles } from "lucide-react";
+import { Calendar, Check, ChevronLeft, CircleAlert, Clock3, ListChecks, Loader2, Plus, Receipt, Settings, Sparkles, WalletCards, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CurrencyDisplay } from "@/components/ui/currency-display";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { cn, formatObligationDueDate, formatRelativeArabicDate, getUpcomingObligations, normalizeArabicText } from "@/lib/utils";
 import { Link } from "wouter";
-import { useCommitments, useDashboard, useObligations, useUser } from "@/lib/hooks";
+import { useCommitments, useDashboard, useObligations, useUpdateCommitmentStatus, useUser } from "@/lib/hooks";
 import type { Commitment } from "@shared/schema";
 import InsightsPanel from "@/components/insights-panel";
+import QuickCommitment from "@/components/quick-commitment";
+import { useToast } from "@/hooks/use-toast";
+
+type PriorityFilter = "all" | "overdue" | "today" | "week";
 
 function startOfTodayTimestamp() {
   const today = new Date();
@@ -33,10 +37,15 @@ function getCommitmentTiming(commitment: Commitment, today: number) {
 }
 
 export default function Dashboard() {
+  const { toast } = useToast();
   const { data: user } = useUser();
   const { data: dashboard, isLoading } = useDashboard();
   const { data: obligations, isLoading: isLoadingObligations } = useObligations();
   const { data: commitments = [], isLoading: isLoadingCommitments } = useCommitments();
+  const updateCommitmentStatus = useUpdateCommitmentStatus();
+  const [showQuickCommitment, setShowQuickCommitment] = useState(false);
+  const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
+  const [completingCommitmentId, setCompletingCommitmentId] = useState<number | null>(null);
   const today = useMemo(startOfTodayTimestamp, []);
 
   const activeCommitments = useMemo(
@@ -54,16 +63,61 @@ export default function Dashboard() {
       }),
     [activeCommitments, today],
   );
-  const priorityCommitments = evaluatedCommitments.slice(0, 5);
   const overdueCount = evaluatedCommitments.filter(({ timing }) => timing.tone === "danger").length;
   const todayCount = evaluatedCommitments.filter(({ timing }) => timing.tone === "warning").length;
   const weekCount = evaluatedCommitments.filter(({ timing }) => timing.daysLeft >= 0 && timing.daysLeft <= 7).length;
+  const priorityCommitments = useMemo(() => {
+    const filtered = evaluatedCommitments.filter(({ timing }) => {
+      if (priorityFilter === "overdue") return timing.tone === "danger";
+      if (priorityFilter === "today") return timing.daysLeft === 0;
+      if (priorityFilter === "week") return timing.daysLeft >= 0 && timing.daysLeft <= 7;
+      return true;
+    });
+
+    return filtered.slice(0, 5);
+  }, [evaluatedCommitments, priorityFilter]);
   const upcomingObligations = getUpcomingObligations(obligations, 3);
   const hasFinancialActivity = (dashboard?.recentTransactions?.length ?? 0) > 0
     || (dashboard?.totalBalance ?? 0) !== 0
     || (dashboard?.totalIncome ?? 0) !== 0
     || (dashboard?.totalExpenses ?? 0) !== 0;
   const isLoadingImportant = isLoadingCommitments || isLoadingObligations;
+
+  const openQuickCommitment = () => {
+    setShowQuickCommitment(true);
+    window.requestAnimationFrame(() => {
+      document.getElementById("quick-commitment")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  };
+
+  const openAddTransaction = () => {
+    window.dispatchEvent(new CustomEvent("open-add-transaction", { detail: { type: "expense" } }));
+  };
+
+  const completeCommitment = async (commitment: Commitment) => {
+    if (updateCommitmentStatus.isPending) return;
+
+    setCompletingCommitmentId(commitment.id);
+    try {
+      await updateCommitmentStatus.mutateAsync({ id: commitment.id, status: "completed" });
+      toast({ title: "أحسنت! تم إنجاز الالتزام", description: commitment.title });
+    } catch (error) {
+      toast({
+        title: "تعذر تحديث الالتزام",
+        description: error instanceof Error ? error.message : "يرجى المحاولة مرة أخرى",
+        variant: "destructive",
+      });
+    } finally {
+      setCompletingCommitmentId(null);
+    }
+  };
+
+  const priorityFilters: Array<{ value: PriorityFilter; label: string; count: number }> = [
+    { value: "all", label: "الكل", count: activeCommitments.length },
+    { value: "overdue", label: "متأخر", count: overdueCount },
+    { value: "today", label: "اليوم", count: todayCount },
+    { value: "week", label: "هذا الأسبوع", count: weekCount },
+  ];
 
   return (
     <div className="animate-in fade-in flex flex-col gap-5 px-1 py-4 pb-24 duration-300 sm:gap-6 sm:px-2 sm:py-6 xl:px-0 xl:py-8" dir="rtl">
@@ -109,15 +163,32 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <Link href="/commitments">
-              <Button variant="secondary" className="mt-5 h-12 w-full rounded-xl font-bold text-primary sm:w-auto">
-                <ListChecks className="h-5 w-5" />
-                إضافة التزام
+            <div className="mt-5 grid gap-2 sm:flex sm:flex-wrap">
+              <Button type="button" variant="secondary" className="h-12 rounded-xl font-bold text-primary" onClick={openQuickCommitment}>
+                <Plus className="h-5 w-5" />
+                إضافة التزام سريع
               </Button>
-            </Link>
+              <Button type="button" variant="outline" className="h-12 rounded-xl border-white/30 bg-white/10 font-bold text-white hover:bg-white/20 hover:text-white" onClick={openAddTransaction}>
+                <WalletCards className="h-5 w-5" />
+                تسجيل معاملة
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
+
+      {showQuickCommitment ? (
+        <section id="quick-commitment" className="animate-in slide-in-from-top-2 xl:max-w-4xl">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-sm font-semibold text-primary">اكتب التزامك كما تفكر فيه</p>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setShowQuickCommitment(false)}>
+              <X className="h-4 w-4" />
+              إغلاق
+            </Button>
+          </div>
+          <QuickCommitment />
+        </section>
+      ) : null}
 
       <InsightsPanel />
 
@@ -132,18 +203,40 @@ export default function Dashboard() {
           ) : null}
         </div>
 
+        {activeCommitments.length > 0 ? (
+          <div className="mb-3 flex gap-2 overflow-x-auto pb-1" role="group" aria-label="تصفية الأولويات">
+            {priorityFilters.map((filter) => (
+              <button
+                key={filter.value}
+                type="button"
+                aria-pressed={priorityFilter === filter.value}
+                onClick={() => setPriorityFilter(filter.value)}
+                className={cn(
+                  "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-semibold transition-colors",
+                  priorityFilter === filter.value
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground",
+                )}
+              >
+                <span>{filter.label}</span>
+                <span className={cn("rounded-full px-1.5 py-0.5 text-[10px]", priorityFilter === filter.value ? "bg-white/20" : "bg-muted")}>{filter.count}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+
         {isLoadingImportant ? (
           <Card><CardContent className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></CardContent></Card>
         ) : priorityCommitments.length > 0 ? (
           <div className="grid gap-3 md:grid-cols-2">
             {priorityCommitments.map(({ commitment, timing }) => (
-              <Link key={commitment.id} href={`/commitments/${commitment.id}`}>
-                <Card className={cn(
-                  "cursor-pointer border-border/60 shadow-sm transition-colors hover:bg-muted/30",
-                  timing.tone === "danger" && "border-red-200 bg-red-50/60",
-                  timing.tone === "warning" && "border-amber-200 bg-amber-50/60",
-                )}>
-                  <CardContent className="flex items-center gap-3 p-4">
+              <Card key={commitment.id} className={cn(
+                "border-border/60 shadow-sm transition-colors hover:bg-muted/30",
+                timing.tone === "danger" && "border-red-200 bg-red-50/60",
+                timing.tone === "warning" && "border-amber-200 bg-amber-50/60",
+              )}>
+                <CardContent className="flex items-center gap-2 p-3 sm:gap-3 sm:p-4">
+                  <Link href={`/commitments/${commitment.id}`} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                     <div className={cn(
                       "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl",
                       timing.tone === "danger" ? "bg-red-100 text-red-700" : timing.tone === "warning" ? "bg-amber-100 text-amber-700" : "bg-primary/10 text-primary",
@@ -161,17 +254,30 @@ export default function Dashboard() {
                       </div>
                     </div>
                     <ChevronLeft className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  </CardContent>
-                </Card>
-              </Link>
+                  </Link>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-10 shrink-0 rounded-xl border-emerald-200 bg-emerald-50 px-3 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
+                    disabled={updateCommitmentStatus.isPending}
+                    onClick={() => completeCommitment(commitment)}
+                    aria-label={`إنهاء ${commitment.title}`}
+                  >
+                    {completingCommitmentId === commitment.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                    <span className="hidden sm:inline">تم</span>
+                  </Button>
+                </CardContent>
+              </Card>
             ))}
           </div>
         ) : (
           <Card className="border-dashed bg-muted/20">
             <CardContent className="py-9 text-center">
               <ListChecks className="mx-auto h-9 w-9 text-primary/60" />
-              <h3 className="mt-3 font-bold">لا توجد التزامات نشطة</h3>
-              <p className="mt-1 text-sm text-muted-foreground">أضف أول التزام وسيظهر هنا مباشرة.</p>
+              <h3 className="mt-3 font-bold">{activeCommitments.length > 0 ? "لا توجد نتائج في هذا العرض" : "لا توجد التزامات نشطة"}</h3>
+              <p className="mt-1 text-sm text-muted-foreground">{activeCommitments.length > 0 ? "جرّب اختيار «الكل» لرؤية بقية التزاماتك." : "أضف أول التزام وسيظهر هنا مباشرة."}</p>
+              {activeCommitments.length === 0 ? <Button type="button" variant="link" className="mt-2" onClick={openQuickCommitment}>أضف التزاماً الآن</Button> : null}
             </CardContent>
           </Card>
         )}
