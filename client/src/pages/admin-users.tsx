@@ -8,6 +8,7 @@ import { formatDate } from "@/lib/utils";
 import AdminIntegrationsCard from "@/components/admin/integrations-card";
 import AdminChannelsCard from "@/components/admin/channels-card";
 import AdminSectionsCard from "@/components/admin/sections-card";
+import AdminDashboardSectionsCard from "@/components/admin/dashboard-sections-card";
 import { useState } from "react";
 
 export default function AdminUsers() {
@@ -181,6 +182,8 @@ export default function AdminUsers() {
       <AdminChannelsCard />
 
       <AdminSectionsCard />
+
+      <AdminDashboardSectionsCard />
 
       <Card className="border-border/50 shadow-sm">
         <CardContent className="p-4 space-y-4">

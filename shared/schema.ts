@@ -144,6 +144,16 @@ export const appSections = pgTable("app_sections", {
 
 export type AppSectionSetting = typeof appSections.$inferSelect;
 
+/** Dashboard card visibility and ordering controlled by the system admin. */
+export const dashboardSections = pgTable("dashboard_sections", {
+  key: text("section_key").primaryKey(),
+  isEnabled: boolean("is_enabled").notNull().default(true),
+  position: integer("position").notNull().default(0),
+  updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
+export type DashboardSectionSetting = typeof dashboardSections.$inferSelect;
+
 /**
  * A deliberately narrow sharing boundary. The owner keeps financial amounts,
  * notes, proofs and financial amounts. An assignee receives the task, its
