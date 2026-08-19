@@ -133,9 +133,9 @@ export const commitments = pgTable("commitments", {
 
 /**
  * A deliberately narrow sharing boundary. The owner keeps financial amounts,
- * notes, proofs and private steps; an assignee only receives the task, its
- * type and due date. This makes delegation useful without turning a personal
- * commitment into a shared financial record.
+ * notes, proofs and financial amounts. An assignee receives the task, its
+ * execution steps, type and due date. This makes delegation actionable without
+ * turning a personal commitment into a shared financial record.
  */
 export const commitmentShares = pgTable("commitment_shares", {
   id: serial("id").primaryKey(),

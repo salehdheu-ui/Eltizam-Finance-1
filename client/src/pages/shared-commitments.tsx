@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { CalendarDays, Check, CircleCheck, Handshake, Loader2, UserRound, X } from "lucide-react";
+import { CalendarDays, Check, Circle, CircleCheck, Handshake, ListChecks, Loader2, UserRound, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useCompleteSharedCommitment, useRespondToCommitmentShare, useSharedCommitments } from "@/lib/hooks";
+import { useCompleteSharedCommitment, useRespondToCommitmentShare, useSharedCommitments, useToggleSharedCommitmentStep } from "@/lib/hooks";
 
 function formatDate(timestamp: number | null) {
   if (!timestamp) return "بدون موعد";
@@ -35,6 +35,7 @@ export default function SharedCommitments() {
   const { data: shares = [], isLoading } = useSharedCommitments();
   const respond = useRespondToCommitmentShare();
   const complete = useCompleteSharedCommitment();
+  const toggleStep = useToggleSharedCommitmentStep();
   const [completionNotes, setCompletionNotes] = useState<Record<number, string>>({});
 
   return (
@@ -67,6 +68,7 @@ export default function SharedCommitments() {
             const isAccepted = share.status === "accepted";
             const isCompleted = share.status === "completed";
             const isApproved = share.status === "approved";
+            const completedSteps = share.steps.filter((step) => step.isCompleted).length;
             return (
               <Card key={share.id} className={isApproved ? "border-emerald-200 bg-emerald-50/40" : isCompleted ? "border-amber-200 bg-amber-50/40" : "border-border/70"}>
                 <CardContent className="p-5">
@@ -87,6 +89,33 @@ export default function SharedCommitments() {
                     {(isCompleted || isApproved) && share.completionNote ? <p className="rounded-xl bg-background/70 p-3 text-foreground">ملاحظتك: {share.completionNote}</p> : null}
                     {isAccepted && share.reviewNote ? <p className="rounded-xl bg-amber-50 p-3 text-amber-800">طلب المالك تعديلًا: {share.reviewNote}</p> : null}
                   </div>
+
+                  {share.steps.length > 0 ? (
+                    <div className="mt-5 overflow-hidden rounded-xl border bg-background/70">
+                      <div className="flex items-center justify-between gap-3 border-b bg-muted/30 px-3 py-2.5">
+                        <p className="flex items-center gap-2 text-sm font-semibold"><ListChecks className="h-4 w-4 text-primary" />خطوات التنفيذ</p>
+                        <span className="text-xs text-muted-foreground">{completedSteps} من {share.steps.length} · {share.progress}%</span>
+                      </div>
+                      <div className="divide-y">
+                        {share.steps.map((step) => (
+                          <div key={step.id} className="flex items-center gap-3 p-3">
+                            <button
+                              type="button"
+                              aria-label={step.isCompleted ? "إعادة فتح الخطوة" : "إكمال الخطوة"}
+                              title={isAccepted ? undefined : "اقبل المهمة أولاً"}
+                              disabled={!isAccepted || toggleStep.isPending}
+                              onClick={() => toggleStep.mutate({ shareId: share.id, stepId: step.id })}
+                              className="text-primary disabled:cursor-not-allowed disabled:opacity-45"
+                            >
+                              {step.isCompleted ? <Check className="h-5 w-5" /> : <Circle className="h-5 w-5" />}
+                            </button>
+                            <span className={"min-w-0 flex-1 text-sm " + (step.isCompleted ? "text-muted-foreground line-through" : "")}>{step.title}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {isPending ? <p className="border-t bg-primary/5 px-3 py-2 text-xs text-primary">اقبل المهمة لتتمكن من تحديث خطوات التنفيذ.</p> : null}
+                    </div>
+                  ) : null}
 
                   {isPending ? (
                     <div className="mt-5 grid grid-cols-2 gap-2">

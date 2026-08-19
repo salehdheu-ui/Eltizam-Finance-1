@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { hashPlainPassword, setupAuth } from "./auth";
 import { writeAuditEvent } from "./audit";
 import { createManualBackup, listAllBackups } from "./backup";
-import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, integrationSettings, upsertIntegrationSettingSchema, upsertEmailChannelSchema, upsertPushChannelSchema, transactions, categories, bankEmailEvents, bankCategoryRules, automationLog, commitmentOccurrences, commitments, commitmentShares, inAppNotifications, notificationPreferences, users } from "@shared/schema";
+import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, integrationSettings, upsertIntegrationSettingSchema, upsertEmailChannelSchema, upsertPushChannelSchema, transactions, categories, bankEmailEvents, bankCategoryRules, automationLog, commitmentOccurrences, commitments, commitmentShares, commitmentSteps, inAppNotifications, notificationPreferences, users } from "@shared/schema";
 import { buildWriteQueueKey, enqueueWrite } from "./write-queue";
 import { z } from "zod";
 import { buildRuleKey, registerBankInboxRoutes } from "./bank-inbox";
@@ -1773,6 +1773,7 @@ export async function registerRoutes(
         title: commitments.title,
         type: commitments.type,
         dueDate: commitments.dueDate,
+        progress: commitments.progress,
         ownerName: users.name,
       })
         .from(commitmentShares)
@@ -1783,7 +1784,56 @@ export async function registerRoutes(
           inArray(commitmentShares.status, ["pending", "accepted", "completed", "approved"]),
         ))
         .orderBy(asc(commitments.dueDate), desc(commitmentShares.assignedAt));
-      res.json(shared);
+
+      const commitmentIds = Array.from(new Set(shared.map((share) => share.commitmentId)));
+      const steps = commitmentIds.length === 0 ? [] : await db.select({
+        id: commitmentSteps.id,
+        commitmentId: commitmentSteps.commitmentId,
+        title: commitmentSteps.title,
+        position: commitmentSteps.position,
+        isCompleted: commitmentSteps.isCompleted,
+        completedAt: commitmentSteps.completedAt,
+      })
+        .from(commitmentSteps)
+        .where(inArray(commitmentSteps.commitmentId, commitmentIds))
+        .orderBy(asc(commitmentSteps.position), asc(commitmentSteps.id));
+
+      const stepsByCommitment = new Map<number, typeof steps>();
+      for (const step of steps) {
+        const existing = stepsByCommitment.get(step.commitmentId) ?? [];
+        existing.push(step);
+        stepsByCommitment.set(step.commitmentId, existing);
+      }
+
+      res.json(shared.map((share) => ({
+        ...share,
+        steps: (stepsByCommitment.get(share.commitmentId) ?? []).map(({ commitmentId: _commitmentId, ...step }) => step),
+      })));
+    } catch (e) { next(e); }
+  });
+
+  app.patch("/api/shared-commitments/:shareId/steps/:stepId/toggle", requireAuth, async (req, res, next) => {
+    try {
+      const shareId = parseRouteId(req.params.shareId);
+      const stepId = parseRouteId(req.params.stepId);
+      const [share] = await db.select({
+        commitmentId: commitmentShares.commitmentId,
+        ownerUserId: commitmentShares.ownerUserId,
+      })
+        .from(commitmentShares)
+        .where(and(
+          eq(commitmentShares.id, shareId),
+          eq(commitmentShares.assigneeUserId, req.user!.id),
+          eq(commitmentShares.status, "accepted"),
+        ));
+      if (!share) return res.status(404).json({ message: "اقبل المهمة أولاً لتحديث خطواتها" });
+
+      const step = await runQueuedWrite(
+        res,
+        buildWriteQueueKey("commitment", share.commitmentId, "step", stepId),
+        () => storage.toggleCommitmentStep(share.commitmentId, stepId, share.ownerUserId),
+      );
+      res.json(step);
     } catch (e) { next(e); }
   });
 
