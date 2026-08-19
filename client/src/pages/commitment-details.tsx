@@ -321,7 +321,7 @@ export default function CommitmentDetails() {
               type="text"
               value={assigneeIdentifier}
               onChange={(event) => setAssigneeIdentifier(event.target.value)}
-              placeholder="اسم المستخدم أو البريد الإلكتروني"
+              placeholder="اسم المستخدم بدون @ أو البريد الإلكتروني"
               aria-label="اسم المستخدم أو البريد الإلكتروني"
               autoCapitalize="none"
               autoCorrect="off"
@@ -330,6 +330,7 @@ export default function CommitmentDetails() {
             />
             <Button type="submit" disabled={createShare.isPending} className="sm:shrink-0">{createShare.isPending ? "جارٍ الإرسال..." : "إسناد المهمة"}</Button>
           </form>
+          <p className="text-xs text-muted-foreground">لا تحتاج إلى كتابة @ قبل اسم المستخدم أو بعده.</p>
 
           {shares.length > 0 ? (
             <div className="divide-y rounded-xl border bg-background/60">

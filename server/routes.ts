@@ -1628,15 +1628,16 @@ export async function registerRoutes(
         .max(254, "اسم المستخدم أو البريد طويل جدًا")
         .parse(req.body.identifier ?? req.body.email);
       const normalizedIdentifier = identifier.toLowerCase();
+      const normalizedUsername = normalizedIdentifier.replace(/^@+|@+$/g, "");
       const [assignee] = await db.select({ id: users.id, name: users.name, email: users.email, isActive: users.isActive })
         .from(users)
         .where(or(
-          eq(users.username, identifier),
-          eq(users.email, normalizedIdentifier),
+          sql`lower(${users.username}) = ${normalizedUsername}`,
+          sql`lower(${users.email}) = ${normalizedIdentifier}`,
         ))
         .limit(1);
       if (!assignee || !assignee.isActive) {
-        return res.status(404).json({ message: "لا يوجد مستخدم نشط بهذا الاسم أو البريد" });
+        return res.status(404).json({ message: "لا يوجد مستخدم نشط بهذا الاسم أو البريد. اكتب اسم المستخدم بدون @" });
       }
       if (assignee.id === req.user!.id) {
         return res.status(400).json({ message: "لا يمكنك إسناد الالتزام إلى نفسك" });
