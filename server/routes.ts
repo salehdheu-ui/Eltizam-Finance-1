@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { hashPlainPassword, setupAuth } from "./auth";
 import { writeAuditEvent } from "./audit";
 import { createManualBackup, listAllBackups } from "./backup";
-import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, appSections, integrationSettings, upsertIntegrationSettingSchema, upsertEmailChannelSchema, upsertPushChannelSchema, transactions, categories, bankEmailEvents, bankCategoryRules, automationLog, commitmentOccurrences, commitments, commitmentShares, commitmentSteps, inAppNotifications, notificationPreferences, users } from "@shared/schema";
+import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, appSections, integrationSettings, upsertIntegrationSettingSchema, upsertEmailChannelSchema, upsertPushChannelSchema, transactions, categories, bankEmailEvents, bankCategoryRules, automationLog, commitmentOccurrences, commitments, commitmentShares, commitmentSteps, inAppNotifications, notificationPreferences, obligationPayments, users } from "@shared/schema";
 import { APP_SECTION_KEYS, DEFAULT_APP_SECTIONS } from "@shared/app-sections";
 import { buildWriteQueueKey, enqueueWrite } from "./write-queue";
 import { z } from "zod";
@@ -177,6 +177,26 @@ const recurringIncomePatchSchema = insertRecurringIncomeSchema.partial();
 const obligationPatchSchema = insertObligationSchema.partial();
 const commitmentPatchSchema = insertCommitmentSchema.partial();
 
+const bankObligationSettingsSchema = z.object({
+  bankAutoMatch: z.boolean(),
+  scheduleType: z.string(),
+  frequency: z.string(),
+  walletId: z.number().int().positive().nullable(),
+  bankMatchWindowStartDay: z.number().int().min(1).max(31),
+  bankMatchWindowEndDay: z.number().int().min(1).max(31),
+}).superRefine((settings, context) => {
+  if (!settings.bankAutoMatch) return;
+  if (settings.scheduleType !== "fixed" || settings.frequency !== "monthly") {
+    context.addIssue({ code: "custom", message: "المطابقة البنكية متاحة للالتزامات الشهرية الثابتة فقط" });
+  }
+  if (!settings.walletId) {
+    context.addIssue({ code: "custom", message: "اختر المحفظة أو الحساب البنكي لتفعيل المطابقة" });
+  }
+  if (settings.bankMatchWindowStartDay > settings.bankMatchWindowEndDay) {
+    context.addIssue({ code: "custom", message: "بداية نافذة الخصم يجب أن تسبق نهايتها" });
+  }
+});
+
 function getPeriodRange(period: string) {
   const end = new Date();
   const start = new Date(end);
@@ -209,6 +229,18 @@ function getBucketLabel(dateValue: number, period: string) {
   }
 
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function currentMuscatMonthKey() {
+  const date = new Date(Date.now() + 4 * 60 * 60 * 1000);
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+async function getCurrentObligationPayments(userId: number) {
+  return db.select().from(obligationPayments).where(and(
+    eq(obligationPayments.userId, userId),
+    eq(obligationPayments.monthKey, currentMuscatMonthKey()),
+  ));
 }
 
 async function getConfiguredAppSections() {
@@ -2110,8 +2142,15 @@ export async function registerRoutes(
   });
   app.get("/api/obligations", requireAuth, async (req, res, next) => {
     try {
-      const obligations = await storage.getObligations(req.user!.id);
-      res.json(obligations);
+      const [obligations, payments] = await Promise.all([
+        storage.getObligations(req.user!.id),
+        getCurrentObligationPayments(req.user!.id),
+      ]);
+      const paymentsByObligation = new Map(payments.map((payment) => [payment.obligationId, payment]));
+      res.json(obligations.map((obligation) => ({
+        ...obligation,
+        currentPayment: paymentsByObligation.get(obligation.id) ?? null,
+      })));
     } catch (e) { next(e); }
   });
 
@@ -2121,7 +2160,8 @@ export async function registerRoutes(
       if (!obligation) {
         return res.status(404).json({ message: "الالتزام غير موجود" });
       }
-      res.json(obligation);
+      const payment = (await getCurrentObligationPayments(req.user!.id)).find((item) => item.obligationId === obligation.id) ?? null;
+      res.json({ ...obligation, currentPayment: payment });
     } catch (e) { next(e); }
   });
 
@@ -2195,12 +2235,27 @@ export async function registerRoutes(
         categoryId: req.body.categoryId === null || req.body.categoryId === undefined
           ? null
           : toOptionalNumber(req.body.categoryId),
+        bankMatchWindowStartDay: req.body.bankMatchWindowStartDay === undefined
+          ? undefined
+          : toRequiredNumber(req.body.bankMatchWindowStartDay),
+        bankMatchWindowEndDay: req.body.bankMatchWindowEndDay === undefined
+          ? undefined
+          : toRequiredNumber(req.body.bankMatchWindowEndDay),
       };
       const data = insertObligationSchema.parse(body);
+      bankObligationSettingsSchema.parse({
+        bankAutoMatch: data.bankAutoMatch ?? false,
+        scheduleType: data.scheduleType,
+        frequency: data.frequency,
+        walletId: data.walletId ?? null,
+        bankMatchWindowStartDay: data.bankMatchWindowStartDay ?? 23,
+        bankMatchWindowEndDay: data.bankMatchWindowEndDay ?? 30,
+      });
+      const normalizedData = data.bankAutoMatch ? { ...data, autoCreateTransaction: false } : data;
       const obligation = await runQueuedWrite(
         res,
         buildWriteQueueKey("user", req.user!.id, "obligations"),
-        () => storage.createObligation(req.user!.id, data),
+        () => storage.createObligation(req.user!.id, normalizedData),
       );
       res.status(201).json(obligation);
     } catch (e) { next(e); }
@@ -2252,12 +2307,30 @@ export async function registerRoutes(
           : req.body.categoryId === null
             ? null
             : toRequiredNumber(req.body.categoryId),
+        bankMatchWindowStartDay: req.body.bankMatchWindowStartDay === undefined
+          ? undefined
+          : toRequiredNumber(req.body.bankMatchWindowStartDay),
+        bankMatchWindowEndDay: req.body.bankMatchWindowEndDay === undefined
+          ? undefined
+          : toRequiredNumber(req.body.bankMatchWindowEndDay),
       };
       const data = obligationPatchSchema.parse(body);
+      const existing = await storage.getObligationById(obligationId, req.user!.id);
+      if (!existing) return res.status(404).json({ message: "الالتزام غير موجود" });
+      const nextSettings = { ...existing, ...data };
+      bankObligationSettingsSchema.parse({
+        bankAutoMatch: nextSettings.bankAutoMatch,
+        scheduleType: nextSettings.scheduleType,
+        frequency: nextSettings.frequency,
+        walletId: nextSettings.walletId,
+        bankMatchWindowStartDay: nextSettings.bankMatchWindowStartDay,
+        bankMatchWindowEndDay: nextSettings.bankMatchWindowEndDay,
+      });
+      const normalizedData = nextSettings.bankAutoMatch ? { ...data, autoCreateTransaction: false } : data;
       const obligation = await runQueuedWrite(
         res,
         buildWriteQueueKey("user", req.user!.id, "obligation", obligationId),
-        () => storage.updateObligation(obligationId, req.user!.id, data),
+        () => storage.updateObligation(obligationId, req.user!.id, normalizedData),
       );
       res.json(obligation);
     } catch (e) { next(e); }

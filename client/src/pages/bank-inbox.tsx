@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useCategories, useCommitments, useWallets } from "@/lib/hooks";
+import { useCategories, useCommitments, useObligations, useWallets } from "@/lib/hooks";
 import { CurrencyDisplay } from "@/components/ui/currency-display";
 import { formatCurrency } from "@/lib/utils";
 
@@ -51,6 +51,7 @@ import { formatCurrency } from "@/lib/utils";
     receivedAt: number;
     categoryId: number | null;
     commitmentId: number | null;
+    obligationId: number | null;
     transactionId: number | null;
   }>;
 };
@@ -140,6 +141,7 @@ export default function BankInbox() {
   const { data: wallets = [] } = useWallets();
   const { data: categories = [] } = useCategories();
   const { data: commitments = [] } = useCommitments();
+  const { data: obligations = [] } = useObligations();
   const [bankKey, setBankKey] = useState("");
   const [customSenders, setCustomSenders] = useState("");
   const [accountFilter, setAccountFilter] = useState("");
@@ -176,6 +178,7 @@ export default function BankInbox() {
   const walletNames = useMemo(() => new Map(wallets.map((wallet) => [wallet.id, wallet.name])), [wallets]);
   const categoryNames = useMemo(() => new Map(categories.map((category) => [category.id, category.name])), [categories]);
   const commitmentNames = useMemo(() => new Map(commitments.map((commitment) => [commitment.id, commitment.title])), [commitments]);
+  const obligationNames = useMemo(() => new Map(obligations.map((obligation) => [obligation.id, obligation.title])), [obligations]);
 
   const selectedBank = useMemo(() => (data?.banks || []).find((bank) => bank.key === bankKey), [data?.banks, bankKey]);
   const needsCustomSender = Boolean(selectedBank?.requiresCustomSender);
@@ -276,14 +279,15 @@ export default function BankInbox() {
   });
 
   const updateEvent = useMutation({
-    mutationFn: async ({ id, categoryId, commitmentId }: { id: number; categoryId?: number | null; commitmentId?: number | null }) => {
-      const response = await apiRequest("PATCH", `/api/bank-inbox/events/${id}`, { categoryId, commitmentId });
+    mutationFn: async ({ id, categoryId, commitmentId, obligationId }: { id: number; categoryId?: number | null; commitmentId?: number | null; obligationId?: number | null }) => {
+      const response = await apiRequest("PATCH", `/api/bank-inbox/events/${id}`, { categoryId, commitmentId, obligationId });
       return response.json() as Promise<{ ruleSaved: boolean; ruleLabel: string | null; appliedToPending: number }>;
     },
     onSuccess: async (result) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox/analysis"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/obligations"] }),
       ]);
       if (result.ruleSaved && result.ruleLabel) {
         toast({
@@ -304,6 +308,7 @@ export default function BankInbox() {
         queryClient.invalidateQueries({ queryKey: ["/api/bank-inbox/analysis"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/transactions"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/obligations"] }),
       ]);
       toast({ title: "تمت إضافة المعاملة" });
     },
@@ -797,11 +802,11 @@ export default function BankInbox() {
                 {pendingEvents.map((event) => (
                   <div key={event.id} className="rounded-xl border p-3">
                     <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0"><p className="truncate font-semibold">{event.merchant || "معاملة بنكية"}</p><p className="mt-1 text-xs text-muted-foreground">{formatDate(event.receivedAt)}{event.categoryId ? ` · ${categoryNames.get(event.categoryId)}` : ""}{event.commitmentId ? ` · مرتبط بـ ${commitmentNames.get(event.commitmentId)}` : ""}</p></div>
+                      <div className="min-w-0"><p className="truncate font-semibold">{event.merchant || "معاملة بنكية"}</p><p className="mt-1 text-xs text-muted-foreground">{formatDate(event.receivedAt)}{event.categoryId ? ` · ${categoryNames.get(event.categoryId)}` : ""}{event.commitmentId ? ` · مرتبط بـ ${commitmentNames.get(event.commitmentId)}` : ""}{event.obligationId ? ` · دفعة ${obligationNames.get(event.obligationId)}` : ""}</p></div>
                       <span className={isCredit(event) ? "font-bold text-emerald-600" : "font-bold text-red-600"}>{isCredit(event) ? "+" : "-"}<CurrencyDisplay amount={event.amount || 0} fractionDigits={3} /></span>
                     </div>
                     <RouteLine event={event} />
-                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <div className="mt-3 grid gap-2 sm:grid-cols-3">
                       <select
                         aria-label="تصنيف المعاملة"
                         value={event.categoryId || ""}
@@ -810,6 +815,15 @@ export default function BankInbox() {
                       >
                         <option value="">بدون تصنيف</option>
                         {categories.filter((category) => category.type === event.transactionType).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                      </select>
+                      <select
+                        aria-label="مطابقة مع التزام مالي"
+                        value={event.obligationId || ""}
+                        onChange={(change) => updateEvent.mutate({ id: event.id, obligationId: change.target.value ? Number(change.target.value) : null })}
+                        className="h-10 rounded-xl border bg-background px-3 text-sm"
+                      >
+                        <option value="">بدون التزام مالي</option>
+                        {obligations.filter((obligation) => obligation.isActive && obligation.bankAutoMatch).map((obligation) => <option key={obligation.id} value={obligation.id}>{obligation.title}</option>)}
                       </select>
                       <select
                         aria-label="ربط بالتزام"

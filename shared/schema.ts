@@ -94,6 +94,9 @@ export const obligations = pgTable("obligations", {
   notes: text("notes").default(""),
   isActive: boolean("is_active").notNull().default(true),
   autoCreateTransaction: boolean("auto_create_transaction").notNull().default(false),
+  bankAutoMatch: boolean("bank_auto_match").notNull().default(false),
+  bankMatchWindowStartDay: integer("bank_match_window_start_day").notNull().default(23),
+  bankMatchWindowEndDay: integer("bank_match_window_end_day").notNull().default(30),
   createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
   updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
 });
@@ -357,6 +360,7 @@ export const bankEmailEvents = pgTable("bank_email_events", {
   reference: text("reference"),
   categoryId: integer("category_id").references(() => categories.id),
   commitmentId: integer("commitment_id").references(() => commitments.id),
+  obligationId: integer("obligation_id").references(() => obligations.id, { onDelete: "set null" }),
   transactionId: integer("transaction_id").references(() => transactions.id),
   createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
 });
@@ -372,12 +376,32 @@ export const bankCategoryRules = pgTable("bank_category_rules", {
   matchLabel: text("match_label").notNull(),
   categoryId: integer("category_id").references(() => categories.id, { onDelete: "set null" }),
   commitmentId: integer("commitment_id").references(() => commitments.id, { onDelete: "set null" }),
+  obligationId: integer("obligation_id").references(() => obligations.id, { onDelete: "set null" }),
   hitCount: integer("hit_count").notNull().default(0),
   createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
   updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
 });
 
 export type BankCategoryRule = typeof bankCategoryRules.$inferSelect;
+
+/** One reconciled payment for an obligation month. The linked bank event and
+ * transaction are the evidence, so reconciliation never needs a duplicate row
+ * in the transaction ledger. */
+export const obligationPayments = pgTable("obligation_payments", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  obligationId: integer("obligation_id").notNull().references(() => obligations.id, { onDelete: "cascade" }),
+  monthKey: text("month_key").notNull(),
+  amount: doublePrecision("amount").notNull(),
+  paidAt: integer("paid_at").notNull(),
+  transactionId: integer("transaction_id").references(() => transactions.id, { onDelete: "set null" }),
+  bankEventId: integer("bank_event_id").references(() => bankEmailEvents.id, { onDelete: "set null" }),
+  source: text("source").notNull().default("bank"),
+  createdAt: integer("created_at").notNull().default(sql`extract(epoch from now())::integer`),
+  updatedAt: integer("updated_at").notNull().default(sql`extract(epoch from now())::integer`),
+});
+
+export type ObligationPayment = typeof obligationPayments.$inferSelect;
 
 export const integrationSettings = pgTable("integration_settings", {
   id: serial("id").primaryKey(),
@@ -497,6 +521,9 @@ export const insertObligationSchema = createInsertSchema(obligations).pick({
   notes: true,
   isActive: true,
   autoCreateTransaction: true,
+  bankAutoMatch: true,
+  bankMatchWindowStartDay: true,
+  bankMatchWindowEndDay: true,
 }).extend({
   title: z.string().min(1, "يجب إدخال عنوان الالتزام"),
   amount: z.number().positive("المبلغ يجب أن يكون أكبر من صفر"),
@@ -510,6 +537,9 @@ export const insertObligationSchema = createInsertSchema(obligations).pick({
   endDate: z.number().int().positive().nullable().optional(),
   walletId: z.number().nullable().optional(),
   categoryId: z.number().nullable().optional(),
+  bankAutoMatch: z.boolean().optional(),
+  bankMatchWindowStartDay: z.number().int().min(1).max(31).optional(),
+  bankMatchWindowEndDay: z.number().int().min(1).max(31).optional(),
 });
 
 export const insertVariableObligationMonthStatusSchema = createInsertSchema(variableObligationMonthStatuses).pick({

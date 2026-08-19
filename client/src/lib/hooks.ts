@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "./queryClient";
 import { queryClient } from "./queryClient";
-import type { User, Wallet, Category, Transaction, RecurringIncome, Obligation, VariableObligationMonthStatus, Commitment, CommitmentStep, CommitmentProof, SavingsGoal } from "@shared/schema";
+import type { User, Wallet, Category, Transaction, RecurringIncome, Obligation, ObligationPayment, VariableObligationMonthStatus, Commitment, CommitmentStep, CommitmentProof, SavingsGoal } from "@shared/schema";
 import type { AppSectionKey } from "@shared/app-sections";
 
 type WalletPayload = Pick<Wallet, "name" | "type" | "balance" | "color">;
@@ -19,6 +19,7 @@ type RecurringIncomePayload = Pick<RecurringIncome, "title" | "amount" | "income
 type RecurringIncomeUpdatePayload = Partial<RecurringIncomePayload> & { id: number };
 type ObligationPayload = Omit<Obligation, "id" | "userId" | "createdAt" | "updatedAt">;
 type ObligationUpdatePayload = Partial<ObligationPayload> & { id: number };
+export type ObligationWithPayment = Obligation & { currentPayment: ObligationPayment | null };
 type CommitmentPayload = Pick<Commitment, "title" | "type" | "frequency" | "dueDate" | "amount" | "personName" | "assetName" | "notes">;
 type CommitmentUpdatePayload = Partial<CommitmentPayload & Pick<Commitment, "progress" | "reminderDaysBefore" | "escalateAfterDays" | "autoCloseOnProof">> & { id: number };
 type SavingsGoalPayload = Pick<SavingsGoal, "planId" | "planTitle" | "title" | "walletId" | "targetAmount" | "monthlyAmount" | "years">;
@@ -949,13 +950,13 @@ export function useToggleSharedCommitmentStep() {
 }
 // Obligations Hooks
 export function useObligations() {
-  return useQuery<Obligation[]>({
+  return useQuery<ObligationWithPayment[]>({
     queryKey: ["/api/obligations"],
   });
 }
 
 export function useObligation(id: number | undefined) {
-  return useQuery<Obligation>({
+  return useQuery<ObligationWithPayment>({
     queryKey: ["/api/obligations", id],
     enabled: !!id,
   });

@@ -164,6 +164,11 @@ const databaseMigrations: DatabaseMigration[] = [
     name: "ensure_app_sections_table",
     up: async () => { await ensureAppSectionsTable(); },
   },
+  {
+    version: 29,
+    name: "ensure_bank_obligation_reconciliation",
+    up: async () => { await ensureBankObligationReconciliation(); },
+  },
 ];
 
 async function ensureSchemaMigrationsTable() {
@@ -678,6 +683,48 @@ async function ensureAppSectionsTable() {
   }
 
   await pgExec("CREATE INDEX IF NOT EXISTS app_sections_position_idx ON app_sections (position, section_key)");
+}
+
+async function ensureBankObligationReconciliation() {
+  const obligationColumns: Array<[string, string]> = [
+    ["bank_auto_match", "BOOLEAN NOT NULL DEFAULT false"],
+    ["bank_match_window_start_day", "INTEGER NOT NULL DEFAULT 23"],
+    ["bank_match_window_end_day", "INTEGER NOT NULL DEFAULT 30"],
+  ];
+
+  for (const [name, definition] of obligationColumns) {
+    if (!(await columnExists("obligations", name))) {
+      await pgExec(`ALTER TABLE obligations ADD COLUMN ${name} ${definition}`);
+    }
+  }
+
+  if (!(await columnExists("bank_email_events", "obligation_id"))) {
+    await pgExec("ALTER TABLE bank_email_events ADD COLUMN obligation_id INTEGER REFERENCES obligations(id) ON DELETE SET NULL");
+  }
+  if (!(await columnExists("bank_category_rules", "obligation_id"))) {
+    await pgExec("ALTER TABLE bank_category_rules ADD COLUMN obligation_id INTEGER REFERENCES obligations(id) ON DELETE SET NULL");
+  }
+
+  await pgExec(`
+    CREATE TABLE IF NOT EXISTS obligation_payments (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      obligation_id INTEGER NOT NULL REFERENCES obligations(id) ON DELETE CASCADE,
+      month_key TEXT NOT NULL,
+      amount DOUBLE PRECISION NOT NULL,
+      paid_at INTEGER NOT NULL,
+      transaction_id INTEGER REFERENCES transactions(id) ON DELETE SET NULL,
+      bank_event_id INTEGER REFERENCES bank_email_events(id) ON DELETE SET NULL,
+      source TEXT NOT NULL DEFAULT 'bank',
+      created_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
+      updated_at INTEGER NOT NULL DEFAULT extract(epoch from now())::integer,
+      UNIQUE(user_id, obligation_id, month_key)
+    )
+  `);
+
+  await pgExec("CREATE INDEX IF NOT EXISTS obligation_payments_user_month_idx ON obligation_payments (user_id, month_key, obligation_id)");
+  await pgExec("CREATE INDEX IF NOT EXISTS obligation_payments_event_idx ON obligation_payments (bank_event_id)");
+  await pgExec("CREATE INDEX IF NOT EXISTS bank_email_events_obligation_idx ON bank_email_events (user_id, obligation_id, received_at DESC)");
 }
 
 async function ensureCommitmentAutomationTables() {
