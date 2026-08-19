@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import { emailSchema, safeText, TEXT_LIMITS, validateInput } from "@shared/validation";
 import { useEffect, useState } from "react";
 import {
   Drawer,
@@ -100,8 +101,20 @@ export default function Settings() {
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+    const validatedName = validateInput(safeText(TEXT_LIMITS.shortName, "يجب إدخال الاسم"), profileName);
+    if (!validatedName.ok) {
+      toast({ title: "خطأ", description: validatedName.message, variant: "destructive" });
+      return;
+    }
+
+    const validatedEmail = validateInput(emailSchema, profileEmail);
+    if (!validatedEmail.ok) {
+      toast({ title: "خطأ", description: validatedEmail.message, variant: "destructive" });
+      return;
+    }
+
     try {
-      await updateUserMutation.mutateAsync({ name: profileName, email: profileEmail });
+      await updateUserMutation.mutateAsync({ name: validatedName.data, email: validatedEmail.data });
       setIsEditProfileOpen(false);
       toast({ title: "تم الحفظ بنجاح", description: "تم تحديث بيانات الملف الشخصي" });
     } catch {

@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { cn, formatCurrency, formatMonthKeyLabel } from "@/lib/utils";
 import { useCategories, useCreateRecurringIncome, useCreateTransaction, useDeleteRecurringIncome, useRecurringIncomes, useUpdateRecurringIncome, useWallets } from "@/lib/hooks";
+import { idSchema, moneySchema, recurringDayOfMonthSchema, validateInput } from "@shared/validation";
 import type { RecurringIncome } from "@shared/schema";
 
 export default function Income() {
@@ -56,14 +57,27 @@ export default function Income() {
       return;
     }
 
+    // Checked against the same schemas the server parses with, so a typed-in
+    // amount or day that is not a number is caught before the request.
+    const amount = validateInput(moneySchema, salaryAmount);
+    const dayOfMonth = validateInput(recurringDayOfMonthSchema, salaryDay);
+    const walletId = validateInput(idSchema, salaryWalletId);
+    const firstProblem = [amount, dayOfMonth, walletId].find((result) => !result.ok);
+
+    if (firstProblem && !firstProblem.ok) {
+      toast({ title: "خطأ", description: firstProblem.message, variant: "destructive" });
+      return;
+    }
+    if (!amount.ok || !dayOfMonth.ok || !walletId.ok) return;
+
     try {
       await createRecurringIncome.mutateAsync({
         title: salaryTitle,
-        amount: parseFloat(salaryAmount),
+        amount: amount.data,
         incomeType: "salary",
-        dayOfMonth: parseInt(salaryDay, 10),
-        walletId: parseInt(salaryWalletId, 10),
-        categoryId: salaryCategoryId ? parseInt(salaryCategoryId, 10) : null,
+        dayOfMonth: dayOfMonth.data,
+        walletId: walletId.data,
+        categoryId: salaryCategoryId ? Number(salaryCategoryId) : null,
         note: salaryNote || null,
         isActive: true,
         lastAppliedMonth: null,
@@ -84,12 +98,24 @@ export default function Income() {
       return;
     }
 
+    const manualValidatedAmount = validateInput(moneySchema, manualAmount);
+    const manualValidatedWalletId = validateInput(idSchema, manualWalletId);
+
+    if (!manualValidatedAmount.ok) {
+      toast({ title: "خطأ", description: manualValidatedAmount.message, variant: "destructive" });
+      return;
+    }
+    if (!manualValidatedWalletId.ok) {
+      toast({ title: "خطأ", description: manualValidatedWalletId.message, variant: "destructive" });
+      return;
+    }
+
     try {
       await createTransaction.mutateAsync({
         type: "income",
-        amount: parseFloat(manualAmount),
-        walletId: parseInt(manualWalletId, 10),
-        categoryId: manualCategoryId ? parseInt(manualCategoryId, 10) : null,
+        amount: manualValidatedAmount.data,
+        walletId: manualValidatedWalletId.data,
+        categoryId: manualCategoryId ? Number(manualCategoryId) : null,
         note: manualNote || "دخل إضافي",
       });
       setManualAmount("");

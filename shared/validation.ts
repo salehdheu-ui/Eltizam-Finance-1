@@ -162,6 +162,21 @@ export const dayOfMonthSchema = numericSchema({ min: 1, max: 31, message: "يو�
 );
 
 /**
+ * Day of the month for a *recurring* entry, capped at 28.
+ *
+ * A salary set to the 30th would silently skip February, so recurring
+ * schedules only accept a day that exists in every month.
+ */
+export const recurringDayOfMonthSchema = numericSchema({ min: 1, max: 28, message: "يوم غير صالح" }).pipe(
+  z.number().int("يوم غير صالح"),
+);
+
+/** Month of the year, for yearly recurring entries. */
+export const monthOfYearSchema = numericSchema({ min: 1, max: 12, message: "شهر غير صالح" }).pipe(
+  z.number().int("شهر غير صالح"),
+);
+
+/**
  * A color as this UI stores it. That is either a hex code or a set of Tailwind
  * utility tokens ("bg-orange-100 text-orange-600", "from-slate-600 to-slate-800"),
  * so spaces and slashes are allowed — but quotes, braces, and semicolons are not,

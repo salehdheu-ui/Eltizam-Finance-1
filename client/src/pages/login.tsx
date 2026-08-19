@@ -7,6 +7,7 @@ import { useLocation } from "wouter";
 import { useState, useEffect } from "react";
 import { useForgotPasswordRequest, useLogin, usePasswordResetSelfServiceComplete, usePasswordResetSelfServiceStart, useRegister } from "@/lib/hooks";
 import { useToast } from "@/hooks/use-toast";
+import { emailSchema, phoneSchema, validateInput } from "@shared/validation";
 
 const passwordGuidanceMessage = "استخدم 8 أحرف على الأقل مع حرف كبير وحرف صغير ورقم واحد على الأقل";
 const forgotPasswordRequestHint = "أدخل اسم المستخدم أو البريد أو الهاتف للحصول على رمز مؤقت";
@@ -161,6 +162,17 @@ export default function Login() {
       setPasswordGuidance(passwordGuidanceMessage);
       toast({ title: "توجيه", description: passwordGuidanceMessage, variant: "destructive" });
       return;
+    }
+
+    if (!isLoginMode) {
+      const contact = contactMethod === "email"
+        ? validateInput(emailSchema, email)
+        : validateInput(phoneSchema, buildPhoneWithCountryCode());
+
+      if (!contact.ok) {
+        toast({ title: "خطأ", description: contact.message, variant: "destructive" });
+        return;
+      }
     }
     
     try {

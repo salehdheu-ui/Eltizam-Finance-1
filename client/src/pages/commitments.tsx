@@ -26,6 +26,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useCommitments, useCreateCommitment, useDeleteCommitment, useUpdateCommitmentStatus } from "@/lib/hooks";
 import type { Commitment } from "@shared/schema";
+import { moneySchema, sanitizeText, safeText, TEXT_LIMITS, validateInput } from "@shared/validation";
 import AutomationPanel from "@/components/automation-panel";
 import QuickCommitment from "@/components/quick-commitment";
 
@@ -106,17 +107,27 @@ export default function Commitments() {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!form.title.trim() || createCommitment.isPending) return;
+    if (createCommitment.isPending) return;
+
+    const validatedTitle = validateInput(safeText(TEXT_LIMITS.title, "يجب إدخال عنوان الالتزام"), form.title);
+    if (!validatedTitle.ok) return;
+
+    let amount: number | null = null;
+    if (form.amount) {
+      const validatedAmount = validateInput(moneySchema, form.amount);
+      if (!validatedAmount.ok) return;
+      amount = validatedAmount.data;
+    }
 
     await createCommitment.mutateAsync({
-      title: form.title.trim(),
+      title: validatedTitle.data,
       type: form.type,
       dueDate: toTimestamp(form.dueDate),
       frequency: form.frequency,
-      amount: form.amount ? Number(form.amount) : null,
-      personName: form.personName.trim() || null,
-      assetName: form.assetName.trim() || null,
-      notes: form.notes.trim() || "",
+      amount,
+      personName: sanitizeText(form.personName, TEXT_LIMITS.shortName) || null,
+      assetName: sanitizeText(form.assetName, TEXT_LIMITS.shortName) || null,
+      notes: sanitizeText(form.notes, TEXT_LIMITS.note),
     });
 
     setForm(initialForm);

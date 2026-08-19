@@ -12,6 +12,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useObligations, useDeleteObligation, useToggleObligation, useCreateObligation, useUpdateObligation, useWallets, useCategories, useVariableObligationStatuses } from "@/lib/hooks";
 import { useToast } from "@/hooks/use-toast";
 import type { Obligation, VariableObligationMonthStatus } from "@shared/schema";
+import { coerceFiniteNumber, dayOfMonthSchema, moneySchema, monthOfYearSchema, safeText, TEXT_LIMITS, validateInput } from "@shared/validation";
 import { Link } from "wouter";
 import {
   Drawer,
@@ -116,8 +117,15 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
-    if (!formData.title.trim()) newErrors.title = "يجب إدخال عنوان الالتزام";
-    if (!formData.amount || parseFloat(formData.amount) <= 0) newErrors.amount = "المبلغ يجب أن يكون أكبر من صفر";
+    const validatedTitle = validateInput(safeText(TEXT_LIMITS.title, "يجب إدخال عنوان الالتزام"), formData.title);
+    if (!validatedTitle.ok) newErrors.title = validatedTitle.message;
+
+    const validatedAmount = validateInput(moneySchema, formData.amount);
+    if (!validatedAmount.ok) {
+      newErrors.amount = validatedAmount.message;
+    } else if (validatedAmount.data <= 0) {
+      newErrors.amount = "المبلغ يجب أن يكون أكبر من صفر";
+    }
     if (!formData.startDate) newErrors.startDate = "يجب تحديد تاريخ البداية";
     if (formData.endDate && formData.startDate && new Date(formData.endDate) < new Date(formData.startDate)) {
       newErrors.endDate = "يجب أن يكون تاريخ الانتهاء بعد تاريخ البداية";
@@ -129,9 +137,13 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
     if (formData.scheduleType === "fixed" && formData.frequency === "monthly" && !formData.dueDay) {
       newErrors.dueDay = "يجب تحديد يوم الدفع";
     }
+    if (formData.dueDay && !validateInput(dayOfMonthSchema, formData.dueDay).ok) {
+      newErrors.dueDay = "يوم غير صالح";
+    }
     if (formData.scheduleType === "fixed" && formData.frequency === "yearly") {
       if (!formData.dueDay) newErrors.dueDay = "يجب تحديد يوم الدفع";
       if (!formData.dueMonth) newErrors.dueMonth = "يجب تحديد شهر الاستحقاق";
+      else if (!validateInput(monthOfYearSchema, formData.dueMonth).ok) newErrors.dueMonth = "شهر غير صالح";
     }
     if (formData.scheduleType === "fixed" && formData.frequency === "one_time" && !formData.dueDate) {
       newErrors.dueDate = "يجب تحديد تاريخ دفع الالتزام";
@@ -148,17 +160,17 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
 
     const data = {
       title: formData.title,
-      amount: parseFloat(formData.amount),
+      amount: coerceFiniteNumber(formData.amount) ?? 0,
       scheduleType: formData.scheduleType,
       obligationType: formData.obligationType,
       frequency: formData.frequency,
-      dueDay: formData.scheduleType === "fixed" && (formData.frequency === "monthly" || formData.frequency === "yearly") ? parseInt(formData.dueDay) : null,
-      dueMonth: formData.scheduleType === "fixed" && formData.frequency === "yearly" ? parseInt(formData.dueMonth) : null,
+      dueDay: formData.scheduleType === "fixed" && (formData.frequency === "monthly" || formData.frequency === "yearly") ? coerceFiniteNumber(formData.dueDay) ?? null : null,
+      dueMonth: formData.scheduleType === "fixed" && formData.frequency === "yearly" ? coerceFiniteNumber(formData.dueMonth) ?? null : null,
       dueDate: formData.dueDate ? Math.floor(new Date(formData.dueDate).getTime() / 1000) : null,
       startDate: Math.floor(new Date(formData.startDate).getTime() / 1000),
       endDate: formData.endDate ? Math.floor(new Date(formData.endDate).getTime() / 1000) : null,
-      walletId: formData.walletId ? parseInt(formData.walletId) : null,
-      categoryId: formData.categoryId ? parseInt(formData.categoryId) : null,
+      walletId: formData.walletId ? coerceFiniteNumber(formData.walletId) ?? null : null,
+      categoryId: formData.categoryId ? coerceFiniteNumber(formData.categoryId) ?? null : null,
       notes: formData.notes || null,
       isActive: formData.isActive,
       autoCreateTransaction: formData.autoCreateTransaction,
