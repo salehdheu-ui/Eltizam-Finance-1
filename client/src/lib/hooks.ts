@@ -48,7 +48,15 @@ export type SharedCommitment = {
   title: string;
   type: string;
   dueDate: number | null;
+  progress: number;
   ownerName: string;
+  steps: Array<{
+    id: number;
+    title: string;
+    position: number;
+    isCompleted: boolean;
+    completedAt: number | null;
+  }>;
 };
 
 export type ManagedCommitmentShare = {
@@ -895,6 +903,14 @@ export function useCompleteSharedCommitment() {
   return useMutation({
     mutationFn: ({ id, completionNote }: { id: number; completionNote?: string }) =>
       apiRequest("PATCH", `/api/shared-commitments/${id}/complete`, { completionNote }),
+    onSuccess: () => invalidateSharedCommitmentQueries(),
+  });
+}
+
+export function useToggleSharedCommitmentStep() {
+  return useMutation({
+    mutationFn: ({ shareId, stepId }: { shareId: number; stepId: number }) =>
+      apiRequest("PATCH", `/api/shared-commitments/${shareId}/steps/${stepId}/toggle`),
     onSuccess: () => invalidateSharedCommitmentQueries(),
   });
 }
