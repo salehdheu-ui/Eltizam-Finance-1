@@ -7,6 +7,7 @@ import { useAdminApprovePasswordReset, useAdminBackups, useAdminCreateManualBack
 import { formatDate } from "@/lib/utils";
 import AdminIntegrationsCard from "@/components/admin/integrations-card";
 import AdminChannelsCard from "@/components/admin/channels-card";
+import AdminSectionsCard from "@/components/admin/sections-card";
 import { useState } from "react";
 
 export default function AdminUsers() {
@@ -162,7 +163,7 @@ export default function AdminUsers() {
       <header className="flex items-center justify-between">
         <div>
           <p className="text-sm text-muted-foreground">لوحة مسؤول النظام</p>
-          <h1 className="text-2xl font-bold">إدارة المستخدمين</h1>
+          <h1 className="text-2xl font-bold">إدارة النظام</h1>
         </div>
         <div className="h-11 w-11 rounded-full bg-primary/10 text-primary flex items-center justify-center">
           <Shield className="h-5 w-5" />
@@ -171,13 +172,15 @@ export default function AdminUsers() {
 
       <Card className="border-primary/10 bg-primary/5">
         <CardContent className="p-4 text-sm text-muted-foreground leading-7">
-          لديك صلاحية إدارة الحسابات والعدادات العامة فقط. لا يتم عرض المحافظ أو المعاملات أو الالتزامات الخاصة بالمستخدمين داخل هذه الصفحة.
+          لديك صلاحية إدارة أقسام المنصة والحسابات والإعدادات العامة فقط. لا يتم عرض المحافظ أو المعاملات أو الالتزامات الخاصة بالمستخدمين داخل هذه الصفحة.
         </CardContent>
       </Card>
 
       <AdminIntegrationsCard />
 
       <AdminChannelsCard />
+
+      <AdminSectionsCard />
 
       <Card className="border-border/50 shadow-sm">
         <CardContent className="p-4 space-y-4">

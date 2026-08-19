@@ -2,6 +2,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "./queryClient";
 import { queryClient } from "./queryClient";
 import type { User, Wallet, Category, Transaction, RecurringIncome, Obligation, VariableObligationMonthStatus, Commitment, CommitmentStep, CommitmentProof, SavingsGoal } from "@shared/schema";
+import type { AppSectionKey } from "@shared/app-sections";
 
 type WalletPayload = Pick<Wallet, "name" | "type" | "balance" | "color">;
 type WalletUpdatePayload = Partial<WalletPayload> & { id: number };
@@ -146,6 +147,16 @@ export type AdminUserStats = {
   inactiveUsers: number;
   newUsersThisMonth: number;
   usersLoggedInToday: number;
+};
+
+export type AppSectionConfig = {
+  key: AppSectionKey;
+  label: string;
+  href: string;
+  description: string;
+  isEnabled: boolean;
+  position: number;
+  updatedAt: number | null;
 };
 
 export type AdminBackupRecord = {
@@ -295,6 +306,7 @@ export function useLogin() {
       apiRequest("POST", "/api/login", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/user"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/app-sections"] });
     },
   });
 }
@@ -308,6 +320,7 @@ export function useRegister() {
     onSuccess: (user) => {
       queryClient.setQueryData(["/api/user"], user);
       queryClient.invalidateQueries({ queryKey: ["/api/user"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/app-sections"] });
     },
   });
 }
@@ -332,6 +345,26 @@ export function useChangePassword() {
 export function useAdminStats() {
   return useQuery<AdminUserStats>({
     queryKey: ["/api/admin/stats"],
+  });
+}
+
+export function useAppSections(enabled = true) {
+  return useQuery<AppSectionConfig[]>({
+    queryKey: ["/api/app-sections"],
+    enabled,
+    refetchInterval: 30_000,
+  });
+}
+
+export function useAdminSaveAppSections() {
+  return useMutation({
+    mutationFn: async (sections: Array<Pick<AppSectionConfig, "key" | "isEnabled">>) => {
+      const response = await apiRequest("PUT", "/api/admin/app-sections", { sections });
+      return response.json() as Promise<AppSectionConfig[]>;
+    },
+    onSuccess: (sections) => {
+      queryClient.setQueryData(["/api/app-sections"], sections);
+    },
   });
 }
 

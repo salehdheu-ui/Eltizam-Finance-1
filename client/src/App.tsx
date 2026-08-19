@@ -5,9 +5,10 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Layout from "@/components/layout";
-import { useUser } from "@/lib/hooks";
+import { useAppSections, useUser } from "@/lib/hooks";
 import { Loader2 } from "lucide-react";
 import React, { lazy, Suspense, useEffect } from "react";
+import { DEFAULT_APP_SECTIONS, matchesAppSectionPath } from "@shared/app-sections";
 
 /**
  * Pages load on demand rather than all at once. The app is mobile-first and now
@@ -102,6 +103,7 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 function Router() {
   const [location] = useLocation();
   const { data: user, isLoading } = useUser();
+  const { data: configuredSections, isLoading: isLoadingSections } = useAppSections(Boolean(user));
   const isSystemAdmin = user?.role === "system_admin";
   const isPublicAuthRoute = location === "/login" || location === "/forgot-password" || location === "/reset-password";
 
@@ -109,7 +111,7 @@ function Router() {
     document.body.classList.remove("print-report-active");
   }, [location]);
 
-  if (isLoading) {
+  if (isLoading || (user && isLoadingSections)) {
     return (
       <div className="app-min-h-screen flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -134,6 +136,19 @@ function Router() {
 
   if (!user) {
     return <Redirect to="/login" />;
+  }
+
+  const sections = configuredSections ?? DEFAULT_APP_SECTIONS.map((section, position) => ({
+    ...section,
+    isEnabled: true,
+    position,
+    updatedAt: null,
+  }));
+  const currentSection = sections.find((section) => matchesAppSectionPath(section, location));
+  const firstEnabledSection = sections.find((section) => section.isEnabled);
+
+  if (!isSystemAdmin && currentSection && !currentSection.isEnabled && firstEnabledSection) {
+    return <Redirect to={firstEnabledSection.href} />;
   }
 
   return (
