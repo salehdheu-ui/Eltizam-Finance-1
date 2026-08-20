@@ -59,18 +59,20 @@ export default function Categories() {
       setIsAddDrawerOpen(false);
       setNewCategoryName("");
       setNewBudget("");
-      toast({ title: "تمت الإضافة", description: `تمت إضافة قسم "${newCategoryName}" بنجاح` });
+      toast({ title: "تمت الإضافة", description: `تمت إضافة التصنيف "${newCategoryName}" بنجاح` });
     } catch {
-      toast({ title: "خطأ", description: "فشل إضافة القسم", variant: "destructive" });
+      toast({ title: "خطأ", description: "تعذر إضافة التصنيف", variant: "destructive" });
     }
   };
 
   const handleDeleteCategory = async (id: number) => {
+    const category = allCategories.find((item) => item.id === id);
+    if (!window.confirm(`هل تريد حذف التصنيف «${category?.name || "المحدد"}»؟ لا يمكن التراجع عن الحذف.`)) return;
     try {
       await deleteCategory.mutateAsync(id);
-      toast({ title: "تم الحذف", description: "تم حذف القسم بنجاح" });
+      toast({ title: "تم الحذف", description: "تم حذف التصنيف بنجاح" });
     } catch {
-      toast({ title: "خطأ", description: "فشل حذف القسم", variant: "destructive" });
+      toast({ title: "خطأ", description: "تعذر حذف التصنيف. قد يكون مرتبطًا بمعاملات مسجلة.", variant: "destructive" });
     }
   };
 
@@ -106,9 +108,9 @@ export default function Categories() {
           <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-3">
             <span className="text-2xl">📝</span>
           </div>
-          <h3 className="font-bold text-lg mb-1">لا توجد أقسام</h3>
-          <p className="text-sm text-muted-foreground mb-4">أضف قسم جديد للبدء</p>
-          <Button variant="outline" onClick={() => setIsAddDrawerOpen(true)}>إضافة قسم</Button>
+          <h3 className="font-bold text-lg mb-1">لا توجد تصنيفات</h3>
+          <p className="text-sm text-muted-foreground mb-4">أضف تصنيفًا جديدًا للبدء</p>
+          <Button variant="outline" onClick={() => setIsAddDrawerOpen(true)}>إضافة تصنيف</Button>
         </div>
       )}
     </div>
@@ -118,7 +120,7 @@ export default function Categories() {
     <div className="animate-in fade-in duration-300">
       <header className="px-4 py-6 pb-2">
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold">الأقسام</h1>
+          <h1 className="text-2xl font-bold">التصنيفات</h1>
           <Button 
             size="icon" 
             className="rounded-full shadow-md bg-primary text-primary-foreground cursor-pointer"
@@ -160,14 +162,14 @@ export default function Categories() {
         <DrawerContent dir="rtl">
           <div className="mx-auto w-full max-w-sm">
             <DrawerHeader>
-              <DrawerTitle>إضافة قسم جديد</DrawerTitle>
+              <DrawerTitle>إضافة تصنيف جديد</DrawerTitle>
               <DrawerDescription>
-                سيتم إضافة القسم تحت قائمة {activeTab === 'expense' ? "المصروفات" : activeTab === 'income' ? "الدخل" : "الديون"}
+                سيُضاف التصنيف إلى قائمة {activeTab === 'expense' ? "المصروفات" : activeTab === 'income' ? "الدخل" : "الديون"}
               </DrawerDescription>
             </DrawerHeader>
             <form onSubmit={handleAddCategory} className="p-4 pb-0 flex flex-col gap-4">
               <div className="flex flex-col gap-2">
-                <Label htmlFor="category-name" className="text-right">اسم القسم</Label>
+                <Label htmlFor="category-name" className="text-right">اسم التصنيف</Label>
                 <Input id="category-name" placeholder="مثال: بقالة، ترفيه، جمعية" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} className="text-right" required />
               </div>
               {activeTab === "expense" && (

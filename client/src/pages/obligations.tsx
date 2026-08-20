@@ -527,14 +527,14 @@ function ObligationForm({ isOpen, onClose, editingObligation }: ObligationFormPr
             </div>
 
             <div className="app-field">
-              <Label htmlFor="categoryId" className="text-right">القسم</Label>
+              <Label htmlFor="categoryId" className="text-right">التصنيف</Label>
               <select
                 id="categoryId"
                 value={formData.categoryId}
                 onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
                 className="app-select"
               >
-                <option value="">بدون قسم</option>
+                <option value="">بدون تصنيف</option>
                 {categories?.map((category) => (
                   <option key={category.id} value={category.id}>{category.icon} {category.name}</option>
                 ))}
@@ -712,6 +712,8 @@ export default function Obligations() {
   const upcomingIds = new Set(upcomingObligations.filter((obligation) => obligation.daysLeft <= 30).map((obligation) => obligation.id));
 
   const handleDelete = async (id: number) => {
+    const obligation = obligations?.find((item) => item.id === id);
+    if (!window.confirm(`هل تريد حذف الالتزام «${obligation?.title || "المحدد"}» وسجل متابعته؟ لا يمكن التراجع عن الحذف.`)) return;
     try {
       await deleteObligation.mutateAsync(id);
       toast({ title: "تم الحذف", description: "تم حذف الالتزام بنجاح" });
@@ -885,7 +887,7 @@ export default function Obligations() {
     return (
       <div className="bg-background animate-in fade-in duration-300">
         <header className="px-4 py-6 pb-4 bg-background sticky top-0 z-10 border-b border-border/50">
-          <h1 className="text-2xl font-bold">الالتزامات</h1>
+          <h1 className="text-2xl font-bold">الالتزامات المالية</h1>
         </header>
         <div className="flex items-center justify-center py-10">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -1039,10 +1041,10 @@ export default function Obligations() {
             <div className="min-w-0 space-y-2">
               <div className="inline-flex w-fit items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary">
                 <Receipt className="h-3.5 w-3.5" />
-                متابعة ذكية للالتزامات
+                متابعة ذكية للدفعات
               </div>
               <div>
-                <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">الالتزامات</h1>
+                <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">الالتزامات المالية</h1>
                 <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">تابع ما يجب دفعه، وما هو قريب الاستحقاق، وسجّل الدفعات بسرعة من نفس الصفحة.</p>
               </div>
             </div>
@@ -1056,7 +1058,7 @@ export default function Obligations() {
                 onClick={() => handleAdd()}
               >
                 <Plus className="h-5 w-5" />
-                إضافة التزام
+                إضافة التزام مالي
               </Button>
             </div>
           </div>
@@ -1098,7 +1100,7 @@ export default function Obligations() {
               </div>
               <div className="rounded-2xl border border-border/60 bg-background/80 p-3 text-center shadow-sm">
                 <div className="text-lg font-bold text-primary">3</div>
-                <div className="mt-1 text-xs text-muted-foreground">اربطه بمحفظة أو قسم</div>
+                <div className="mt-1 text-xs text-muted-foreground">اربطه بمحفظة أو تصنيف</div>
               </div>
             </div>
             <Button 
@@ -1343,7 +1345,7 @@ export default function Obligations() {
                         <span>البداية: {formatDate(obligation.startDate)}</span>
                         {obligation.endDate ? <span>الانتهاء: {formatDate(obligation.endDate)}</span> : <span>بدون انتهاء</span>}
                         {walletName ? <span>المحفظة: {walletName}</span> : <span>بدون محفظة</span>}
-                        {categoryName ? <span>القسم: {categoryName}</span> : null}
+                        {categoryName ? <span>التصنيف: {categoryName}</span> : null}
                         <span className={cn("font-medium", ended ? "text-amber-600" : obligation.isActive ? "text-emerald-600" : "text-slate-400")}>
                           • {statusLabel}
                         </span>

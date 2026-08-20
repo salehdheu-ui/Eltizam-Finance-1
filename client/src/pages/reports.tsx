@@ -337,7 +337,7 @@ function ReportsContent() {
         </div>
         <div className="mt-4 overflow-hidden rounded-3xl border">
           <div className="grid grid-cols-[1.2fr_.8fr_.6fr] border-b bg-muted/40 text-sm font-medium">
-            <div className="border-l px-4 py-3">القسم</div>
+            <div className="border-l px-4 py-3">التصنيف</div>
             <div className="border-l px-4 py-3">المبلغ</div>
             <div className="px-4 py-3">النسبة</div>
           </div>

@@ -198,9 +198,9 @@ export default function Income() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label>القسم</Label>
+                  <Label>التصنيف</Label>
                   <select value={manualCategoryId} onChange={(e) => setManualCategoryId(e.target.value)} className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none w-full">
-                    <option value="">بدون قسم</option>
+                    <option value="">بدون تصنيف</option>
                     {incomeCategories.map((category) => (
                       <option key={category.id} value={category.id.toString()}>{category.name}</option>
                     ))}
@@ -311,9 +311,9 @@ export default function Income() {
                 </select>
               </div>
               <div className="space-y-2">
-                <Label>قسم الدخل</Label>
+                <Label>تصنيف الدخل</Label>
                 <select value={salaryCategoryId} onChange={(e) => setSalaryCategoryId(e.target.value)} className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none w-full">
-                  <option value="">بدون قسم</option>
+                  <option value="">بدون تصنيف</option>
                   {incomeCategories.map((category) => (
                     <option key={category.id} value={category.id.toString()}>{category.name}</option>
                   ))}

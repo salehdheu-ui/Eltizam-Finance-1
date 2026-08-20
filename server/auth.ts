@@ -2,7 +2,7 @@
 import { Strategy as LocalStrategy } from "passport-local";
 import { Express } from "express";
 import session from "express-session";
-import createMemoryStore from "memorystore";
+import connectPgSimple from "connect-pg-simple";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
@@ -10,6 +10,7 @@ import { writeAuditEvent } from "./audit";
 import { canSendMail, sendPasswordResetEmail } from "./mail";
 import { User as SelectUser } from "@shared/schema";
 import { z } from "zod";
+import { pool } from "./db";
 
 declare global {
   namespace Express {
@@ -68,7 +69,7 @@ const registerSchema = z.object({
 });
 
 const loginSchema = z.object({
-  username: z.string().min(1).max(50),
+  username: z.string().trim().min(1).max(120),
   password: z.string().min(1).max(128),
 });
 
@@ -325,12 +326,19 @@ export async function hashPlainPassword(password: string) {
   return hashPassword(password);
 }
 
+export async function destroyUserSessions(userId: number) {
+  await pool.query(
+    `delete from user_sessions where sess -> 'passport' ->> 'user' = $1`,
+    [String(userId)],
+  );
+}
+
 export function setupAuth(app: Express) {
   if (!derivedSessionSecret) {
     throw new Error("SESSION_SECRET must be set in production");
   }
 
-  const MemoryStore = createMemoryStore(session);
+  const PgSessionStore = connectPgSimple(session);
 
   const sessionSettings: session.SessionOptions = {
     name: sessionCookieName,
@@ -340,9 +348,11 @@ export function setupAuth(app: Express) {
     rolling: true,
     proxy: isProduction,
     unset: "destroy",
-    store: new MemoryStore({
-      checkPeriod: 86400000,
-      ttl: 30 * 24 * 60 * 60 * 1000,
+    store: new PgSessionStore({
+      pool,
+      tableName: "user_sessions",
+      createTableIfMissing: false,
+      pruneSessionInterval: 15 * 60,
     }),
     cookie: {
       maxAge: 30 * 24 * 60 * 60 * 1000,
@@ -360,9 +370,9 @@ export function setupAuth(app: Express) {
     new LocalStrategy(async (username, password, done) => {
       try {
         const input = loginSchema.parse({ username, password });
-        const user = await storage.getUserByUsername(input.username);
+        const user = await findUserByIdentifier(input.username);
         if (!user || !(await comparePasswords(input.password, user.password))) {
-          return done(null, false, { message: "اسم المستخدم أو كلمة المرور غير صحيحة" });
+          return done(null, false, { message: "بيانات الدخول أو كلمة المرور غير صحيحة" });
         }
         if (!user.isActive) {
           return done(null, false, { message: "تم إيقاف هذا الحساب" });
@@ -378,7 +388,7 @@ export function setupAuth(app: Express) {
   passport.deserializeUser(async (id: number, done) => {
     try {
       const user = await storage.getUser(id);
-      done(null, user);
+      done(null, user?.isActive ? user : false);
     } catch (err) {
       done(err);
     }

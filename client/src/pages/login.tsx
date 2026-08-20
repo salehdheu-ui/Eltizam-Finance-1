@@ -143,8 +143,8 @@ export default function Login() {
       return "البريد الإلكتروني غير صالح";
     }
 
-    if (rawMessage.includes("اسم المستخدم أو كلمة المرور غير صحيحة")) {
-      return "اسم المستخدم أو كلمة المرور غير صحيحة";
+    if (rawMessage.includes("بيانات الدخول أو كلمة المرور غير صحيحة") || rawMessage.includes("اسم المستخدم أو كلمة المرور غير صحيحة")) {
+      return "بيانات الدخول أو كلمة المرور غير صحيحة";
     }
 
     if (rawMessage.includes("تم إيقاف هذا الحساب")) {
@@ -495,10 +495,10 @@ export default function Login() {
               ) : (
                 <>
                   <div className="space-y-2.5">
-                    <Label htmlFor="username" className="text-sm font-semibold">اسم المستخدم</Label>
+                    <Label htmlFor="username" className="text-sm font-semibold">{isLoginMode ? "اسم المستخدم أو البريد أو الهاتف" : "اسم المستخدم"}</Label>
                     <Input 
                       id="username" 
-                      placeholder="أدخل اسم المستخدم" 
+                      placeholder={isLoginMode ? "أدخل اسم المستخدم أو البريد أو الهاتف" : "أدخل اسم المستخدم"}
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       required 

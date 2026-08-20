@@ -22,4 +22,7 @@ export const databaseUrl =
   process.env.DATABASE_URL?.trim() ||
   (() => { throw new Error("DATABASE_URL environment variable is required for PostgreSQL connection"); })();
 
-export const backupRootPath = path.join(resolvedProjectRootPath, "backups", "eltizam-db");
+export const backupRootPath = process.env.BACKUP_DIR?.trim() || path.join(resolvedProjectRootPath, "backups", "eltizam-db");
+
+export const appTimeZone = process.env.APP_TIMEZONE?.trim() || "Asia/Muscat";
+if (!process.env.TZ) process.env.TZ = appTimeZone;

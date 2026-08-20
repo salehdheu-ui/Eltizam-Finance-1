@@ -6,7 +6,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Layout from "@/components/layout";
 import { useAppSections, useUser } from "@/lib/hooks";
-import { Loader2 } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import React, { lazy, Suspense, useEffect } from "react";
 import { DEFAULT_APP_SECTIONS, matchesAppSectionPath } from "@shared/app-sections";
 
@@ -67,8 +68,13 @@ class ErrorBoundary extends React.Component<
       return (
         <div className="app-min-h-screen flex items-center justify-center p-6" dir="rtl">
           <div className="w-full max-w-xl rounded-2xl border bg-background p-6 text-center">
-            <p className="mb-2 text-lg font-bold text-red-600">حدث خطأ غير متوقع</p>
-            <p className="text-sm text-muted-foreground">{this.state.error.message || "يرجى المحاولة مرة أخرى"}</p>
+            <p className="mb-2 text-lg font-bold text-red-600">تعذر تحميل الصفحة</p>
+            <p className="text-sm leading-6 text-muted-foreground">ربما وصل تحديث جديد أثناء فتح المنصة. حدّث الصفحة للمتابعة، ولن تتأثر بياناتك المحفوظة.</p>
+            {import.meta.env.DEV ? <p className="mt-2 text-xs text-muted-foreground">{this.state.error.message}</p> : null}
+            <Button type="button" className="mt-4" onClick={() => window.location.reload()}>
+              <RefreshCw className="h-4 w-4" />
+              تحديث الصفحة
+            </Button>
           </div>
         </div>
       );

@@ -172,8 +172,9 @@ export type DashboardSectionConfig = {
 
 export type AdminBackupRecord = {
   fileName: string;
-  filePath: string;
   frequency: "daily" | "weekly" | "annual" | "manual";
+  sizeBytes: number;
+  isValid: boolean;
 };
 
 export type AdminBackupCollection = {
