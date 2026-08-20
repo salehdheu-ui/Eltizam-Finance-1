@@ -21,7 +21,7 @@ type RecurringIncomeUpdatePayload = Partial<RecurringIncomePayload> & { id: numb
 type ObligationPayload = Omit<Obligation, "id" | "userId" | "createdAt" | "updatedAt">;
 type ObligationUpdatePayload = Partial<ObligationPayload> & { id: number };
 export type ObligationWithPayment = Obligation & { currentPayment: ObligationPayment | null };
-type CommitmentPayload = Pick<Commitment, "title" | "type" | "frequency" | "dueDate" | "amount" | "personName" | "assetName" | "notes">;
+type CommitmentPayload = Pick<Commitment, "title" | "type" | "frequency" | "dueDate" | "amount" | "personName" | "assetName" | "notes"> & { dueTime?: string };
 type CommitmentUpdatePayload = Partial<CommitmentPayload & Pick<Commitment, "progress" | "reminderDaysBefore" | "escalateAfterDays" | "autoCloseOnProof">> & { id: number };
 type SavingsGoalPayload = Pick<SavingsGoal, "planId" | "planTitle" | "title" | "walletId" | "targetAmount" | "monthlyAmount" | "years">;
 
@@ -51,6 +51,7 @@ export type SharedCommitment = {
   title: string;
   type: string;
   dueDate: number | null;
+  dueTime: string;
   progress: number;
   ownerName: string;
   steps: Array<{
@@ -75,6 +76,7 @@ export type ManagedCommitmentShare = {
   title: string;
   type: string;
   dueDate: number | null;
+  dueTime: string;
   assigneeName: string;
   assigneeEmail: string;
 };

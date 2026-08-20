@@ -1957,6 +1957,7 @@ export async function registerRoutes(
         title: commitments.title,
         type: commitments.type,
         dueDate: commitments.dueDate,
+        dueTime: commitments.dueTime,
         progress: commitments.progress,
         ownerName: users.name,
       })
@@ -2036,6 +2037,7 @@ export async function registerRoutes(
         title: commitments.title,
         type: commitments.type,
         dueDate: commitments.dueDate,
+        dueTime: commitments.dueTime,
         assigneeName: users.name,
         assigneeEmail: users.email,
       })

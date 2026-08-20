@@ -7,6 +7,7 @@ import {
   Check,
   Circle,
   CircleCheck,
+  Clock3,
   FileCheck2,
   Link2,
   Plus,
@@ -198,10 +199,10 @@ export default function CommitmentDetails() {
                 <span className="rounded-full bg-muted px-2.5 py-1">{frequencyLabels[commitment.frequency] || "مرة واحدة"}</span>
               </div>
               <h1 className={"text-2xl font-bold " + (isCompleted ? "text-muted-foreground line-through" : "")}>{commitment.title}</h1>
-              <p className="mt-2 inline-flex items-center gap-2 text-sm text-muted-foreground">
-                <CalendarDays className="h-4 w-4" />
-                {formatDate(commitment.dueDate)}
-              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                <p className="inline-flex items-center gap-2"><CalendarDays className="h-4 w-4" />{formatDate(commitment.dueDate)}</p>
+                {commitment.dueTime ? <p className="inline-flex items-center gap-2"><Clock3 className="h-4 w-4" />الساعة {commitment.dueTime}</p> : null}
+              </div>
             </div>
             <Button
               type="button"
