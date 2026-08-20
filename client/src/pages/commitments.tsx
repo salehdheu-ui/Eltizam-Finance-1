@@ -14,6 +14,7 @@ import {
   House,
   Landmark,
   Plus,
+  Repeat,
   Receipt,
   Trash2,
   UsersRound,
@@ -56,8 +57,10 @@ function formatDueDate(timestamp: number | null) {
   return new Intl.DateTimeFormat("ar-OM", { day: "numeric", month: "short", year: "numeric" }).format(new Date(timestamp * 1000));
 }
 
-function toTimestamp(value: string) {
-  return value ? Math.floor(new Date(value + "T12:00:00").getTime() / 1000) : null;
+function toTimestamp(date: string, time: string) {
+  if (!date) return null;
+  const selectedTime = time || "12:00";
+  return Math.floor(new Date(`${date}T${selectedTime}:00`).getTime() / 1000);
 }
 
 function getTypeIcon(type: string) {
@@ -68,6 +71,7 @@ type CommitmentForm = {
   title: string;
   type: Commitment["type"];
   dueDate: string;
+  dueTime: string;
   frequency: Commitment["frequency"];
   amount: string;
   personName: string;
@@ -79,6 +83,7 @@ const initialForm: CommitmentForm = {
   title: "",
   type: "personal",
   dueDate: "",
+  dueTime: "",
   frequency: "one_time",
   amount: "",
   personName: "",
@@ -111,7 +116,8 @@ export default function Commitments() {
     await createCommitment.mutateAsync({
       title: form.title.trim(),
       type: form.type,
-      dueDate: toTimestamp(form.dueDate),
+      dueDate: toTimestamp(form.dueDate, form.dueTime),
+      dueTime: form.dueTime,
       frequency: form.frequency,
       amount: form.amount ? Number(form.amount) : null,
       personName: form.personName.trim() || null,
@@ -147,18 +153,28 @@ export default function Commitments() {
       <Card className="border-primary/15 bg-gradient-to-br from-primary/5 to-background">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg"><Plus className="h-5 w-5 text-primary" />التزام جديد</CardTitle>
-          <p className="text-sm text-muted-foreground">ثلاثة حقول فقط. التفاصيل الأخرى اختيارية.</p>
+          <p className="text-sm text-muted-foreground">أدخل العنوان والموعد، ويمكنك تحديد الساعة اختياريًا.</p>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="space-y-2 md:col-span-3">
+            <div className="grid gap-4 md:grid-cols-4">
+              <div className="space-y-2 md:col-span-4">
                 <Label htmlFor="commitment-title">ما التزامك؟</Label>
                 <Input id="commitment-title" value={form.title} onChange={(event) => updateField("title", event.target.value)} placeholder="مثال: تجديد تأمين السيارة" className="h-12" required autoFocus />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="commitment-due-date">متى؟</Label>
-                <Input id="commitment-due-date" type="date" value={form.dueDate} onChange={(event) => updateField("dueDate", event.target.value)} className="h-12" />
+                <Input
+                  id="commitment-due-date"
+                  type="date"
+                  value={form.dueDate}
+                  onChange={(event) => setForm((current) => ({ ...current, dueDate: event.target.value, dueTime: event.target.value ? current.dueTime : "" }))}
+                  className="h-12"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="commitment-due-time">الوقت (اختياري)</Label>
+                <Input id="commitment-due-time" type="time" step="60" value={form.dueTime} onChange={(event) => updateField("dueTime", event.target.value)} disabled={!form.dueDate} className="h-12" />
               </div>
               <div className="space-y-2 md:col-span-2">
                 <Label htmlFor="commitment-type">يتعلق بماذا؟</Label>
@@ -226,7 +242,8 @@ export default function Commitments() {
                     <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                       <span>{typeLabels[commitment.type] || "عام"}</span>
                       <span className="inline-flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" />{formatDueDate(commitment.dueDate)}</span>
-                      <span className="inline-flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" />{frequencyLabels[commitment.frequency] || "مرة واحدة"}</span>
+                      {commitment.dueTime ? <span className="inline-flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" />{commitment.dueTime}</span> : null}
+                      <span className="inline-flex items-center gap-1"><Repeat className="h-3.5 w-3.5" />{frequencyLabels[commitment.frequency] || "مرة واحدة"}</span>
                       {commitment.amount ? <span className="inline-flex items-center gap-1"><Receipt className="h-3.5 w-3.5" />{commitment.amount.toFixed(3)} ر.ع</span> : null}
                     </div>
                     {commitment.assetName || commitment.personName ? <p className="mt-2 text-xs text-muted-foreground">{[commitment.assetName, commitment.personName].filter(Boolean).join(" · ")}</p> : null}

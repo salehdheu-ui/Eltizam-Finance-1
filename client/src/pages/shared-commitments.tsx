@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { CalendarDays, Check, Circle, CircleCheck, Handshake, ListChecks, Loader2, UserRound, X } from "lucide-react";
+import { CalendarDays, Check, Circle, CircleCheck, Clock3, Handshake, ListChecks, Loader2, UserRound, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -86,6 +86,7 @@ export default function SharedCommitments() {
                   <div className="mt-4 space-y-2 text-sm text-muted-foreground">
                     <p className="flex items-center gap-2"><UserRound className="h-4 w-4" />من: {share.ownerName}</p>
                     <p className="flex items-center gap-2"><CalendarDays className="h-4 w-4" />الموعد: {formatDate(share.dueDate)}</p>
+                    {share.dueTime ? <p className="flex items-center gap-2"><Clock3 className="h-4 w-4" />الوقت: {share.dueTime}</p> : null}
                     {(isCompleted || isApproved) && share.completionNote ? <p className="rounded-xl bg-background/70 p-3 text-foreground">ملاحظتك: {share.completionNote}</p> : null}
                     {isAccepted && share.reviewNote ? <p className="rounded-xl bg-amber-50 p-3 text-amber-800">طلب المالك تعديلًا: {share.reviewNote}</p> : null}
                   </div>

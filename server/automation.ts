@@ -36,6 +36,11 @@ function startOfDay(timestamp: number) {
   return Math.floor(date.getTime() / 1000);
 }
 
+function formatDueLabel(timestamp: number, dueTime = "") {
+  const dateLabel = new Date(timestamp * 1000).toLocaleDateString("ar-OM");
+  return dueTime ? `${dateLabel} الساعة ${dueTime}` : dateLabel;
+}
+
 /**
  * The next time a commitment falls due after `from`. Month and year steps move by
  * calendar rather than by a fixed number of days, so a commitment due on the 31st
@@ -165,7 +170,7 @@ async function raiseReminders(commitment: Commitment) {
       .set({ remindedAt: now() })
       .where(eq(commitmentOccurrences.id, occurrence.id));
 
-    const dueLabel = new Date(occurrence.dueDate * 1000).toLocaleDateString("ar-OM");
+    const dueLabel = formatDueLabel(occurrence.dueDate, commitment.dueTime);
     await record({
       userId: commitment.userId,
       action: "reminder_due",
@@ -333,6 +338,7 @@ async function processSharedCommitmentAlerts(ownerUserId: number) {
     assigneeUserId: commitmentShares.assigneeUserId,
     title: commitments.title,
     dueDate: commitments.dueDate,
+    dueTime: commitments.dueTime,
     reminderDaysBefore: commitments.reminderDaysBefore,
     escalateAfterDays: commitments.escalateAfterDays,
     remindedAt: commitmentShares.remindedAt,
@@ -353,7 +359,7 @@ async function processSharedCommitmentAlerts(ownerUserId: number) {
 
   for (const row of rows) {
     if (!row.dueDate) continue;
-    const dueLabel = new Date(row.dueDate * 1000).toLocaleDateString("ar-OM");
+    const dueLabel = formatDueLabel(row.dueDate, row.dueTime);
     const reminderWindowEnd = current + Math.max(0, row.reminderDaysBefore) * DAY;
 
     if (!row.remindedAt && row.dueDate >= today && row.dueDate <= reminderWindowEnd) {
@@ -526,8 +532,8 @@ export function startAutomationEngine() {
   if (started || process.env.NODE_ENV === "test") return;
   started = true;
 
-  const configured = Number(process.env.AUTOMATION_INTERVAL_MINUTES || 30);
-  const intervalMinutes = Math.min(360, Math.max(5, Number.isFinite(configured) ? configured : 30));
+  const configured = Number(process.env.AUTOMATION_INTERVAL_MINUTES || 5);
+  const intervalMinutes = Math.min(360, Math.max(5, Number.isFinite(configured) ? configured : 5));
   let running = false;
 
   const run = async () => {

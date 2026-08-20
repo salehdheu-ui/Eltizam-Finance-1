@@ -181,6 +181,11 @@ const databaseMigrations: DatabaseMigration[] = [
     name: "ensure_user_sessions_table",
     up: async () => { await ensureUserSessionsTable(); },
   },
+  {
+    version: 32,
+    name: "ensure_commitment_due_time_column",
+    up: async () => { await ensureCommitmentDueTimeColumn(); },
+  },
 ];
 
 async function ensureSchemaMigrationsTable() {
@@ -448,6 +453,7 @@ async function ensureCommitmentsTable() {
       status TEXT NOT NULL DEFAULT 'active',
       frequency TEXT NOT NULL DEFAULT 'one_time',
       due_date INTEGER,
+      due_time TEXT NOT NULL DEFAULT '',
       amount DOUBLE PRECISION,
       person_name TEXT,
       asset_name TEXT,
@@ -465,6 +471,10 @@ async function ensureCommitmentsTable() {
 async function ensureCommitmentProgressColumn() {
   await pgExec("ALTER TABLE commitments ADD COLUMN IF NOT EXISTS progress INTEGER NOT NULL DEFAULT 0");
   await pgExec("UPDATE commitments SET progress = 0 WHERE progress IS NULL OR progress < 0 OR progress > 100");
+}
+
+async function ensureCommitmentDueTimeColumn() {
+  await pgExec("ALTER TABLE commitments ADD COLUMN IF NOT EXISTS due_time TEXT NOT NULL DEFAULT ''");
 }
 async function ensureCommitmentStepsAndProofs() {
   await pgExec(`

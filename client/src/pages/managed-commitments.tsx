@@ -109,6 +109,7 @@ export default function ManagedCommitments() {
                       <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
                         <span className="inline-flex items-center gap-1"><UserRound className="h-4 w-4" />{share.assigneeName}</span>
                         <span className="inline-flex items-center gap-1"><CalendarDays className="h-4 w-4" />{formatDate(share.dueDate)}</span>
+                        {share.dueTime ? <span className="inline-flex items-center gap-1"><Clock3 className="h-4 w-4" />{share.dueTime}</span> : null}
                       </p>
                       {share.status === "completed" ? <p className="mt-3 rounded-lg bg-amber-50 p-2 text-xs text-amber-900">أنهى المكلّف المهمة. افتحها لمراجعة النتيجة واعتمادها.</p> : null}
                       {share.status === "declined" ? <p className="mt-3 rounded-lg bg-muted p-2 text-xs">اعتذر الشخص عن تنفيذ المهمة. يمكنك إسنادها لشخص آخر.</p> : null}
