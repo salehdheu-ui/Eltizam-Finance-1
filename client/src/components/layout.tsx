@@ -575,7 +575,7 @@ export default function Layout({ children }: LayoutProps) {
 
               {filteredCategories.length > 0 && (
                 <div className="flex flex-col gap-2">
-                  <Label className="text-base font-semibold">القسم</Label>
+                  <Label className="text-base font-semibold">التصنيف</Label>
                   <div className="flex flex-wrap gap-2">
                     {filteredCategories.map((cat) => (
                       <button key={cat.id} type="button" onClick={() => setTxCategoryId(cat.id.toString())}

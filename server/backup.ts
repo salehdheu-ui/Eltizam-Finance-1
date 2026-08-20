@@ -1,10 +1,10 @@
-import { exec } from "child_process";
-import { promisify } from "util";
+import { spawn } from "child_process";
+import { createWriteStream } from "fs";
+import { once } from "events";
+import { pipeline } from "stream/promises";
 import path from "path";
-import { mkdir, readdir, rm, writeFile } from "fs/promises";
+import { mkdir, open, readdir, rename, rm, stat } from "fs/promises";
 import { backupRootPath } from "../db-path";
-
-const execAsync = promisify(exec);
 
 const dailyDirectoryPath = path.join(backupRootPath, "daily");
 const weeklyDirectoryPath = path.join(backupRootPath, "weekly");
@@ -21,7 +21,20 @@ export type BackupRecord = {
   fileName: string;
   filePath: string;
   frequency: BackupFrequency;
+  sizeBytes: number;
+  isValid: boolean;
 };
+
+export type PublicBackupRecord = Omit<BackupRecord, "filePath">;
+
+export function toPublicBackupRecord(backup: BackupRecord): PublicBackupRecord {
+  return {
+    fileName: backup.fileName,
+    frequency: backup.frequency,
+    sizeBytes: backup.sizeBytes,
+    isValid: backup.isValid,
+  };
+}
 
 function formatDateParts(date: Date) {
   const year = date.getFullYear();
@@ -94,17 +107,33 @@ async function ensureDirectory(directoryPath: string) {
   await mkdir(directoryPath, { recursive: true });
 }
 
+async function inspectBackupFile(filePath: string) {
+  const metadata = await stat(filePath);
+  let prefix = "";
+  const handle = await open(filePath, "r");
+  try {
+    const buffer = Buffer.alloc(256);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    prefix = buffer.subarray(0, bytesRead).toString("utf8");
+  } finally {
+    await handle.close();
+  }
+
+  const isMarker = prefix.includes("pg_dump was not available") || prefix.includes("Backup marker created");
+  return { sizeBytes: metadata.size, isValid: metadata.size > 32 && !isMarker };
+}
+
 async function listBackupFilesInDirectory(directoryPath: string, frequency: BackupFrequency): Promise<BackupRecord[]> {
   await ensureDirectory(directoryPath);
   const entries = await readdir(directoryPath, { withFileTypes: true });
-  return entries
+  const records = await Promise.all(entries
     .filter((entry) => entry.isFile() && entry.name.endsWith(".sql"))
-    .map((entry) => ({
-      fileName: entry.name,
-      filePath: path.join(directoryPath, entry.name),
-      frequency,
-    }))
-    .sort((a, b) => b.fileName.localeCompare(a.fileName));
+    .map(async (entry) => {
+      const filePath = path.join(directoryPath, entry.name);
+      const inspection = await inspectBackupFile(filePath);
+      return { fileName: entry.name, filePath, frequency, ...inspection };
+    }));
+  return records.sort((a, b) => b.fileName.localeCompare(a.fileName));
 }
 
 async function pruneBackups(frequency: BackupFrequency) {
@@ -121,17 +150,34 @@ async function pruneBackups(frequency: BackupFrequency) {
 async function backupDatabaseToFile(targetFilePath: string) {
   const dbUrl = process.env.DATABASE_URL;
   if (!dbUrl) {
-    console.warn("DATABASE_URL not set, skipping backup");
-    return;
+    throw new Error("DATABASE_URL غير مضبوط، تعذر إنشاء النسخة الاحتياطية");
   }
 
+  const temporaryFilePath = `${targetFilePath}.tmp-${process.pid}-${Date.now()}`;
   try {
-    const { stdout } = await execAsync(`pg_dump "${dbUrl}" --no-owner --no-acl`);
-    await writeFile(targetFilePath, stdout, "utf8");
+    const child = spawn("pg_dump", ["--dbname", dbUrl, "--no-owner", "--no-acl"], {
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    let stderr = "";
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => { stderr = `${stderr}${chunk}`.slice(-4000); });
+
+    const output = pipeline(child.stdout, createWriteStream(temporaryFilePath, { flags: "wx" }));
+    const [exitCode] = await once(child, "close") as [number | null];
+    await output;
+    if (exitCode !== 0) {
+      throw new Error(stderr.trim() || `pg_dump exited with code ${exitCode}`);
+    }
+
+    const inspection = await inspectBackupFile(temporaryFilePath);
+    if (!inspection.isValid) throw new Error("ملف النسخة الناتج فارغ أو غير صالح");
+    await rename(temporaryFilePath, targetFilePath);
+    return inspection;
   } catch (error) {
-    console.warn("pg_dump not available or failed, creating metadata-only backup", error);
-    const timestamp = new Date().toISOString();
-    await writeFile(targetFilePath, `-- Backup marker created at ${timestamp}\n-- pg_dump was not available\n`, "utf8");
+    await rm(temporaryFilePath, { force: true });
+    const detail = error instanceof Error ? error.message : "سبب غير معروف";
+    throw new Error(`تعذر إنشاء نسخة SQL حقيقية: ${detail}`);
   }
 }
 
@@ -141,14 +187,15 @@ async function createBackupIfMissing(frequency: BackupFrequency, date: Date) {
   const backupFileName = buildBackupFileName(date, frequency);
   const backupFilePath = path.join(directoryPath, backupFileName);
   const existingFiles = await listBackupFilesInDirectory(directoryPath, frequency);
-  const alreadyExists = existingFiles.some((file) => file.fileName === backupFileName);
+  const existing = existingFiles.find((file) => file.fileName === backupFileName);
 
-  if (alreadyExists) {
-    return { created: false, filePath: backupFilePath, fileName: backupFileName };
+  if (existing?.isValid) {
+    return { ...existing, created: false };
   }
+  if (existing) await rm(existing.filePath, { force: true });
 
-  await backupDatabaseToFile(backupFilePath);
-  return { created: true, filePath: backupFilePath, fileName: backupFileName };
+  const inspection = await backupDatabaseToFile(backupFilePath);
+  return { created: true, filePath: backupFilePath, fileName: backupFileName, frequency, ...inspection };
 }
 
 function shouldCreateWeeklyBackup(date: Date) {
@@ -167,18 +214,18 @@ export async function runBackupRetentionJob(date = new Date()) {
     ensureDirectory(manualDirectoryPath),
   ]);
 
-  const createdBackups: Array<{ frequency: BackupFrequency; fileName: string; filePath: string; created: boolean }> = [];
+  const createdBackups: Array<Awaited<ReturnType<typeof createBackupIfMissing>>> = [];
 
-  createdBackups.push({ frequency: "daily", ...(await createBackupIfMissing("daily", date)) });
+  createdBackups.push(await createBackupIfMissing("daily", date));
   await pruneBackups("daily");
 
   if (shouldCreateWeeklyBackup(date)) {
-    createdBackups.push({ frequency: "weekly", ...(await createBackupIfMissing("weekly", date)) });
+    createdBackups.push(await createBackupIfMissing("weekly", date));
   }
   await pruneBackups("weekly");
 
   if (shouldCreateAnnualBackup(date)) {
-    createdBackups.push({ frequency: "annual", ...(await createBackupIfMissing("annual", date)) });
+    createdBackups.push(await createBackupIfMissing("annual", date));
   }
   await pruneBackups("annual");
 
@@ -190,7 +237,17 @@ export async function runBackupRetentionJob(date = new Date()) {
 export async function createManualBackup(date = new Date()) {
   const result = await createBackupIfMissing("manual", date);
   await pruneBackups("manual");
-  return { frequency: "manual" as const, ...result };
+  return result;
+}
+
+export async function createMigrationBackup(date = new Date()) {
+  return createManualBackup(date);
+}
+
+export async function getBackupFile(frequency: BackupFrequency, fileName: string) {
+  if (path.basename(fileName) !== fileName || !fileName.endsWith(".sql")) return null;
+  const files = await listBackupFilesInDirectory(getBackupDirectory(frequency), frequency);
+  return files.find((file) => file.fileName === fileName && file.isValid) ?? null;
 }
 
 export async function listAllBackups() {
@@ -202,9 +259,9 @@ export async function listAllBackups() {
   ]);
 
   return {
-    daily,
-    weekly,
-    annual,
-    manual,
+    daily: daily.map(toPublicBackupRecord),
+    weekly: weekly.map(toPublicBackupRecord),
+    annual: annual.map(toPublicBackupRecord),
+    manual: manual.map(toPublicBackupRecord),
   };
 }

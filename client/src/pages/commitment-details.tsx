@@ -397,7 +397,7 @@ export default function CommitmentDetails() {
                     {step.isCompleted ? <Check className="h-5 w-5" /> : <Circle className="h-5 w-5" />}
                   </button>
                   <span className={"min-w-0 flex-1 text-sm " + (step.isCompleted ? "text-muted-foreground line-through" : "")}>{step.title}</span>
-                  <Button type="button" size="icon" variant="ghost" aria-label="حذف الخطوة" onClick={() => deleteStep.mutate(step.id)}>
+                  <Button type="button" size="icon" variant="ghost" aria-label="حذف الخطوة" onClick={() => { if (window.confirm(`هل تريد حذف خطوة «${step.title}»؟`)) deleteStep.mutate(step.id); }}>
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </div>
@@ -450,7 +450,7 @@ export default function CommitmentDetails() {
                       <p className="mt-1 whitespace-pre-wrap break-words text-sm text-muted-foreground">{proof.value}</p>
                     )}
                   </div>
-                  <Button type="button" size="icon" variant="ghost" aria-label="حذف الإثبات" onClick={() => deleteProof.mutate(proof.id)}>
+                  <Button type="button" size="icon" variant="ghost" aria-label="حذف الإثبات" onClick={() => { if (window.confirm(`هل تريد حذف إثبات «${proof.label}»؟`)) deleteProof.mutate(proof.id); }}>
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </div>

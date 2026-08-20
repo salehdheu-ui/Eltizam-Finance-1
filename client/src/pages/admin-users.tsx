@@ -2,7 +2,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { DatabaseBackup, Loader2, Shield, Trash2, UserCheck, UserX, Users } from "lucide-react";
+import { DatabaseBackup, Download, Loader2, Shield, Trash2, UserCheck, UserX, Users } from "lucide-react";
 import { useAdminApprovePasswordReset, useAdminBackups, useAdminCreateManualBackup, useAdminDeleteUser, useAdminPasswordResetRequests, useAdminRejectPasswordReset, useAdminStats, useAdminUpdateUser, useAdminUsers, useUser } from "@/lib/hooks";
 import { formatDate } from "@/lib/utils";
 import AdminIntegrationsCard from "@/components/admin/integrations-card";
@@ -190,7 +190,7 @@ export default function AdminUsers() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-bold">النسخ الاحتياطي</h2>
-              <p className="text-sm text-muted-foreground">خيارات النسخ الاحتياطي متاحة لمسؤول النظام فقط، وتشمل النسخ اليومية والأسبوعية والسنوية واليدوية.</p>
+              <p className="text-sm text-muted-foreground">نسخ SQL حقيقية قابلة للتنزيل. نزّل النسخ المهمة واحتفظ بها خارج الخادم أيضًا.</p>
             </div>
             <div className="h-11 w-11 rounded-full bg-primary/10 text-primary flex items-center justify-center">
               <DatabaseBackup className="h-5 w-5" />
@@ -219,9 +219,20 @@ export default function AdminUsers() {
                 ) : (
                   <div className="space-y-2">
                     {group.records.map((record) => (
-                      <div key={record.filePath} className="rounded-lg bg-background px-3 py-2 text-sm">
-                        <p className="font-medium break-all" dir="ltr">{record.fileName}</p>
-                        <p className="text-xs text-muted-foreground break-all" dir="ltr">{record.filePath}</p>
+                      <div key={`${record.frequency}-${record.fileName}`} className="flex items-center gap-3 rounded-lg bg-background px-3 py-2 text-sm">
+                        <div className="min-w-0 flex-1">
+                          <p className="break-all font-medium" dir="ltr">{record.fileName}</p>
+                          <p className={record.isValid ? "text-xs text-emerald-700" : "text-xs text-destructive"}>
+                            {record.isValid ? `نسخة SQL صالحة · ${(record.sizeBytes / 1024).toFixed(1)} كيلوبايت` : "ملف غير صالح"}
+                          </p>
+                        </div>
+                        {record.isValid ? (
+                          <Button asChild variant="outline" size="icon" aria-label={`تنزيل ${record.fileName}`}>
+                            <a href={`/api/admin/backups/${record.frequency}/${encodeURIComponent(record.fileName)}/download`} download>
+                              <Download className="h-4 w-4" />
+                            </a>
+                          </Button>
+                        ) : null}
                       </div>
                     ))}
                   </div>

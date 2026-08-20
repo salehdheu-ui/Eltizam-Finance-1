@@ -29,6 +29,8 @@ export default function SavingsGoalsPage() {
   }, [goals, wallets]);
 
   const handleDeleteGoal = (goalId: number) => {
+    const goal = goals.find((item) => item.id === goalId);
+    if (!window.confirm(`هل تريد حذف هدف «${goal?.title || "الادخار المحدد"}»؟ لا يمكن التراجع عن الحذف.`)) return;
     deleteGoal.mutate(goalId);
   };
 

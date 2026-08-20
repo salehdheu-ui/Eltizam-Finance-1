@@ -3,9 +3,10 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@shared/schema";
 import { DEFAULT_APP_SECTIONS } from "@shared/app-sections";
 import { DEFAULT_DASHBOARD_SECTIONS } from "@shared/dashboard-sections";
+import { createMigrationBackup } from "./backup";
 import { databaseUrl } from "../db-path";
 
-const pool = new pg.Pool({ connectionString: databaseUrl });
+export const pool = new pg.Pool({ connectionString: databaseUrl });
 
 export const db = drizzle(pool, { schema });
 
@@ -175,6 +176,11 @@ const databaseMigrations: DatabaseMigration[] = [
     name: "ensure_dashboard_sections_table",
     up: async () => { await ensureDashboardSectionsTable(); },
   },
+  {
+    version: 31,
+    name: "ensure_user_sessions_table",
+    up: async () => { await ensureUserSessionsTable(); },
+  },
 ];
 
 async function ensureSchemaMigrationsTable() {
@@ -220,6 +226,18 @@ export async function migrateDatabase() {
   }
 
   const shouldCreateBackup = await hasExistingUserTables();
+  let backupCreated = false;
+  let backupError: string | null = null;
+
+  if (shouldCreateBackup) {
+    try {
+      await createMigrationBackup();
+      backupCreated = true;
+    } catch (error) {
+      backupError = error instanceof Error ? error.message : "تعذر إنشاء نسخة ما قبل الترحيل";
+      console.error("Pre-migration database backup failed:", backupError);
+    }
+  }
 
   for (const migration of pendingMigrations) {
     await migration.up();
@@ -229,7 +247,8 @@ export async function migrateDatabase() {
   return {
     appliedCount: pendingMigrations.length,
     targetVersion: pendingMigrations[pendingMigrations.length - 1]?.version ?? await getCurrentDatabaseSchemaVersion(),
-    backupCreated: shouldCreateBackup,
+    backupCreated,
+    backupError,
   };
 }
 
@@ -712,6 +731,17 @@ async function ensureDashboardSectionsTable() {
   }
 
   await pgExec("CREATE INDEX IF NOT EXISTS dashboard_sections_position_idx ON dashboard_sections (position, section_key)");
+}
+
+async function ensureUserSessionsTable() {
+  await pgExec(`
+    CREATE TABLE IF NOT EXISTS user_sessions (
+      sid VARCHAR NOT NULL PRIMARY KEY,
+      sess JSON NOT NULL,
+      expire TIMESTAMP(6) NOT NULL
+    )
+  `);
+  await pgExec("CREATE INDEX IF NOT EXISTS user_sessions_expire_idx ON user_sessions (expire)");
 }
 
 async function ensureBankObligationReconciliation() {

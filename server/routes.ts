@@ -1,9 +1,9 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { hashPlainPassword, setupAuth } from "./auth";
+import { destroyUserSessions, hashPlainPassword, setupAuth } from "./auth";
 import { writeAuditEvent } from "./audit";
-import { createManualBackup, listAllBackups } from "./backup";
+import { createManualBackup, getBackupFile, listAllBackups, toPublicBackupRecord } from "./backup";
 import { insertWalletSchema, insertCategorySchema, insertTransactionSchema, insertRecurringIncomeSchema, insertObligationSchema, insertVariableObligationMonthStatusSchema, insertCommitmentSchema, insertCommitmentStepSchema, insertCommitmentProofSchema, insertSavingsGoalSchema, appSections, dashboardSections, integrationSettings, upsertIntegrationSettingSchema, upsertEmailChannelSchema, upsertPushChannelSchema, transactions, categories, bankEmailEvents, bankCategoryRules, automationLog, commitmentOccurrences, commitments, commitmentShares, commitmentSteps, inAppNotifications, notificationPreferences, obligationPayments, users } from "@shared/schema";
 import { APP_SECTION_KEYS, DEFAULT_APP_SECTIONS } from "@shared/app-sections";
 import { DASHBOARD_SECTION_KEYS, DEFAULT_DASHBOARD_SECTIONS } from "@shared/dashboard-sections";
@@ -408,7 +408,7 @@ export async function registerRoutes(
         ipAddress: _req.ip,
         metadata: { fileName: backup.fileName, frequency: backup.frequency },
       });
-      res.status(201).json(backup);
+      res.status(201).json(toPublicBackupRecord(backup));
     } catch (e) { next(e); }
   });
 
@@ -454,6 +454,7 @@ export async function registerRoutes(
         await storage.updateUser(resetRequest.userId, { password: hashed });
         return storage.updatePasswordResetRequest(requestId, { status: "approved", adminUserId: req.user!.id, resolvedAt: Math.floor(Date.now() / 1000) });
       });
+      await destroyUserSessions(resetRequest.userId);
       await writeAuditEvent({ action: "admin.password_reset.approved", actorUserId: req.user?.id, actorRole: req.user?.role, targetUserId: resetRequest.userId, ipAddress: req.ip, metadata: { requestId } });
       res.json({ message: "تمت الموافقة على إعادة التعيين وتحديث كلمة المرور المؤقتة" });
     } catch (e) { next(e); }
@@ -488,6 +489,7 @@ export async function registerRoutes(
         buildWriteQueueKey("admin-user", userId),
         () => storage.updateUser(userId, { isActive }),
       );
+      if (!isActive) await destroyUserSessions(userId);
       await writeAuditEvent({
         action: "admin.user.status_updated",
         actorUserId: req.user?.id,
@@ -512,6 +514,7 @@ export async function registerRoutes(
         buildWriteQueueKey("admin-user", userId),
         () => storage.deleteUser(userId),
       );
+      await destroyUserSessions(userId);
       await writeAuditEvent({
         action: "admin.user.deleted",
         actorUserId: req.user?.id,
@@ -923,7 +926,7 @@ export async function registerRoutes(
         buildWriteQueueKey("user", req.user!.id, "category", categoryId),
         () => storage.deleteCategory(categoryId, req.user!.id),
       );
-      res.json({ message: "تم حذف الفئة بنجاح" });
+      res.json({ message: "تم حذف التصنيف بنجاح" });
     } catch (e) { next(e); }
   });
 
@@ -1511,6 +1514,18 @@ export async function registerRoutes(
 
       res.json({ notifications, unreadCount: unread[0]?.count ?? 0 });
     } catch (e) { next(e); }
+  });
+
+  app.get("/api/admin/backups/:frequency/:fileName/download", requireSystemAdmin, async (req, res, next) => {
+    try {
+      const frequency = z.enum(["daily", "weekly", "annual", "manual"]).parse(req.params.frequency);
+      const fileName = Array.isArray(req.params.fileName) ? req.params.fileName[0] : req.params.fileName;
+      const backup = await getBackupFile(frequency, fileName);
+      if (!backup) return res.status(404).json({ message: "ملف النسخة الاحتياطية غير موجود أو غير صالح" });
+      return res.download(backup.filePath, backup.fileName, (error) => {
+        if (error && !res.headersSent) next(error);
+      });
+    } catch (error) { next(error); }
   });
 
   app.patch("/api/notifications/in-app/:id/read", requireAuth, async (req, res, next) => {

@@ -4,6 +4,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { ZodError } from "zod";
+import { runBackupRetentionJob } from "./backup";
 
 const app = express();
 const httpServer = createServer(app);
@@ -138,15 +139,33 @@ app.use((req, res, next) => {
   next();
 });
 
+function scheduleDatabaseBackups() {
+  const run = async () => {
+    try {
+      const results = await runBackupRetentionJob();
+      const createdCount = results.filter((backup) => backup.created).length;
+      log(`database backup check completed (${createdCount} new file${createdCount === 1 ? "" : "s"})`, "backup");
+    } catch (error) {
+      console.error("Scheduled database backup failed:", error);
+    }
+  };
+
+  const initialTimer = setTimeout(() => void run(), 60_000);
+  const recurringTimer = setInterval(() => void run(), 6 * 60 * 60 * 1000);
+  initialTimer.unref();
+  recurringTimer.unref();
+}
+
 (async () => {
   app.set("trust proxy", 1);
   const migrationResult = await migrateDatabase();
   if (migrationResult.appliedCount > 0) {
-    log(`database migrated to schema v${migrationResult.targetVersion} (${migrationResult.appliedCount} step${migrationResult.appliedCount === 1 ? "" : "s"}${migrationResult.backupCreated ? ", backup created" : ""})`, "db");
+    log(`database migrated to schema v${migrationResult.targetVersion} (${migrationResult.appliedCount} step${migrationResult.appliedCount === 1 ? "" : "s"}${migrationResult.backupCreated ? ", backup created" : migrationResult.backupError ? ", backup failed" : ""})`, "db");
   } else {
     log(`database schema already up to date at v${migrationResult.targetVersion}`, "db");
   }
   await registerRoutes(httpServer, app);
+  scheduleDatabaseBackups();
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || (err instanceof ZodError ? 400 : 500);
